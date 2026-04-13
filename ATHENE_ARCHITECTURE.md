@@ -1,4 +1,4 @@
-apps/web/
+AtheneAI/
 │
 ├── app/
 │   ├── api/
@@ -94,7 +94,7 @@ apps/web/
 │           ├── gmail-fetcher.ts
 │           └── calendar-fetcher.ts
 │
-├── middleware.ts                          # Clerk auth on /api/* and /(dashboard)/*
+├── proxy.ts                              # Clerk auth on /api/* and /(dashboard)/*
 │
 └── supabase/
     └── migrations/

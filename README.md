@@ -9,9 +9,8 @@ cd athene-app
 ```
 
 ### 2. Install and Initialize
-Navigate to the web application directory and install the foundation:
+Install the foundation and prepare environment variables:
 ```bash
-cd apps/web
 npm install
 cp .env.example .env
 ```

@@ -106,3 +106,4 @@ apps/web/
         ├── 006_org_integrations.sql
         └── 007_user_automations.sql
 ```
+

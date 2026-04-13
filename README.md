@@ -1,58 +1,82 @@
-# AtheneAI
+# AtheneAI Setup Guide
 
-Welcome to the **AtheneAI** construction site. This project has been initialized as a modern, scalable Next.js application designed for agentic AI workflows. It follows a modular architecture with high-visibility documentation to ensure all contributors are aligned.
+Follow these straightforward steps to get the AtheneAI construction site running on your local machine.
 
-## 🏗️ Project Setup Status
-The initial skeleton has been built, dependencies installed, and tooling configured. This includes:
-- **Next.js 16** (Turbopack enabled)
-- **Tailwind CSS v4** styling
-- **Shadcn/UI** components
-- **Clerk** Authentication middleware ready
-- **LangGraph** & **Supabase** foundations
+### 1. Pull the code
+```bash
+git clone https://github.com/Athene-AI-Dev/athene-app.git
+cd athene-app
+```
 
-## 🚀 Quick Start
-
-To get up and running locally, follow these steps:
-
-### 1. Prerequisites
-Ensure you have **Node.js 18+** and **npm** installed.
-
-### 2. Installation
-Navigate to the web application directory and install dependencies:
-```powershell
+### 2. Install and Initialize
+Navigate to the web application directory and install the foundation:
+```bash
 cd apps/web
 npm install
-```
-
-### 3. Environment Variables
-The application requires several third-party integrations. Copy the example environment file and fill in your keys:
-```powershell
 cp .env.example .env
 ```
-*Required keys from: Clerk, Supabase, Nango, QStash, Upstash Redis, Anthropic, and OpenAI.*
 
-### 4. Development
-Start the development server with local proxying enabled:
-```powershell
+### 3. Core Dependencies
+These packages provide the backbone for Auth, Database, and AI orchestration:
+```bash
+# Core
+npm install @clerk/nextjs @supabase/supabase-js @langchain/langgraph @langchain/core
+# Integrations
+npm install @nangohq/node @upstash/qstash @upstash/redis
+# LLM providers
+npm install @anthropic-ai/sdk openai @google/generative-ai
+# Utils
+npm install zod openai-tokenizer
+# Dev
+npm install -D @types/node prettier eslint-config-prettier
+```
+
+### 4. Install shadcn/ui
+The design system is powered by shadcn/ui. The following components are already pre-installed:
+```bash
+npx shadcn@latest init
+npx shadcn@latest add button card dialog dropdown-menu input label select textarea sonner sheet sidebar table tabs
+```
+
+### 5. Configured Tooling
+The project is strictly configured for consistency:
+- **tsconfig.json**: Strict mode enabled with `@/*` path aliases.
+- **.prettierrc**: 2-space indent, single quotes, and trailing commas.
+- **.eslintrc.json**: Extends `next/core-web-vitals` + `prettier`.
+
+### 6. Environment Variables (.env.example)
+Ensure your `.env` file includes the following keys:
+```env
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+ENCRYPTION_SECRET=
+
+# Nango
+NANGO_SECRET_KEY=
+NEXT_PUBLIC_NANGO_PUBLIC_KEY=
+
+# QStash
+QSTASH_TOKEN=
+QSTASH_CURRENT_SIGNING_KEY=
+QSTASH_NEXT_SIGNING_KEY=
+
+# Redis
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# LLM (platform fallback)
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+```
+
+### 7. Run locally
+```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-### 5. Production Build
-Verify the production-readiness of the app:
-```powershell
-npm run build
-```
-
-## 📂 Architecture
-The project structure follows the blueprint defined in Chapter 11. For a detailed breakdown of folders, API routes, and library modules, please refer to:
-👉 **[ATHENE_ARCHITECTURE.md](./ATHENE_ARCHITECTURE.md)**
-
-## 🛠️ Tooling
-- **TypeScript**: Strict mode enabled.
-- **ESLint**: Configured with Next.js core web vitals and Prettier integration.
-- **Prettier**: Set to a 2-space indent, single quotes, and trailing commas.
-- **Proxy/Middleware**: Using the Next.js 16 `proxy.ts` convention for Clerk authentication.
-
----
-*Maintained by the AtheneAI Development Team.*
+👉 Build verification: `npm run build`

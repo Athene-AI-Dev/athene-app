@@ -3,10 +3,17 @@
 import { useTheme } from "next-themes";
 import { useEffect, useState, memo } from "react";
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sidebar } from "@/components/sidebar";
+import type { UserRole } from "@/lib/auth/rbac";
 
-const Header = memo(function HeaderContent() {
+interface HeaderProps {
+  role: UserRole;
+}
+
+const Header = memo(function HeaderContent({ role }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -20,14 +27,36 @@ const Header = memo(function HeaderContent() {
   return (
     <header className="border-b border-[var(--header-border)] bg-gradient-to-r from-[var(--header-bg)] via-[var(--header-bg)] to-purple-950/30 dark:via-purple-950/20 backdrop-blur-sm sticky top-0 z-40">
       <div className="flex h-16 items-center justify-between px-8">
+        {/* Mobile Sidebar */}
+        <div className="flex lg:hidden mr-4">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-[var(--foreground)] hover:text-[var(--accent)] hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/30"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle navigation menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 border-r-0 w-64">
+              <Sidebar role={role} className="w-full border-r-0" />
+            </SheetContent>
+          </Sheet>
+        </div>
+
         {/* Left spacer */}
-        <div className="flex-1" />
+        <div className="flex-1 lg:block hidden" />
 
         {/* Right section */}
         <div className="flex items-center gap-6">
           {/* Organization Switcher */}
           <div className="flex items-center">
             <OrganizationSwitcher
+              hidePersonal={true}
+              afterSelectOrganizationUrl="/chat"
+              afterLeaveOrganizationUrl="/chat"
               appearance={{
                 elements: {
                   organizationSwitcherTrigger:

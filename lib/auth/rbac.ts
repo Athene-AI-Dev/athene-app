@@ -44,9 +44,20 @@ const getCachedUserAccess = unstable_cache(
 );
 
 export async function resolveUserAccess(): Promise<UserAccess> {
-  const { sessionClaims } = await auth();
+  const { sessionClaims, orgRole } = await auth();
 
-  // Check for admin role from Clerk metadata
+  // 1. Check for Clerk's organization roles
+  // We map standard and custom Clerk roles to our application permissions
+  if (orgRole === "org:admin") {
+    return getCachedUserAccess("admin");
+  }
+
+  if (orgRole === "org:analyst" || orgRole === "org:bi_analyst") {
+    return getCachedUserAccess("analyst");
+  }
+
+  // 2. Fallback to custom application metadata role
+  // This allows overriding specific users or handling roles outside of organizations
   const role = (sessionClaims?.metadata as any)?.role || "member";
   return getCachedUserAccess(role as UserRole);
 }

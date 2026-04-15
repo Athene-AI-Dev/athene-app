@@ -14,6 +14,10 @@ import {
   Database,
   LogOut,
   ChevronDown,
+  Shield,
+  FileSearch,
+  Workflow,
+  ClipboardList,
 } from "lucide-react";
 import { useState, memo } from "react";
 import { UserButton } from "@clerk/nextjs";
@@ -29,9 +33,10 @@ interface NavLink {
 
 interface SidebarProps {
   role: UserRole;
+  className?: string;
 }
 
-const Sidebar = memo(function SidebarContent({ role }: SidebarProps) {
+const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) {
   const pathname = usePathname();
   const [adminOpen, setAdminOpen] = useState(pathname.startsWith("/admin"));
 
@@ -67,7 +72,7 @@ const Sidebar = memo(function SidebarContent({ role }: SidebarProps) {
     },
     {
       href: "/admin/keys",
-      label: "API Keys",
+      label: "Keys",
       icon: <Key className="h-4 w-4" />,
     },
     {
@@ -77,13 +82,13 @@ const Sidebar = memo(function SidebarContent({ role }: SidebarProps) {
     },
     {
       href: "/admin/audit",
-      label: "Audit Log",
-      icon: <LogOut className="h-4 w-4" />,
+      label: "Audit",
+      icon: <ClipboardList className="h-4 w-4" />,
     },
     {
       href: "/admin/automations",
       label: "Automations",
-      icon: <Zap className="h-4 w-4" />,
+      icon: <Workflow className="h-4 w-4" />,
     },
   ];
 
@@ -93,7 +98,7 @@ const Sidebar = memo(function SidebarContent({ role }: SidebarProps) {
   );
 
   return (
-    <aside className="w-64 border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] flex flex-col h-screen">
+    <aside className={cn("w-64 border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] flex flex-col h-screen", className)}>
       {/* Logo Section with Purple Glow */}
       <div className="px-6 py-8 border-b border-[var(--sidebar-border)] overflow-visible flex items-center justify-center bg-gradient-to-b from-[var(--sidebar-bg)] to-[var(--background)] dark:from-purple-950/30 dark:to-transparent">
         <Link
@@ -156,7 +161,7 @@ const Sidebar = memo(function SidebarContent({ role }: SidebarProps) {
               )}
             >
               <span className="flex items-center gap-3">
-                <Settings className="h-4 w-4 flex-shrink-0" />
+                <Shield className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate">Admin</span>
               </span>
               <ChevronDown

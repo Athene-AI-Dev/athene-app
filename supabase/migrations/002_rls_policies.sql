@@ -308,13 +308,26 @@ CREATE POLICY threads_admin ON threads FOR SELECT
   );
 
 -- ============================================================
--- 11. thread_checkpoints — same as threads
+-- 11. thread_checkpoints — same as threads (user-scoped, not org-wide)
 -- ============================================================
+-- Checkpoints contain the full conversation state. A member must NOT
+-- be able to read another member's checkpoints, so we scope via the
+-- parent thread's user_id. Admins may read all threads' checkpoints.
 
 ALTER TABLE thread_checkpoints ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY checkpoints_read ON thread_checkpoints FOR ALL
-  USING (org_id::text = app_setting('org_id'));
+CREATE POLICY checkpoints_own ON thread_checkpoints FOR ALL
+  USING (
+    org_id::text = app_setting('org_id')
+    AND EXISTS (
+      SELECT 1 FROM threads t
+      WHERE t.id = thread_checkpoints.thread_id
+        AND (
+          t.user_id::text = app_setting('user_id')
+          OR app_setting('user_role') = 'admin'
+        )
+    )
+  );
 
 -- ============================================================
 -- 12. hitl_decisions — user sees own, admin sees all

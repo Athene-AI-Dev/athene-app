@@ -20,11 +20,14 @@ CREATE TABLE llm_keys (
   created_by      uuid NOT NULL REFERENCES org_members(id),
   last_used_at    timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now(),
-
-  -- One active key per provider per org
-  UNIQUE (org_id, provider, is_active) -- partial unique enforced via trigger below
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- One ACTIVE key per provider per org (partial unique index).
+-- Inactive rows may freely duplicate; only active rows are constrained.
+CREATE UNIQUE INDEX idx_llm_keys_one_active
+  ON llm_keys(org_id, provider)
+  WHERE is_active = true;
 
 -- ============================================================
 -- Function to encrypt a key (called from the API route)

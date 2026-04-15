@@ -40,6 +40,12 @@ $$ LANGUAGE plpgsql STABLE;
 -- ============================================================
 -- Helper: check if user has a specific grant
 -- ============================================================
+-- Note: session_grants is a per-transaction TEMP table created by
+-- the withRLS wrapper. Because plpgsql defers name resolution to
+-- first execution, these helpers compile cleanly even when
+-- session_grants does not yet exist. Inline SQL references to
+-- session_grants in policy USING clauses would fail at CREATE
+-- POLICY time — always go through a helper function.
 
 CREATE OR REPLACE FUNCTION has_grant(p_scope_type text, p_scope_id text)
 RETURNS boolean AS $$
@@ -50,6 +56,25 @@ BEGIN
   RETURN EXISTS (
     SELECT 1 FROM session_grants
     WHERE scope_type = p_scope_type AND scope_id = p_scope_id
+  );
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- ============================================================
+-- Helper: check department grant against an array of dept ids
+-- (used by kg_nodes which stores department_ids as uuid[])
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION has_any_department_grant(p_dept_ids uuid[])
+RETURNS boolean AS $$
+BEGIN
+  IF NOT has_session_grants() THEN
+    RETURN false;
+  END IF;
+  RETURN EXISTS (
+    SELECT 1 FROM session_grants sg
+    WHERE sg.scope_type = 'department'
+      AND sg.scope_id::uuid = ANY(p_dept_ids)
   );
 END;
 $$ LANGUAGE plpgsql STABLE;
@@ -246,12 +271,7 @@ CREATE POLICY kg_nodes_read ON kg_nodes FOR SELECT
       -- Cannot unlock confidential
       OR (app_setting('user_role') = 'super_user'
           AND visibility != 'confidential'
-          AND has_session_grants()
-          AND EXISTS (
-            SELECT 1 FROM session_grants sg
-            WHERE sg.scope_type = 'department'
-              AND sg.scope_id::uuid = ANY(department_ids)
-          ))
+          AND has_any_department_grant(department_ids))
     )
   );
 

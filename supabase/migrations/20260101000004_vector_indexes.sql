@@ -22,7 +22,14 @@ CREATE INDEX idx_embeddings_hnsw ON document_embeddings
 -- ef = 100 at search time gives good recall without excessive latency.
 -- Can be tuned per-session with: SET LOCAL hnsw.ef_search = 200;
 
-ALTER DATABASE current_database() SET hnsw.ef_search = 100;
+-- ALTER DATABASE requires a literal identifier, not current_database().
+-- Wrap in a DO block so the migration works across environments
+-- (local "postgres", remote "postgres", self-hosted custom names).
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET hnsw.ef_search = 100', current_database());
+END
+$$;
 
 -- ============================================================
 -- Partial indexes for common filtered queries

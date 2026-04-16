@@ -61,10 +61,17 @@ vi.mock('@upstash/qstash', () => ({
       pushCount++;
       return { messageId: 'msg_test' };
     }
+  },
+  Receiver: class {
+    async verify({ signature }: { signature: string }) {
+      if (signature === 'invalid') throw new Error('Invalid signature');
+      return true;
+    }
   }
 }));
 
 import { dispatchThrottled, releaseSlot } from '@/lib/qstash/client';
+import { verifyQStashSignature } from '@/lib/qstash/verify';
 
 describe('Background Jobs Concurrency & Queueing', () => {
   beforeEach(() => {
@@ -125,5 +132,26 @@ describe('Background Jobs Concurrency & Queueing', () => {
     
     // Since the queue dispatched the cached job, the concurrency goes back up
     expect(redisCounters['nango_concurrency:org1:slack']).toBe(3);
+  });
+});
+
+describe('Webhook Signature Verification', () => {
+  it('fails verification gracefully when signature is invalid', async () => {
+    const req = new Request('https://test', {
+      headers: { 'upstash-signature': 'invalid' },
+      method: 'POST',
+      body: 'test'
+    });
+    const isValid = await verifyQStashSignature(req);
+    expect(isValid).toBe(false);
+  });
+  
+  it('rejects completely missing signatures', async () => {
+    const req = new Request('https://test', {
+      method: 'POST',
+      body: 'test'
+    });
+    const isValid = await verifyQStashSignature(req);
+    expect(isValid).toBe(false);
   });
 });

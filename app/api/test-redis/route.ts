@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { cached, incrWithExpire } from '@/lib/redis/client';
 
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: "Unauthorized in production without auth" }, { status: 401 });
+  }
+
   try {
     // 1. Test incrWithExpire
     const demoKey = 'test_counter_live';

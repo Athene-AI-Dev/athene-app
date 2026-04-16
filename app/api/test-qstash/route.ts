@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { dispatchThrottled } from '@/lib/qstash/client';
 
 export async function GET(req: Request) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: "Unauthorized in production without auth" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const ngrokUrl = searchParams.get('ngrok');

@@ -35,6 +35,12 @@ export async function dispatchThrottled({
     // Max concurrency window in case of a lost request is 15 minutes
     const count = await incrWithExpire(key, 900);
 
+    // Fail-closed if Redis is unreachable
+    if (count === null) {
+      console.warn(`[QStash] Throttling aborted for ${key} due to Redis offline.`);
+      return { dispatched: false };
+    }
+
     // Limit concurrency to 3 operations per orgId & sourceType pair simultaneously
     if (count > 3) {
       // Release our erroneously allocated spot immediately since we're throttling

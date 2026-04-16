@@ -51,7 +51,7 @@ export async function cached<T>(
 export async function incrWithExpire(
   key: string,
   ttlSeconds: number
-): Promise<number> {
+): Promise<number | null> {
   try {
     const count = await redis.incr(key);
     if (count === 1) {
@@ -60,7 +60,7 @@ export async function incrWithExpire(
     return count;
   } catch (error) {
     console.error(`[Redis] Error incrementing key ${key}:`, error);
-    // If Redis fails, return 0 to bypass throttling so critical paths don't halt
-    return 0;
+    // Fail-Closed: Return null so dispatch aborts instead of flooding APIs
+    return null;
   }
 }

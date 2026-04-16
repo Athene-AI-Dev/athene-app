@@ -17,28 +17,30 @@
 
 CREATE OR REPLACE FUNCTION app_setting(key text)
 RETURNS text AS $$
+DECLARE
+  v_headers jsonb;
 BEGIN
+  -- Always safe attempt to parse headers
+  BEGIN
+    v_headers := NULLIF(current_setting('request.headers', true), '')::jsonb;
+  EXCEPTION WHEN others THEN
+    v_headers := NULL;
+  END;
+  
+  IF v_headers IS NOT NULL THEN
+    IF key = 'org_id' AND v_headers ? 'x-app-org-id' THEN RETURN v_headers->>'x-app-org-id'; END IF;
+    IF key = 'user_id' AND v_headers ? 'x-app-user-id' THEN RETURN v_headers->>'x-app-user-id'; END IF;
+    IF key = 'department_id' AND v_headers ? 'x-app-dept-id' THEN RETURN v_headers->>'x-app-dept-id'; END IF;
+    IF key = 'user_role' AND v_headers ? 'x-app-role' THEN RETURN v_headers->>'x-app-role'; END IF;
+    IF key = 'grants' AND v_headers ? 'x-app-grants' THEN RETURN v_headers->>'x-app-grants'; END IF;
+  END IF;
+
   RETURN coalesce(current_setting('app.' || key, true), '');
 END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- ============================================================
--- Helper: check if session_grants temp table exists
--- ============================================================
-
-CREATE OR REPLACE FUNCTION has_session_grants()
-RETURNS boolean AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM pg_catalog.pg_class
-    WHERE relname = 'session_grants'
-      AND relnamespace = pg_my_temp_schema()
-  );
-END;
-$$ LANGUAGE plpgsql STABLE;
-
--- ============================================================
--- Helper: check if user has a specific grant
+-- Helper: check if user has a specific grant (JSON-based)
 -- ============================================================
 -- Note: session_grants is a per-transaction TEMP table created by
 -- the withRLS wrapper. Because plpgsql defers name resolution to
@@ -49,14 +51,24 @@ $$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION has_grant(p_scope_type text, p_scope_id text)
 RETURNS boolean AS $$
+DECLARE
+  v_grants_raw text;
+  v_grants jsonb;
 BEGIN
-  IF NOT has_session_grants() THEN
+  -- Use app_setting() so we pick up grants from BOTH PostgREST
+  -- request headers (x-app-grants) AND SET LOCAL (app.grants).
+  v_grants_raw := app_setting('grants');
+  IF v_grants_raw IS NULL OR v_grants_raw = '' THEN
     RETURN false;
   END IF;
+
+  v_grants := v_grants_raw::jsonb;
   RETURN EXISTS (
-    SELECT 1 FROM session_grants
-    WHERE scope_type = p_scope_type AND scope_id = p_scope_id
+    SELECT 1 FROM jsonb_array_elements(v_grants) AS sg
+    WHERE sg->>'scope_type' = p_scope_type AND sg->>'scope_id' = p_scope_id
   );
+EXCEPTION WHEN others THEN
+  RETURN false;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
@@ -268,10 +280,17 @@ CREATE POLICY kg_nodes_read ON kg_nodes FOR SELECT
           AND visibility IN ('department', 'bi_accessible'))
 
       -- Super_user with department grant matching any of the node's departments
-      -- Cannot unlock confidential
+      -- Cannot unlock confidential.
+      -- Uses app_setting('grants') which reads from both PostgREST headers
+      -- and SET LOCAL — consistent with has_grant() helper.
       OR (app_setting('user_role') = 'super_user'
           AND visibility != 'confidential'
-          AND has_any_department_grant(department_ids))
+          AND app_setting('grants') != ''
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(app_setting('grants')::jsonb) AS sg
+            WHERE sg->>'scope_type' = 'department'
+              AND (sg->>'scope_id')::uuid = ANY(department_ids)
+          ))
     )
   );
 
@@ -336,6 +355,8 @@ CREATE POLICY threads_admin ON threads FOR SELECT
 
 ALTER TABLE thread_checkpoints ENABLE ROW LEVEL SECURITY;
 
+-- Checkpoints contain full conversation state — scope through
+-- the parent thread's user_id so members can't read each other's.
 CREATE POLICY checkpoints_own ON thread_checkpoints FOR ALL
   USING (
     org_id::text = app_setting('org_id')

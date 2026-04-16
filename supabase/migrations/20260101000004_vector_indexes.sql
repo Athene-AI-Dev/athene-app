@@ -22,9 +22,8 @@ CREATE INDEX idx_embeddings_hnsw ON document_embeddings
 -- ef = 100 at search time gives good recall without excessive latency.
 -- Can be tuned per-session with: SET LOCAL hnsw.ef_search = 200;
 
--- ALTER DATABASE requires a literal identifier, not current_database().
--- Wrap in a DO block so the migration works across environments
--- (local "postgres", remote "postgres", self-hosted custom names).
+-- ALTER DATABASE needs a literal identifier; use DO block so it
+-- works regardless of the database name (local vs remote).
 DO $$
 BEGIN
   EXECUTE format('ALTER DATABASE %I SET hnsw.ef_search = 100', current_database());

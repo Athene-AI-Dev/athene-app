@@ -17,11 +17,8 @@ CREATE INDEX idx_org_members_active ON org_members(org_id, active) WHERE active 
 
 -- Access Grants
 CREATE INDEX idx_access_grants_user ON access_grants(org_id, user_id);
--- Active-grant lookup: we can't use `expires_at > now()` in a partial
--- index predicate because now() is STABLE, not IMMUTABLE. Include
--- expires_at in the index and filter at query time; this still keeps
--- the hot path (non-expired grants) fast because Postgres will do an
--- index-only scan and drop expired rows cheaply.
+-- Cannot use now() in partial index predicate (STABLE, not IMMUTABLE).
+-- Include expires_at in the index; filter at query time.
 CREATE INDEX idx_access_grants_active ON access_grants(org_id, user_id, expires_at);
 
 -- Connections

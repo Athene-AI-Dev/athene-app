@@ -74,7 +74,7 @@ AtheneAI/
 │   │   └── audit.ts                      # writeAuditLog
 │   │
 │   ├── nango/
-│   │   └── client.ts                     # getToken, listConnections
+│   │   └── client.ts                     # getConnectionToken, listConnections
 │   │
 │   ├── qstash/
 │   │   ├── client.ts                     # dispatch + per-org throttle

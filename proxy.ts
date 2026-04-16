@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
 
 /**
- * Clerk Middleware
+ * Clerk Middleware (proxy.ts — Next.js 16 convention)
  * Handles authentication and resolves RBAC context to inject as headers.
  */
 export default clerkMiddleware(async (auth, request) => {
@@ -25,9 +25,9 @@ export default clerkMiddleware(async (auth, request) => {
     try {
       const { orgRole } = await auth();
       const access = await resolveUserAccess(userId, orgId, orgRole);
-      
+
       const requestHeaders = new Headers(request.headers);
-      
+
       // Inject RBAC context into headers for downstream API/Server Components
       requestHeaders.set("x-current-user-id", access.internal_user_id || userId);
       requestHeaders.set("x-current-user-role", access.role || "member"); // Fallback to member
@@ -37,7 +37,7 @@ export default clerkMiddleware(async (auth, request) => {
         requestHeaders.set("x-current-accessible-depts", JSON.stringify(access.accessible_dept_ids));
       }
       if (access.bi_grant_id) requestHeaders.set("x-current-bi-grant-id", access.bi_grant_id);
-      
+
       // Always inject the org and clerk user ID for verification
       requestHeaders.set("x-current-org-id", orgId);
       requestHeaders.set("x-clerk-user-id", userId);

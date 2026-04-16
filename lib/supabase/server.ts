@@ -13,4 +13,6 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   auth: { persistSession: false }
 });
 
-export const supabaseServer = supabaseAdmin; // Alias for backward compatibility
+// Aliases for backward compatibility — different modules import different names
+export const supabaseServer = supabaseAdmin;
+export const supabase = supabaseAdmin;

@@ -10,6 +10,28 @@ export type RLSContext = {
   user_role?: 'member' | 'super_user' | 'admin'
 }
 
+/**
+ * Extracts RLS context from request headers.
+ * These headers are injected by the middleware after RBAC resolution.
+ */
+export function getContextFromHeaders(headers: Headers): RLSContext | null {
+  const org_id = headers.get("x-current-org-id");
+  const user_id = headers.get("x-current-user-id");
+  const user_role = headers.get("x-current-user-role");
+  const department_id = headers.get("x-current-user-dept-id") || "";
+
+  if (!org_id || !user_id || !user_role) {
+    return null;
+  }
+
+  return {
+    org_id,
+    user_id,
+    user_role: user_role as 'member' | 'super_user' | 'admin',
+    department_id,
+  };
+}
+
 export const getRLSClient = (context: RLSContext, grants?: any[]) => {
   let headers: Record<string, string> = {
     'x-app-org-id': context.org_id,

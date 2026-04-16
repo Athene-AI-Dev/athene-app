@@ -1,5 +1,4 @@
 import { auth } from "@clerk/nextjs/server";
-import { unstable_cache } from "next/cache";
 
 export type UserRole = "member" | "analyst" | "admin";
 
@@ -35,13 +34,9 @@ const ROLE_ACCESS_MAP: Record<UserRole, UserAccess> = {
   },
 };
 
-const getCachedUserAccess = unstable_cache(
-  async (role: UserRole): Promise<UserAccess> => {
-    return ROLE_ACCESS_MAP[role] || ROLE_ACCESS_MAP.member;
-  },
-  ["user-access"],
-  { revalidate: 3600 }
-);
+function getUserAccess(role: UserRole): UserAccess {
+  return ROLE_ACCESS_MAP[role] || ROLE_ACCESS_MAP.member;
+}
 
 export async function resolveUserAccess(): Promise<UserAccess> {
   const { sessionClaims, orgRole } = await auth();
@@ -49,17 +44,17 @@ export async function resolveUserAccess(): Promise<UserAccess> {
   // 1. Check for Clerk's organization roles
   // We map standard and custom Clerk roles to our application permissions
   if (orgRole === "org:admin") {
-    return getCachedUserAccess("admin");
+    return getUserAccess("admin");
   }
 
   if (orgRole === "org:analyst" || orgRole === "org:bi_analyst") {
-    return getCachedUserAccess("analyst");
+    return getUserAccess("analyst");
   }
 
   // 2. Fallback to custom application metadata role
   // This allows overriding specific users or handling roles outside of organizations
   const role = (sessionClaims?.metadata as any)?.role || "member";
-  return getCachedUserAccess(role as UserRole);
+  return getUserAccess(role as UserRole);
 }
 
 export async function requireAdmin(): Promise<void> {

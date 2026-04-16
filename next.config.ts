@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: false, // Disable strict mode for production performance
+  reactStrictMode: true,
   images: {
     formats: ["image/avif", "image/webp"], // Optimize image formats
     dangerouslyAllowSVG: true,

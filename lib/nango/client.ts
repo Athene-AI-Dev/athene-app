@@ -5,8 +5,12 @@ let nangoInstance: Nango | null = null;
 
 function getNango() {
   if (!nangoInstance) {
+    const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+    if (!nangoSecretKey) {
+      throw new Error("Missing NANGO_SECRET_KEY environment variable");
+    }
     nangoInstance = new Nango({
-      secretKey: process.env.NANGO_SECRET_KEY!
+      secretKey: nangoSecretKey
     });
 
     // ⚡ Alias getToken to getConnectionToken to match specification/Founder requirement

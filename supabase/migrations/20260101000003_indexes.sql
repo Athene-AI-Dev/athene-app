@@ -17,8 +17,9 @@ CREATE INDEX idx_org_members_active ON org_members(org_id, active) WHERE active 
 
 -- Access Grants
 CREATE INDEX idx_access_grants_user ON access_grants(org_id, user_id);
-CREATE INDEX idx_access_grants_active ON access_grants(org_id, user_id)
-  WHERE expires_at IS NULL OR expires_at > now();
+-- Cannot use now() in partial index predicate (STABLE, not IMMUTABLE).
+-- Include expires_at in the index; filter at query time.
+CREATE INDEX idx_access_grants_active ON access_grants(org_id, user_id, expires_at);
 
 -- Connections
 CREATE INDEX idx_connections_org ON connections(org_id);

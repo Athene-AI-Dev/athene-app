@@ -46,13 +46,17 @@ $$ LANGUAGE plpgsql STABLE;
 CREATE OR REPLACE FUNCTION has_grant(p_scope_type text, p_scope_id text)
 RETURNS boolean AS $$
 DECLARE
+  v_grants_raw text;
   v_grants jsonb;
 BEGIN
-  v_grants := NULLIF(current_setting('app.grants', true), '')::jsonb;
-  IF v_grants IS NULL THEN
+  -- Use app_setting() so we pick up grants from BOTH PostgREST
+  -- request headers (x-app-grants) AND SET LOCAL (app.grants).
+  v_grants_raw := app_setting('grants');
+  IF v_grants_raw IS NULL OR v_grants_raw = '' THEN
     RETURN false;
   END IF;
-  
+
+  v_grants := v_grants_raw::jsonb;
   RETURN EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_grants) AS sg
     WHERE sg->>'scope_type' = p_scope_type AND sg->>'scope_id' = p_scope_id
@@ -251,12 +255,14 @@ CREATE POLICY kg_nodes_read ON kg_nodes FOR SELECT
           AND visibility IN ('department', 'bi_accessible'))
 
       -- Super_user with department grant matching any of the node's departments
-      -- Cannot unlock confidential
+      -- Cannot unlock confidential.
+      -- Uses app_setting('grants') which reads from both PostgREST headers
+      -- and SET LOCAL — consistent with has_grant() helper.
       OR (app_setting('user_role') = 'super_user'
           AND visibility != 'confidential'
           AND app_setting('grants') != ''
           AND EXISTS (
-            SELECT 1 FROM jsonb_array_elements(current_setting('app.grants', true)::jsonb) AS sg
+            SELECT 1 FROM jsonb_array_elements(app_setting('grants')::jsonb) AS sg
             WHERE sg->>'scope_type' = 'department'
               AND (sg->>'scope_id')::uuid = ANY(department_ids)
           ))
@@ -321,8 +327,20 @@ CREATE POLICY threads_admin ON threads FOR SELECT
 
 ALTER TABLE thread_checkpoints ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY checkpoints_read ON thread_checkpoints FOR ALL
-  USING (org_id::text = app_setting('org_id'));
+-- Checkpoints contain full conversation state — scope through
+-- the parent thread's user_id so members can't read each other's.
+CREATE POLICY checkpoints_own ON thread_checkpoints FOR ALL
+  USING (
+    org_id::text = app_setting('org_id')
+    AND EXISTS (
+      SELECT 1 FROM threads t
+      WHERE t.id = thread_checkpoints.thread_id
+        AND (
+          t.user_id::text = app_setting('user_id')
+          OR app_setting('user_role') = 'admin'
+        )
+    )
+  );
 
 -- ============================================================
 -- 12. hitl_decisions — user sees own, admin sees all

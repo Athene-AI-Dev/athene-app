@@ -10,10 +10,13 @@ CREATE OR REPLACE FUNCTION set_app_context(
 )
 RETURNS void AS $$
 BEGIN
-  PERFORM set_config('app.org_id', p_org_id, false);
-  PERFORM set_config('app.user_id', p_user_id, false);
-  PERFORM set_config('app.department_id', p_dept_id, false);
-  PERFORM set_config('app.user_role', p_role, false);
+  -- Third arg = true → setting is LOCAL to the current transaction.
+  -- Prevents session variable leakage across requests when the
+  -- connection pool reuses a connection.
+  PERFORM set_config('app.org_id', p_org_id, true);
+  PERFORM set_config('app.user_id', p_user_id, true);
+  PERFORM set_config('app.department_id', p_dept_id, true);
+  PERFORM set_config('app.user_role', p_role, true);
 END;
 $$ LANGUAGE plpgsql;
 

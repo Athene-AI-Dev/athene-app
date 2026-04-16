@@ -1,42 +1,9 @@
-import { verifyToken } from "@clerk/nextjs/server";
-
-export interface ClerkUserClaims {
-  userId: string;
-  orgId?: string;
-  orgRole?: string;
-  email?: string;
-}
-
 /**
- * Verifies the Clerk JWT from the Authorization header.
- * Throws 401 if no token, 403 if token invalid.
- */
-export async function verifyClerkJWT(authHeader?: string): Promise<ClerkUserClaims> {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new Error("401: Unauthorized - No token provided");
-  }
-
-  const token = authHeader.split(" ")[1];
-
-  try {
-    const payload = await verifyToken(token, {
-        secretKey: process.env.CLERK_SECRET_KEY,
-    });
-
-    return {
-      userId: payload.sub as string,
-      orgId: payload.org_id as string | undefined,
-      orgRole: payload.org_role as string | undefined,
-      email: payload.email as string | undefined,
-    };
-  } catch (error) {
-    console.error("Clerk Token Verification Error:", error);
-    throw new Error("403: Forbidden - Invalid token");
-  }
-}
-
-/**
- * Maps Clerk roles to application internal roles defined in the user_role ENUM.
+ * Maps Clerk organization roles to application internal roles.
+ *
+ * Clerk auth is handled by clerkMiddleware() in middleware.ts which
+ * calls auth() — no manual JWT verification needed. This module
+ * only exports the role-mapping helper used by the RBAC resolver.
  */
 export function mapRole(orgRole?: string): "admin" | "member" | "super_user" | null {
   if (!orgRole) return null;

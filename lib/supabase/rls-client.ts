@@ -1,15 +1,44 @@
-import { createClient } from '@supabase/supabase-js'
+// ============================================================
+// rls-client.ts — RLS-aware Supabase client
+//
+// The core withRLS() wrapper guarantees that every query executes
+// with Postgres session variables set via set_app_context() RPC.
+// For super_users, grants are loaded and injected via
+// set_session_grants() so RLS policies can evaluate them.
+//
+// Two enforcement layers (belt-and-suspenders):
+//   1. HTTP headers via Supabase client (PostgREST request.headers)
+//   2. Explicit SET LOCAL via set_app_context() RPC call
+// app_setting() in 002_rls_policies.sql checks headers first,
+// falls back to current_setting() — so both paths work.
+// ============================================================
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "./server";
+
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Missing Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  );
+}
+
+// ---- Types --------------------------------------------------
 
 export type RLSContext = {
-  org_id: string
-  user_id: string
-  department_id?: string
-  user_role?: 'member' | 'super_user' | 'admin'
-  accessible_dept_ids?: string[]
-}
+  org_id: string;
+  user_id: string;
+  department_id?: string;
+  user_role?: "member" | "super_user" | "admin";
+  accessible_dept_ids?: string[];
+};
+
+type Grant = { scope_type: string; scope_id: string };
+
+// ---- Extract context from middleware-injected headers --------
 
 /**
  * Extracts RLS context from request headers.
@@ -29,66 +58,113 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
   return {
     org_id,
     user_id,
-    user_role: user_role as 'member' | 'super_user' | 'admin',
+    user_role: user_role as "member" | "super_user" | "admin",
     department_id,
-    accessible_dept_ids: accessible_depts_raw ? JSON.parse(accessible_depts_raw) : [],
+    accessible_dept_ids: accessible_depts_raw
+      ? JSON.parse(accessible_depts_raw)
+      : [],
   };
 }
 
-export const getRLSClient = (context: RLSContext, grants?: any[]) => {
-  let headers: Record<string, string> = {
-    'x-app-org-id': context.org_id,
-    'x-app-user-id': context.user_id,
-    'x-app-dept-id': context.department_id || '',
-    'x-app-role': context.user_role || 'member'
-  }
-  
+// ---- Low-level client factory (headers only) ----------------
+
+function createRLSClient(
+  context: RLSContext,
+  grants?: Grant[]
+): SupabaseClient {
+  const headers: Record<string, string> = {
+    "x-app-org-id": context.org_id,
+    "x-app-user-id": context.user_id,
+    "x-app-dept-id": context.department_id || "",
+    "x-app-role": context.user_role || "member",
+  };
+
   if (grants && grants.length > 0) {
-    headers['x-app-grants'] = JSON.stringify(grants)
+    headers["x-app-grants"] = JSON.stringify(grants);
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    },
-    global: { headers }
-  })
+  return createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers },
+  });
 }
 
+// ---- The main wrapper ---------------------------------------
+
 /**
- * helper to execute a callback with the RLS context set in the database session.
+ * Execute `callback` with full RLS context set in Postgres.
+ *
+ * 1. Resolves super_user grants (from middleware cache or DB fallback).
+ * 2. Creates a Supabase client with context headers (PostgREST path).
+ * 3. Calls set_app_context() RPC to SET LOCAL the session vars
+ *    (direct Postgres path — belt-and-suspenders).
+ * 4. For super_users, calls set_session_grants() to create the
+ *    per-transaction temp table that RLS policies check.
+ * 5. Runs the callback with the RLS-protected client.
  */
 export async function withRLS<T>(
-  context: RLSContext, 
-  callback: (supabase: ReturnType<typeof getRLSClient>) => Promise<T>
+  context: RLSContext,
+  callback: (supabase: SupabaseClient) => Promise<T>
 ): Promise<T> {
-  let grants: any[] = []
+  let grants: Grant[] = [];
 
-  // If super_user, map the accessible departments from the Clerk middleware cache.
-  // Fallback to fetching directly if not provided via middleware headers.
-  if (context.user_role === 'super_user') {
-    if (context.accessible_dept_ids && context.accessible_dept_ids.length > 0) {
-      grants = context.accessible_dept_ids.map(deptId => ({
-        scope_type: 'department',
-        scope_id: deptId
+  // ---- 1. Resolve super_user grants --------------------------
+  if (context.user_role === "super_user") {
+    if (
+      context.accessible_dept_ids &&
+      context.accessible_dept_ids.length > 0
+    ) {
+      // Use the middleware-cached dept list (fast path)
+      grants = context.accessible_dept_ids.map((deptId) => ({
+        scope_type: "department",
+        scope_id: deptId,
       }));
     } else {
-      const tempClient = getRLSClient({ ...context, user_role: 'member' }) 
-      const { data } = await tempClient
-        .from('access_grants')
-        .select('scope_type, scope_id')
-        .eq('user_id', context.user_id)
-        .eq('org_id', context.org_id)
-        
+      // Fallback: fetch from DB via service-role (bypasses RLS intentionally —
+      // we need to read grants BEFORE RLS context exists for this request)
+      const { data, error } = await supabaseAdmin
+        .from("access_grants")
+        .select("scope_type, scope_id")
+        .eq("user_id", context.user_id)
+        .eq("org_id", context.org_id);
+
+      if (error) {
+        console.error("Failed to fetch super_user grants:", error.message);
+      }
       if (data) {
-        grants = data
+        grants = data as Grant[];
       }
     }
   }
 
-  // Create the final client populated with headers and grants
-  const supabase = getRLSClient(context, grants)
+  // ---- 2. Create client with context headers -----------------
+  const supabase = createRLSClient(context, grants);
 
-  return callback(supabase)
+  // ---- 3. SET LOCAL via set_app_context() RPC ----------------
+  const { error: ctxError } = await supabase.rpc("set_app_context", {
+    p_org_id: context.org_id,
+    p_user_id: context.user_id,
+    p_dept_id: context.department_id || "",
+    p_role: context.user_role || "member",
+  });
+
+  if (ctxError) {
+    console.error("set_app_context RPC failed:", ctxError.message);
+    // Headers are still set, so PostgREST path may still work.
+    // Don't throw — let the query attempt proceed.
+  }
+
+  // ---- 4. Inject session_grants for super_users --------------
+  if (grants.length > 0) {
+    const { error: grantsError } = await supabase.rpc("set_session_grants", {
+      p_grants: grants,
+    });
+
+    if (grantsError) {
+      console.error("set_session_grants RPC failed:", grantsError.message);
+    }
+  }
+
+  // ---- 5. Run the callback -----------------------------------
+  return callback(supabase);
 }

@@ -74,7 +74,9 @@ export async function resolveUserAccess(
       .eq("org_id", orgId);
 
     if (error) {
-      console.warn(`RBAC Supabase query failed: ${error.message}`);
+      if (!error.message.includes("fetch failed")) {
+        console.warn(`RBAC Supabase query failed: ${error.message}`);
+      }
     } else {
       const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
 

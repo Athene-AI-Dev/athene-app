@@ -8,6 +8,7 @@ export type RLSContext = {
   user_id: string
   department_id?: string
   user_role?: 'member' | 'super_user' | 'admin'
+  accessible_dept_ids?: string[]
 }
 
 /**
@@ -19,6 +20,7 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
   const user_id = headers.get("x-current-user-id");
   const user_role = headers.get("x-current-user-role");
   const department_id = headers.get("x-current-user-dept-id") || "";
+  const accessible_depts_raw = headers.get("x-current-accessible-depts");
 
   if (!org_id || !user_id || !user_role) {
     return null;
@@ -29,6 +31,7 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
     user_id,
     user_role: user_role as 'member' | 'super_user' | 'admin',
     department_id,
+    accessible_dept_ids: accessible_depts_raw ? JSON.parse(accessible_depts_raw) : [],
   };
 }
 
@@ -62,17 +65,25 @@ export async function withRLS<T>(
 ): Promise<T> {
   let grants: any[] = []
 
-  // If super_user, fetch grants using an initially scoped client
+  // If super_user, map the accessible departments from the Clerk middleware cache.
+  // Fallback to fetching directly if not provided via middleware headers.
   if (context.user_role === 'super_user') {
-    const tempClient = getRLSClient({ ...context, user_role: 'member' }) // Fetch as basic member to test RLS safely on grants table
-    const { data } = await tempClient
-      .from('access_grants')
-      .select('scope_type, scope_id')
-      .eq('user_id', context.user_id)
-      .eq('org_id', context.org_id)
-      
-    if (data) {
-      grants = data
+    if (context.accessible_dept_ids && context.accessible_dept_ids.length > 0) {
+      grants = context.accessible_dept_ids.map(deptId => ({
+        scope_type: 'department',
+        scope_id: deptId
+      }));
+    } else {
+      const tempClient = getRLSClient({ ...context, user_role: 'member' }) 
+      const { data } = await tempClient
+        .from('access_grants')
+        .select('scope_type, scope_id')
+        .eq('user_id', context.user_id)
+        .eq('org_id', context.org_id)
+        
+      if (data) {
+        grants = data
+      }
     }
   }
 

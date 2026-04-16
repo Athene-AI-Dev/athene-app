@@ -10,10 +10,7 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 }
 
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: { persistSession: false },
-  global: {
-    fetch: (...args) => fetch(...args),
-  },
+  auth: { persistSession: false }
 });
 
 export const supabaseServer = supabaseAdmin; // Alias for backward compatibility

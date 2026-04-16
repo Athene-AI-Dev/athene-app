@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase CLI local state (contains linked project ref, do not commit)
+.supabase/
+supabase/.branches/
+supabase/.temp/

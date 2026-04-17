@@ -9,9 +9,11 @@ import { redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { mapRole } from "./clerk";
 
+export type UserRole = "admin" | "super_user" | "member" | null;
+
 export interface UserAccess {
   internal_user_id: string | null;
-  role: string | null;
+  role: UserRole;
   dept_id: string | null;
   accessible_dept_ids: string[] | null;
   bi_grant_id: string | null;

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,13 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const userAccess = await resolveUserAccess();
+  const { userId, orgId, orgRole } = await auth();
+
+  // Not signed in → send to sign-in. Not in an org → send to chat.
+  if (!userId) redirect("/sign-in");
+  if (!orgId) redirect("/chat");
+
+  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
   // Step 4: Role-guard admin pages
   // Check resolveUserAccess().role === 'admin'

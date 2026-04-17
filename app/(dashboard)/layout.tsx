@@ -9,14 +9,19 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
 
   // Protect dashboard routes
   if (!userId) {
     redirect("/");
   }
+  // Dashboard requires an active org — Clerk may return null orgId if the
+  // user hasn't joined/selected one. Send them to sign-in to pick one.
+  if (!orgId) {
+    redirect("/sign-in");
+  }
 
-  const userAccess = await resolveUserAccess();
+  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">

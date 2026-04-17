@@ -12,7 +12,8 @@
 //   true         — every invocation requires approval
 // ============================================================
 
-import type { UserRole, ModelTier } from "../state";
+import type { UserRole } from "../state";
+import type { ModelTier } from "../llm-factory";
 
 export type ApprovalMode = false | "write-only" | true;
 
@@ -102,7 +103,7 @@ export function agentNeedsApproval(
   name: AgentName,
   isWriteOperation: boolean,
 ): boolean {
-  const mode = AGENT_REGISTRY[name].needsApproval;
+  const mode = AGENT_REGISTRY[name].needsApproval as ApprovalMode;
   if (mode === false) return false;
   if (mode === true) return true;
   return isWriteOperation; // 'write-only'

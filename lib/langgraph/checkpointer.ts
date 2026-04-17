@@ -19,14 +19,22 @@
 // bypassed — the checkpointer runs in a trusted server context.
 // ============================================================
 
-import { BaseCheckpointSaver } from "@langchain/langgraph";
+// In @langchain/langgraph v1+, checkpoint primitives moved to the
+// dedicated @langchain/langgraph-checkpoint package.
+import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import type {
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
   CheckpointListOptions,
   PendingWrite,
-} from "@langchain/langgraph";
+} from "@langchain/langgraph-checkpoint";
+
+// LangGraph's CheckpointTuple.pendingWrites is `[taskId, channel, value][]`
+// (3-tuple), while `PendingWrite` is the 2-tuple `[channel, value]` handed
+// to `putWrites`. We persist the 3-tuple form so `getTuple` can return it
+// directly.
+type StoredPendingWrite = [string, string, unknown];
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -35,7 +43,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 interface StoredPayload {
   checkpoint: Checkpoint;
   metadata: CheckpointMetadata;
-  pending_writes: PendingWrite[];
+  pending_writes: StoredPendingWrite[];
 }
 
 interface CheckpointRow {
@@ -196,7 +204,7 @@ export class SupabaseCheckpointer extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    _taskId: string,
+    taskId: string,
   ): Promise<void> {
     if (writes.length === 0) return;
 
@@ -214,14 +222,30 @@ export class SupabaseCheckpointer extends BaseCheckpointSaver {
     if (error || !data) return;
 
     const stored = (data as { checkpoint: StoredPayload }).checkpoint;
+    const tagged: StoredPendingWrite[] = writes.map(
+      ([channel, value]) => [taskId, channel, value] as StoredPendingWrite,
+    );
     const merged: StoredPayload = {
       ...stored,
-      pending_writes: [...(stored.pending_writes ?? []), ...writes],
+      pending_writes: [...(stored.pending_writes ?? []), ...tagged],
     };
 
     await this.supabase
       .from("thread_checkpoints")
       .update({ checkpoint: merged })
       .eq("id", checkpointId);
+  }
+
+  /**
+   * Delete all checkpoints for a thread. Required by BaseCheckpointSaver
+   * as of @langchain/langgraph v1.
+   */
+  async deleteThread(threadId: string): Promise<void> {
+    if (!threadId) return;
+    await this.supabase
+      .from("thread_checkpoints")
+      .delete()
+      .eq("org_id", this.orgId)
+      .eq("thread_id", threadId);
   }
 }

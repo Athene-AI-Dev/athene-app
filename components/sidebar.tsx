@@ -55,7 +55,7 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
       href: "/insights",
       label: "Insights",
       icon: <BarChart3 className="h-4 w-4" />,
-      requiresRole: ["analyst", "admin"],
+      requiresRole: ["super_user", "admin"],
     },
   ];
 

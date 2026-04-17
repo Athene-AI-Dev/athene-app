@@ -56,7 +56,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ENCRYPTION_SECRET=
 
-# Nango (public key deprecated — use Connect Session Tokens)
+# Nango 
 NANGO_SECRET_KEY=
 
 # QStash

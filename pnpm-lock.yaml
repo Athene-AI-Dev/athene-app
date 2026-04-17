@@ -23,6 +23,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.2.8
         version: 1.2.8(@langchain/core@1.1.40(openai@6.34.0(ws@8.20.0)(zod@4.3.6))(ws@8.20.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
+      '@nangohq/frontend':
+        specifier: ^0.69.48
+        version: 0.69.50
       '@nangohq/node':
         specifier: ^0.69.48
         version: 0.69.49
@@ -53,6 +56,9 @@ importers:
       openai:
         specifier: ^6.34.0
         version: 6.34.0(ws@8.20.0)(zod@4.3.6)
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -648,12 +654,18 @@ packages:
     resolution: {integrity: sha512-cXu86tF4VQVfwz8W1SPbhoRyHJkti6mjH/XJIxp40jhO4j2k1m4KYrEykxqWPkFF3vrK4rgQppBh//AwyGSXPA==}
     engines: {node: '>=18'}
 
+  '@nangohq/frontend@0.69.50':
+    resolution: {integrity: sha512-g5AKEsMreHTyMUFvalf4cTnGaWbaFYQ3FgpN+4HohQ7YXqmlkMRgxyNG0em3Iw+valcGoZBhEd7LfSUTfA3onw==}
+
   '@nangohq/node@0.69.49':
     resolution: {integrity: sha512-eMg2hhiX3olKkCpCOhksGcgaWZgfQlQo8jaxe9LD09X4QGdkcyscWDg38PfQyI5X7JNV1N8QaDARc7eWakJLSQ==}
     engines: {node: '>=20.0'}
 
   '@nangohq/types@0.69.49':
     resolution: {integrity: sha512-vBLIsqvP2vgE+F4L75kaqOT9/aWlXhcjTQa4Mc5EpVdSgj4mpb/rlB14z9xI2J5DNEfMZntMa26rv7bKTKRpvg==}
+
+  '@nangohq/types@0.69.50':
+    resolution: {integrity: sha512-V4cswmGnienq/oydwdUMSgdAb4RDAt6WOy6G+DtFywtN3GI5IzneIrgBew04m1fcN/cut+pimD7bTB6WdbJiNg==}
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -3630,6 +3642,10 @@ packages:
     resolution: {integrity: sha512-7a70Nsot+EMX9fFU3064K/kdHWZqGVY+BADLyXc8Dfv+mTLLVl6JzJpPaCZ2kQL9gIJvKXSLMHhqdRRjwQeFtw==}
     engines: {node: ^10 || ^12 || >=14}
 
+  postgres@3.4.9:
+    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
+    engines: {node: '>=12'}
+
   powershell-utils@0.1.0:
     resolution: {integrity: sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A==}
     engines: {node: '>=20'}
@@ -5000,6 +5016,12 @@ snapshots:
       outvariant: 1.4.3
       strict-event-emitter: 0.5.1
 
+  '@nangohq/frontend@0.69.50':
+    dependencies:
+      '@nangohq/types': 0.69.50
+    transitivePeerDependencies:
+      - debug
+
   '@nangohq/node@0.69.49':
     dependencies:
       '@nangohq/types': 0.69.49
@@ -5008,6 +5030,14 @@ snapshots:
       - debug
 
   '@nangohq/types@0.69.49':
+    dependencies:
+      axios: 1.15.0
+      json-schema: 0.4.0
+      type-fest: 4.41.0
+    transitivePeerDependencies:
+      - debug
+
+  '@nangohq/types@0.69.50':
     dependencies:
       axios: 1.15.0
       json-schema: 0.4.0
@@ -8009,6 +8039,8 @@ snapshots:
       nanoid: 3.3.11
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postgres@3.4.9: {}
 
   powershell-utils@0.1.0: {}
 

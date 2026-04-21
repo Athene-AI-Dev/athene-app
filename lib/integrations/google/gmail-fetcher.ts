@@ -53,7 +53,7 @@ export async function listUnreadEmails(
   limit: number = 20
 ): Promise<GmailMessageMetadata[]> {
   const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=${limit}`
-  const list = await googleFetch<{ messages?: GmailMessageRef[] }>(connectionId, orgId, listUrl)
+  const list = await googleFetch<{ messages?: GmailMessageRef[] }>(connectionId, orgId, 'gmail', listUrl)
 
   if (!list.messages || list.messages.length === 0) return []
 
@@ -66,7 +66,7 @@ export async function listUnreadEmails(
       snippet: string
       payload: { headers: GmailHeader[] }
       internalDate: string
-    }>(connectionId, orgId, metaUrl)
+    }>(connectionId, orgId, 'gmail', metaUrl)
 
     return {
       id: full.id,
@@ -92,7 +92,7 @@ export async function searchEmails(
 ): Promise<GmailMessageMetadata[]> {
   const encodedQuery = encodeURIComponent(query)
   const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodedQuery}&maxResults=${limit}`
-  const list = await googleFetch<{ messages?: GmailMessageRef[] }>(connectionId, orgId, listUrl)
+  const list = await googleFetch<{ messages?: GmailMessageRef[] }>(connectionId, orgId, 'gmail', listUrl)
 
   if (!list.messages || list.messages.length === 0) return []
 
@@ -105,7 +105,7 @@ export async function searchEmails(
       snippet: string
       payload: { headers: GmailHeader[] }
       internalDate: string
-    }>(connectionId, orgId, metaUrl)
+    }>(connectionId, orgId, 'gmail', metaUrl)
 
     return {
       id: full.id,
@@ -132,7 +132,7 @@ export async function fetchEmailBody(
   messageId: string
 ): Promise<string> {
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`
-  const msg = await googleFetch<GmailMessageFull>(connectionId, orgId, url)
+  const msg = await googleFetch<GmailMessageFull>(connectionId, orgId, 'gmail', url)
   return extractBodyFromPayload(msg.payload)
 }
 
@@ -147,7 +147,7 @@ export async function sendEmail(
   raw: string
 ): Promise<{ id: string; threadId: string }> {
   const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
-  return googleFetch<{ id: string; threadId: string }>(connectionId, orgId, url, {
+  return googleFetch<{ id: string; threadId: string }>(connectionId, orgId, 'gmail', url, {
     method: 'POST',
     body: { raw },
   })

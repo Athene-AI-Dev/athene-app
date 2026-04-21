@@ -43,7 +43,8 @@ describe('Google Drive Fetcher', () => {
     await listDriveFiles(CONN, ORG)
 
     expect(mockGoogleFetch).toHaveBeenCalledOnce()
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , providerKey, url] = mockGoogleFetch.mock.calls[0]
+    expect(providerKey).toBe('google_drive')
     expect(url).toContain('https://www.googleapis.com/drive/v3/files')
     expect(url).toContain('trashed%3Dfalse')
   })
@@ -52,7 +53,7 @@ describe('Google Drive Fetcher', () => {
     mockGoogleFetch.mockResolvedValue({ files: [{ id: 'f1' }] })
     await listDriveFiles(CONN, ORG, 'folder-abc')
 
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , , url] = mockGoogleFetch.mock.calls[0]
     expect(url).toContain('folder-abc')
     expect(url).toContain('in+parents')
   })
@@ -61,7 +62,7 @@ describe('Google Drive Fetcher', () => {
     mockGoogleFetch.mockResolvedValue({ files: [] })
     await searchDrive(CONN, ORG, "user's report")
 
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , , url] = mockGoogleFetch.mock.calls[0]
     expect(url).toContain("user%5C%27s")
     expect(url).toContain('fullText+contains')
   })
@@ -70,7 +71,8 @@ describe('Google Drive Fetcher', () => {
     mockGoogleFetch.mockResolvedValue('Exported plain text content')
     const result = await fetchDriveFileContent(CONN, ORG, 'doc-123', 'application/vnd.google-apps.document')
 
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , providerKey, url] = mockGoogleFetch.mock.calls[0]
+    expect(providerKey).toBe('google_drive')
     expect(url).toContain('/export?mimeType=text/plain')
     expect(result).toBe('Exported plain text content')
   })
@@ -79,7 +81,7 @@ describe('Google Drive Fetcher', () => {
     mockGoogleFetch.mockResolvedValue('col1,col2\nval1,val2')
     await fetchDriveFileContent(CONN, ORG, 'sheet-123', 'application/vnd.google-apps.spreadsheet')
 
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , , url] = mockGoogleFetch.mock.calls[0]
     expect(url).toContain('/export?mimeType=text/csv')
   })
 
@@ -89,7 +91,8 @@ describe('Google Drive Fetcher', () => {
     })
     await fetchDriveFileContent(CONN, ORG, 'file-123', 'application/pdf')
 
-    const url = mockGoogleFetchRaw.mock.calls[0][2] as string
+    const [, , providerKey, url] = mockGoogleFetchRaw.mock.calls[0]
+    expect(providerKey).toBe('google_drive')
     expect(url).toContain('alt=media')
   })
 
@@ -98,7 +101,7 @@ describe('Google Drive Fetcher', () => {
     const token = await getStartPageToken(CONN, ORG)
 
     expect(token).toBe('token-xyz')
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , , url] = mockGoogleFetch.mock.calls[0]
     expect(url).toContain('changes/startPageToken')
   })
 
@@ -126,7 +129,7 @@ describe('Gmail Fetcher', () => {
     expect(result).toEqual([])
   })
 
-  it('listUnreadEmails fetches metadata for each message', async () => {
+  it('listUnreadEmails passes gmail as providerKey', async () => {
     mockGoogleFetch.mockResolvedValueOnce({
       messages: [{ id: 'msg-1', threadId: 't-1' }],
     })
@@ -145,6 +148,10 @@ describe('Gmail Fetcher', () => {
     expect(result).toHaveLength(1)
     expect(result[0].headers.from).toBe('alice@example.com')
     expect(result[0].headers.subject).toBe('Test Email')
+
+    // Verify both calls used 'gmail' providerKey
+    expect(mockGoogleFetch.mock.calls[0][2]).toBe('gmail')
+    expect(mockGoogleFetch.mock.calls[1][2]).toBe('gmail')
   })
 
   it('fetchEmailBody decodes base64url plain text body', async () => {
@@ -179,12 +186,13 @@ describe('Gmail Fetcher', () => {
     expect(body).toBe('Plain text version')
   })
 
-  it('sendEmail posts a raw base64 message', async () => {
+  it('sendEmail posts a raw base64 message with gmail key', async () => {
     mockGoogleFetch.mockResolvedValue({ id: 'sent-1', threadId: 't-sent' })
     const result = await sendEmail(CONN, ORG, 'base64-raw-message')
 
     expect(result.id).toBe('sent-1')
-    const [, , url, opts] = mockGoogleFetch.mock.calls[0]
+    const [, , providerKey, url, opts] = mockGoogleFetch.mock.calls[0]
+    expect(providerKey).toBe('gmail')
     expect(url).toContain('/messages/send')
     expect(opts.method).toBe('POST')
   })
@@ -195,13 +203,14 @@ describe('Gmail Fetcher', () => {
 describe('Google Calendar Fetcher', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('fetchCalendarEvents passes correct time window and singleEvents=true', async () => {
+  it('fetchCalendarEvents passes correct time window and google_calendar key', async () => {
     mockGoogleFetch.mockResolvedValue({ items: [] })
     const start = new Date('2026-04-20T00:00:00Z')
     const end = new Date('2026-04-21T00:00:00Z')
     await fetchCalendarEvents(CONN, ORG, start, end)
 
-    const url = mockGoogleFetch.mock.calls[0][2] as string
+    const [, , providerKey, url] = mockGoogleFetch.mock.calls[0]
+    expect(providerKey).toBe('google_calendar')
     expect(url).toContain('singleEvents=true')
     expect(url).toContain('orderBy=startTime')
     expect(url).toContain('2026-04-20')
@@ -216,7 +225,7 @@ describe('Google Calendar Fetcher', () => {
     expect(events[0].summary).toBe('Standup')
   })
 
-  it('createCalendarEvent sends a POST with event data', async () => {
+  it('createCalendarEvent sends a POST with google_calendar key', async () => {
     mockGoogleFetch.mockResolvedValue({
       id: 'new-event', summary: 'Team Sync',
       start: { dateTime: '2026-04-20T15:00:00Z' },
@@ -230,7 +239,8 @@ describe('Google Calendar Fetcher', () => {
     })
 
     expect(result.summary).toBe('Team Sync')
-    const [, , url, opts] = mockGoogleFetch.mock.calls[0]
+    const [, , providerKey, url, opts] = mockGoogleFetch.mock.calls[0]
+    expect(providerKey).toBe('google_calendar')
     expect(url).toContain('calendars/primary/events')
     expect(opts.method).toBe('POST')
   })

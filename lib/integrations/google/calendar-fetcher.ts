@@ -56,7 +56,7 @@ export async function fetchCalendarEvents(
   })
 
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`
-  const res = await googleFetch<CalendarListResponse>(connectionId, orgId, url)
+  const res = await googleFetch<CalendarListResponse>(connectionId, orgId, 'google_calendar', url)
   return res.items || []
 }
 
@@ -97,7 +97,7 @@ export async function createCalendarEvent(
   event: EventDraft
 ): Promise<CalendarEvent> {
   const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
-  return googleFetch<CalendarEvent>(connectionId, orgId, url, {
+  return googleFetch<CalendarEvent>(connectionId, orgId, 'google_calendar', url, {
     method: 'POST',
     body: event,
   })
@@ -115,7 +115,7 @@ export async function updateCalendarEvent(
   updates: Partial<EventDraft>
 ): Promise<CalendarEvent> {
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`
-  return googleFetch<CalendarEvent>(connectionId, orgId, url, {
+  return googleFetch<CalendarEvent>(connectionId, orgId, 'google_calendar', url, {
     method: 'PATCH',
     body: updates,
   })
@@ -130,5 +130,5 @@ export async function deleteCalendarEvent(
   eventId: string
 ): Promise<void> {
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`
-  await googleFetch(connectionId, orgId, url, { method: 'DELETE' })
+  await googleFetch(connectionId, orgId, 'google_calendar', url, { method: 'DELETE' })
 }

@@ -1,4 +1,6 @@
 import { googleFetch } from './api-client'
+import type { FetchedChunk } from '@/lib/integrations/base'
+import { assertSafeMetadata } from '@/lib/integrations/base'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,4 +133,64 @@ export async function deleteCalendarEvent(
 ): Promise<void> {
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`
   await googleFetch(connectionId, orgId, url, { method: 'DELETE' })
+}
+
+// ─── FetchedChunk Builders ──────────────────────────────────────────────────
+
+/**
+ * Converts a CalendarEvent into a FetchedChunk for the indexing pipeline
+ * or the agent's response formatter.
+ *
+ * Content is a human-readable summary of the event details.
+ *
+ * @param event - The CalendarEvent from fetchCalendarEvents.
+ * @returns A FetchedChunk that can be passed to indexDocument.
+ */
+export function calendarEventToChunk(event: CalendarEvent): FetchedChunk {
+  const startTime = event.start.dateTime || event.start.date || 'unknown'
+  const endTime = event.end.dateTime || event.end.date || 'unknown'
+  const attendeeList = event.attendees
+    ?.map(a => a.displayName || a.email)
+    .join(', ') || 'none'
+
+  const content = [
+    `Event: ${event.summary}`,
+    `When: ${startTime} → ${endTime}`,
+    event.location ? `Where: ${event.location}` : null,
+    event.description ? `Description: ${event.description}` : null,
+    `Attendees: ${attendeeList}`,
+    event.organizer ? `Organizer: ${event.organizer.displayName || event.organizer.email}` : null,
+    event.status ? `Status: ${event.status}` : null,
+  ].filter(Boolean).join('\n')
+
+  const metadata: FetchedChunk['metadata'] = {
+    provider: 'google',
+    resource_type: 'calendar_event',
+    last_modified: event.updated || event.created,
+    author: event.organizer?.displayName || event.organizer?.email,
+    event_status: event.status,
+  }
+  assertSafeMetadata(metadata)
+
+  return {
+    chunk_id: `calendar:${event.id}`,
+    title: event.summary,
+    content,
+    source_url: event.htmlLink || `https://calendar.google.com/calendar/event?eid=${event.id}`,
+    metadata,
+  }
+}
+
+/**
+ * Convenience wrapper: fetches events in a time window and returns FetchedChunk[].
+ * This is what the nango-fetch worker calls for Calendar indexing.
+ */
+export async function fetchCalendarChunks(
+  connectionId: string,
+  orgId: string,
+  timeMin: Date,
+  timeMax: Date,
+): Promise<FetchedChunk[]> {
+  const events = await fetchCalendarEvents(connectionId, orgId, timeMin, timeMax)
+  return events.map(calendarEventToChunk)
 }

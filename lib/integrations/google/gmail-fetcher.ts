@@ -1,4 +1,6 @@
 import { googleFetch } from './api-client'
+import type { FetchedChunk } from '@/lib/integrations/base'
+import { assertSafeMetadata } from '@/lib/integrations/base'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,6 +153,51 @@ export async function sendEmail(
     method: 'POST',
     body: { raw },
   })
+}
+
+// ─── FetchedChunk Builders ──────────────────────────────────────────────────
+
+/**
+ * Converts a GmailMessageMetadata into a FetchedChunk for the agent's
+ * response formatter. Uses snippet + headers only — bodies are NEVER indexed.
+ *
+ * @param msg - The email metadata from listUnreadEmails or searchEmails.
+ * @returns A metadata-only FetchedChunk for display in agent responses.
+ */
+export function gmailMetadataToChunk(msg: GmailMessageMetadata): FetchedChunk {
+  const metadata: FetchedChunk['metadata'] = {
+    provider: 'google',
+    resource_type: 'email',
+    last_modified: new Date(Number(msg.internalDate)).toISOString(),
+    author: msg.headers.from,
+    thread_id: msg.threadId,
+    labels: msg.labelIds.join(','),
+  }
+  assertSafeMetadata(metadata)
+
+  const subject = msg.headers.subject || '(no subject)'
+
+  return {
+    chunk_id: `gmail:${msg.id}`,
+    title: subject,
+    content: msg.snippet,
+    source_url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+    metadata,
+  }
+}
+
+/**
+ * Convenience wrapper: runs searchEmails and returns FetchedChunk[].
+ * This is what the agent calls for live Gmail search.
+ */
+export async function searchEmailChunks(
+  connectionId: string,
+  orgId: string,
+  query: string,
+  limit: number = 10,
+): Promise<FetchedChunk[]> {
+  const results = await searchEmails(connectionId, orgId, query, limit)
+  return results.map(gmailMetadataToChunk)
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────────────────

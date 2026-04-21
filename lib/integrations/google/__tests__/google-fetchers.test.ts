@@ -16,18 +16,21 @@ import {
   fetchDriveFileContent,
   getStartPageToken,
   fetchChanges,
+  driveFileToChunk,
 } from '@/lib/integrations/google/drive-fetcher'
 
 import {
   listUnreadEmails,
   fetchEmailBody,
   sendEmail,
+  gmailMetadataToChunk,
 } from '@/lib/integrations/google/gmail-fetcher'
 
 import {
   fetchCalendarEvents,
   fetchTodayEvents,
   createCalendarEvent,
+  calendarEventToChunk,
 } from '@/lib/integrations/google/calendar-fetcher'
 
 const CONN = 'test-connection'
@@ -233,5 +236,130 @@ describe('Google Calendar Fetcher', () => {
     const [, , url, opts] = mockGoogleFetch.mock.calls[0]
     expect(url).toContain('calendars/primary/events')
     expect(opts.method).toBe('POST')
+  })
+})
+
+// ─── FetchedChunk Builder Tests ──────────────────────────────────────────────
+
+describe('Drive FetchedChunk Builder', () => {
+  it('driveFileToChunk produces a valid FetchedChunk', () => {
+    const file = {
+      id: 'abc123',
+      name: 'Q1 Report.pdf',
+      mimeType: 'application/pdf',
+      webViewLink: 'https://drive.google.com/file/d/abc123/view',
+      modifiedTime: '2026-04-20T10:00:00Z',
+      owners: [{ displayName: 'Alice', emailAddress: 'alice@example.com' }],
+    }
+
+    const chunk = driveFileToChunk(file, 'Extracted PDF text content here...')
+
+    expect(chunk.chunk_id).toBe('drive:abc123')
+    expect(chunk.title).toBe('Q1 Report.pdf')
+    expect(chunk.content).toBe('Extracted PDF text content here...')
+    expect(chunk.source_url).toBe('https://drive.google.com/file/d/abc123/view')
+    expect(chunk.metadata.provider).toBe('google')
+    expect(chunk.metadata.resource_type).toBe('drive_file')
+    expect(chunk.metadata.author).toBe('Alice')
+    expect(chunk.metadata.last_modified).toBe('2026-04-20T10:00:00Z')
+  })
+
+  it('driveFileToChunk falls back to generated URL when webViewLink is missing', () => {
+    const file = {
+      id: 'xyz789',
+      name: 'Notes.txt',
+      mimeType: 'text/plain',
+    }
+
+    const chunk = driveFileToChunk(file, 'Some text')
+    expect(chunk.source_url).toBe('https://drive.google.com/file/d/xyz789')
+  })
+})
+
+describe('Gmail FetchedChunk Builder', () => {
+  it('gmailMetadataToChunk produces a valid FetchedChunk', () => {
+    const msg = {
+      id: 'msg-abc',
+      threadId: 't-abc',
+      labelIds: ['UNREAD', 'INBOX'],
+      snippet: 'Hey, just wanted to check in...',
+      headers: {
+        from: 'bob@example.com',
+        subject: 'Quick question',
+        date: 'Mon, 20 Apr 2026',
+        to: 'alice@example.com',
+      },
+      internalDate: '1745123456000',
+    }
+
+    const chunk = gmailMetadataToChunk(msg)
+
+    expect(chunk.chunk_id).toBe('gmail:msg-abc')
+    expect(chunk.title).toBe('Quick question')
+    expect(chunk.content).toBe('Hey, just wanted to check in...')
+    expect(chunk.source_url).toContain('msg-abc')
+    expect(chunk.metadata.provider).toBe('google')
+    expect(chunk.metadata.resource_type).toBe('email')
+    expect(chunk.metadata.author).toBe('bob@example.com')
+  })
+
+  it('gmailMetadataToChunk handles missing subject', () => {
+    const msg = {
+      id: 'msg-no-subject',
+      threadId: 't-1',
+      labelIds: [],
+      snippet: 'Empty subject line',
+      headers: { from: 'test@test.com' },
+      internalDate: '1745123456000',
+    }
+
+    const chunk = gmailMetadataToChunk(msg)
+    expect(chunk.title).toBe('(no subject)')
+  })
+})
+
+describe('Calendar FetchedChunk Builder', () => {
+  it('calendarEventToChunk produces a valid FetchedChunk', () => {
+    const event = {
+      id: 'evt-123',
+      summary: 'Team Standup',
+      description: 'Daily sync meeting',
+      location: 'Conference Room A',
+      start: { dateTime: '2026-04-20T09:00:00Z' },
+      end: { dateTime: '2026-04-20T09:30:00Z' },
+      attendees: [
+        { email: 'alice@example.com', displayName: 'Alice' },
+        { email: 'bob@example.com', displayName: 'Bob' },
+      ],
+      organizer: { email: 'alice@example.com', displayName: 'Alice' },
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=evt-123',
+      status: 'confirmed',
+      updated: '2026-04-19T12:00:00Z',
+    }
+
+    const chunk = calendarEventToChunk(event)
+
+    expect(chunk.chunk_id).toBe('calendar:evt-123')
+    expect(chunk.title).toBe('Team Standup')
+    expect(chunk.content).toContain('Event: Team Standup')
+    expect(chunk.content).toContain('Conference Room A')
+    expect(chunk.content).toContain('Alice, Bob')
+    expect(chunk.metadata.provider).toBe('google')
+    expect(chunk.metadata.resource_type).toBe('calendar_event')
+    expect(chunk.metadata.author).toBe('Alice')
+  })
+
+  it('calendarEventToChunk handles all-day events with date instead of dateTime', () => {
+    const event = {
+      id: 'evt-allday',
+      summary: 'Company Holiday',
+      start: { date: '2026-04-25' },
+      end: { date: '2026-04-26' },
+      status: 'confirmed',
+    }
+
+    const chunk = calendarEventToChunk(event)
+    expect(chunk.content).toContain('2026-04-25')
+    expect(chunk.content).toContain('2026-04-26')
   })
 })

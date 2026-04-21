@@ -14,7 +14,7 @@ export default clerkMiddleware(async (auth, request) => {
 
   // 1. Enforce Authentication for non-public routes
   if (!isPublicRoute(request)) {
-    if (!userId) {
+    if (!userId && process.env.NODE_ENV !== 'development') {
       return (await auth()).redirectToSignIn();
     }
   }

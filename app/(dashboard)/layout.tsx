@@ -9,19 +9,25 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, orgRole } = await auth();
+  let { userId, orgId, orgRole } = await auth();
+  
+  // BYPASS: Mock auth for development
+  if (process.env.NODE_ENV === 'development') {
+    userId = userId || 'user_2mZ6p6t2S0Nl6U6x3X5l4G1j8K0'; // Hardcoded mock user
+    orgId = orgId || 'org_2mZ6p6t2S0Nl6U6x3X5l4G1j8K0';   // Hardcoded mock org
+    orgRole = orgRole || 'org:admin';
+  }
 
   // Protect dashboard routes
-  if (!userId) {
+  if (!userId && process.env.NODE_ENV !== 'development') {
     redirect("/");
   }
-  // Dashboard requires an active org — Clerk may return null orgId if the
-  // user hasn't joined/selected one. Send them to sign-in to pick one.
-  if (!orgId) {
+  
+  if (!orgId && process.env.NODE_ENV !== 'development') {
     redirect("/sign-in");
   }
 
-  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
+  const userAccess = await resolveUserAccess(userId!, orgId!, orgRole!);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">

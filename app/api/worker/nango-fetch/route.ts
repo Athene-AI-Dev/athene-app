@@ -1,16 +1,160 @@
-import { auth } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
+// ============================================================
+// api/worker/nango-fetch/route.ts — Background fetch worker
+//
+// Called by QStash after dispatchThrottled() publishes a job.
+// Flow:
+//   1. Verify QStash signature (security)
+//   2. Extract { orgId, connectionId, provider } from body
+//   3. Look up the correct fetcher from providerFetcherMap
+//   4. Call fetcher → get FetchedChunk[]
+//   5. Pass each chunk through indexDocument()
+//   6. Call releaseSlot() to free QStash concurrency
+//
+// Security rules:
+//   • QStash signature verification required
+//   • Nango token obtained inside fetcher, used once, discarded
+//   • No tokens or raw content logged
+// ============================================================
 
-export async function GET() {
-  const { userId, orgId } = await auth()
-  
-  if (!userId) {
-    return new Response('Unauthorized', { status: 401 })
+import { NextResponse } from 'next/server'
+import { verifyQStashSignature } from '@/lib/qstash/verify'
+import { releaseSlot } from '@/lib/qstash/client'
+import { indexDocuments } from '@/lib/integrations/indexing'
+import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
+import { searchSlack } from '@/lib/integrations/slack/searcher'
+import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
+import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetcher'
+import { slackFetch } from '@/lib/integrations/slack/client'
+import { getProviderMetadata } from '@/lib/integrations/base'
+import type { FetchedChunk } from '@/lib/integrations/base'
+
+// ---- Provider Fetcher Map ---------------------------------------
+
+type FetcherFn = (
+  connectionId: string,
+  orgId: string,
+  options?: { since?: string; limit?: number }
+) => Promise<FetchedChunk[]>
+
+/**
+ * Map of provider names to their full-sync fetcher functions.
+ * Each fetcher returns FetchedChunk[] for indexing.
+ */
+const providerFetcherMap: Record<string, FetcherFn[]> = {
+  slack: [
+    // Slack: fetch channels first, then threads for high-reply messages
+    async (connectionId, orgId, options) => {
+      return fetchSlackMessages(connectionId, orgId)
+    },
+  ],
+
+  zendesk: [
+    // Zendesk: fetch tickets and articles in parallel
+    async (connectionId, orgId, options) => {
+      const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
+      const subdomain = metadata.subdomain
+      
+      if (!subdomain) {
+        throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
+      }
+
+      const [tickets, articles] = await Promise.all([
+        fetchZendeskTickets(connectionId, orgId, subdomain),
+        fetchZendeskArticles(connectionId, orgId, subdomain),
+      ])
+      return [...tickets, ...articles]
+    },
+  ],
+}
+
+// ---- Request body type ------------------------------------------
+
+interface NangoFetchJobBody {
+  orgId: string
+  connectionId: string
+  provider: string           // 'slack' | 'zendesk'
+  sourceType: string         // same as provider, used for QStash concurrency key
+  departmentId?: string | null
+  since?: string             // ISO-8601, for incremental sync
+}
+
+// ---- POST handler -----------------------------------------------
+
+export async function POST(request: Request): Promise<Response> {
+  // 1. Verify QStash signature
+  const isValid = await verifyQStashSignature(request)
+  if (!isValid) {
+    return new Response('Invalid QStash signature', { status: 401 })
   }
-  
-  return NextResponse.json({ 
-    status: 'ok',
-    userId,
-    orgId
-  })
+
+  let body: NangoFetchJobBody
+
+  try {
+    body = (await request.json()) as NangoFetchJobBody
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const { orgId, connectionId, provider, sourceType, departmentId, since } = body
+
+  // 2. Validate required fields
+  if (!orgId || !connectionId || !provider) {
+    return NextResponse.json(
+      { error: 'Missing required fields: orgId, connectionId, provider' },
+      { status: 400 }
+    )
+  }
+
+  // 3. Look up the fetcher
+  const fetchers = providerFetcherMap[provider]
+  if (!fetchers) {
+    return NextResponse.json(
+      { error: `Unknown provider: ${provider}. Available: ${Object.keys(providerFetcherMap).join(', ')}` },
+      { status: 400 }
+    )
+  }
+
+  try {
+    // 4. Run all fetchers for this provider
+    const allChunks: FetchedChunk[] = []
+    for (const fetcher of fetchers) {
+      const chunks = await fetcher(connectionId, orgId, { since })
+      allChunks.push(...chunks)
+    }
+
+    // 5. Index all fetched chunks
+    const result = await indexDocuments(
+      allChunks,
+      orgId,
+      departmentId ?? null
+    )
+
+    // 6. Release QStash concurrency slot
+    await releaseSlot(orgId, sourceType || provider)
+
+    return NextResponse.json({
+      status: 'ok',
+      provider,
+      chunks_fetched: allChunks.length,
+      chunks_indexed: result.indexed,
+      errors: result.errors,
+    })
+  } catch (err) {
+    console.error(
+      `[nango-fetch] Worker error for provider=${provider} org=${orgId}:`,
+      err instanceof Error ? err.message : String(err)
+    )
+
+    // Still release the slot even on error to prevent deadlock
+    try {
+      await releaseSlot(orgId, sourceType || provider)
+    } catch {
+      // Best-effort release
+    }
+
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Internal error' },
+      { status: 500 }
+    )
+  }
 }

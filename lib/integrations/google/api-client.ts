@@ -1,35 +1,32 @@
 /**
- * Microsoft Graph API client — built on top of the shared baseFetch.
- * All Microsoft fetchers (Outlook, SharePoint, Calendar) use this
+ * Google API client — built on top of the shared baseFetch.
+ * All Google fetchers (Drive, Gmail, Calendar) use this
  * instead of calling fetch() directly.
  */
 import { baseFetch, baseFetchRaw, getProviderToken } from '@/lib/integrations/base'
 
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
-
 /**
- * Authenticated fetch wrapper for Microsoft Graph API.
+ * Authenticated fetch wrapper for Google APIs.
  * Retrieves the Nango token and delegates to baseFetch for
  * automatic retry + rate-limit handling.
  *
  * @param connectionId - Nango connection ID.
  * @param orgId        - Organization ID for ownership verification.
- * @param path         - The Graph API path (e.g. '/me/messages').
+ * @param url          - The full Google API URL to call.
  * @param options      - Optional method, headers, body overrides.
- * @returns Parsed JSON response of type T.
+ * @returns Parsed response of type T.
  */
-export async function graphFetch<T = any>(
+export async function googleFetch<T = any>(
   connectionId: string,
   orgId: string,
-  path: string,
+  url: string,
   options: {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
     headers?: Record<string, string>
     body?: unknown
   } = {},
 ): Promise<T> {
-  const token = await getProviderToken(connectionId, 'microsoft', orgId)
-  const url = `${GRAPH_BASE}${path}`
+  const token = await getProviderToken(connectionId, 'google', orgId)
 
   return baseFetch<T>(url, {
     ...options,
@@ -41,21 +38,20 @@ export async function graphFetch<T = any>(
 }
 
 /**
- * Raw response variant of graphFetch for binary downloads.
- * Used for file content downloads from OneDrive/SharePoint.
+ * Raw response variant of googleFetch for binary downloads.
+ * Used for Drive file content (PDFs, images, etc.).
  */
-export async function graphFetchRaw(
+export async function googleFetchRaw(
   connectionId: string,
   orgId: string,
-  path: string,
+  url: string,
   options: {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
     headers?: Record<string, string>
     body?: unknown
   } = {},
 ): Promise<Response> {
-  const token = await getProviderToken(connectionId, 'microsoft', orgId)
-  const url = `${GRAPH_BASE}${path}`
+  const token = await getProviderToken(connectionId, 'google', orgId)
 
   return baseFetchRaw(url, {
     ...options,

@@ -3,31 +3,30 @@ import mammoth from 'mammoth'
 import * as pdf from 'pdf-parse'
 import * as xlsx from 'xlsx'
 
-export async function listSharePointDocs(connectionId: string, siteId: string, itemId: string = 'root') {
+export async function listOneDriveDocs(connectionId: string, itemId: string = 'root') {
   const items: any[] = []
   const endpoint = itemId === 'root' 
-    ? `/sites/${siteId}/drive/root/children` 
-    : `/sites/${siteId}/drive/items/${itemId}/children`
+    ? `/me/drive/root/children` 
+    : `/me/drive/items/${itemId}/children`
     
   for await (const item of paginate(connectionId, endpoint)) {
     if (item.file) {
       items.push(item)
     } else if (item.folder) {
-      // Recurse to find all files in subfolders
-      const children = await listSharePointDocs(connectionId, siteId, item.id)
+      const children = await listOneDriveDocs(connectionId, item.id)
       items.push(...children)
     }
   }
   return items
 }
 
-export async function fetchDocContent(connectionId: string, driveId: string, itemId: string): Promise<string> {
-  // 1. Get item metadata to determine file type
-  const item = await graphFetch(connectionId, `/drives/${driveId}/items/${itemId}`)
+export async function fetchOneDriveDocContent(connectionId: string, itemId: string): Promise<string> {
+  // 1. Get metadata
+  const item = await graphFetch(connectionId, `/me/drive/items/${itemId}`)
   const fileName = item.name.toLowerCase()
   
   // 2. Download content
-  const arrayBuffer = await graphDownload(connectionId, `/drives/${driveId}/items/${itemId}/content`)
+  const arrayBuffer = await graphDownload(connectionId, `/me/drive/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
   if (fileName.endsWith('.docx')) {
@@ -49,16 +48,14 @@ export async function fetchDocContent(connectionId: string, driveId: string, ite
   } else if (fileName.endsWith('.txt')) {
     return buffer.toString('utf-8')
   } else {
-    // Fallback for other text-based files or try as UTF-8
     return buffer.toString('utf-8')
   }
 }
 
 /**
- * Fetches the assigned permissions for a specific SharePoint document.
- * This includes who has access (people, groups) and what role they have.
+ * Fetches the assigned permissions for a specific OneDrive item.
  */
-export async function getSharePointItemPermissions(connectionId: string, driveId: string, itemId: string) {
-  const data = await graphFetch(connectionId, `/drives/${driveId}/items/${itemId}/permissions`)
-  return data.value // Returns a list of Permission objects
+export async function getOneDriveItemPermissions(connectionId: string, itemId: string) {
+  const data = await graphFetch(connectionId, `/me/drive/items/${itemId}/permissions`)
+  return data.value
 }

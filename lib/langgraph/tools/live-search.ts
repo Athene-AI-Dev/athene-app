@@ -1,31 +1,42 @@
-type SearcherFunction = (query: string, connectionId: string, orgId: string, ...args: any[]) => Promise<any[]>;
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
+import { getSearcher } from "../../integrations";
+import { registerTool } from "./registry";
 
-const searchers: Record<string, SearcherFunction> = {};
+/**
+ * live_search
+ * Real-time search across external integrations (Mode B pure live search)
+ */
+export const liveSearchTool = new DynamicStructuredTool({
+  name: "live_search",
+  description: "Performs a real-time search across an external integration (Notion search endpoint, Snowflake SQL LIKE) for a specific query.",
+  schema: z.object({
+    provider: z.string().describe("The integration provider (e.g., 'notion', 'snowflake')"),
+    connectionId: z.string().describe("The Nango connection ID for the user's integration"),
+    query: z.string().describe("The search query string")
+  }),
+  func: async ({ provider, connectionId, query }) => {
+    const searcher = getSearcher(provider);
+    if (!searcher) {
+      return `Error: No searcher registered for provider '${provider}'`;
+    }
 
-export function registerSearcher(name: string, searcher: SearcherFunction) {
-  searchers[name] = searcher;
-}
+    try {
+      const results = await searcher(connectionId, query);
+      if (results.length === 0) {
+        return `No results found for query: "${query}"`;
+      }
 
-// Mock searchers for Github and Linear based on the instructions.
-// In a fuller implementation, they would actually hit the GitHub/Linear search GraphQL/REST APIs.
-export async function githubSearcher(query: string, connectionId: string, orgId: string, owner: string, repo: string) {
-  console.log(`[Search] GitHub search for '${query}' in ${owner}/${repo}`);
-  // Returns fetched abstract blocks matching query
-  return [];
-}
+      return JSON.stringify(results.map(r => ({
+        title: r.title,
+        content: r.content,
+        url: r.source_url
+      })), null, 2);
+    } catch (error) {
+      return `Error performing search: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+});
 
-export async function linearSearcher(query: string, connectionId: string, orgId: string) {
-  console.log(`[Search] Linear search for '${query}'`);
-  // Returns fetched linear issues/projects blocks matching query
-  return [];
-}
-
-// Register searchers
-registerSearcher('github', githubSearcher);
-registerSearcher('linear', linearSearcher);
-
-export async function executeLiveSearch(provider: string, query: string, connectionId: string, orgId: string, ...args: any[]) {
-  const searcher = searchers[provider];
-  if (!searcher) throw new Error(`Searcher ${provider} not found`);
-  return searcher(query, connectionId, orgId, ...args);
-}
+// Register the tool
+registerTool(liveSearchTool);

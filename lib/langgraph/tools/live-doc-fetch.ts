@@ -1,43 +1,41 @@
-import { githubIssuesFetcher } from '../../integrations/github/issues-fetcher';
-import { githubPrsFetcher } from '../../integrations/github/prs-fetcher';
-import { githubWikiFetcher } from '../../integrations/github/wiki-fetcher';
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
+import { getProvider } from "../../integrations";
+import { registerTool } from "./registry";
 
-import { linearIssuesFetcher } from '../../integrations/linear/issues-fetcher';
-import { linearProjectsFetcher } from '../../integrations/linear/projects-fetcher';
-import { linearCyclesFetcher } from '../../integrations/linear/cycles-fetcher';
+/**
+ * live_doc_fetch
+ * Ephemeral content fetcher that bypasses indexed storage to get current state (Notion, Snowflake, etc.)
+ */
+export const liveDocFetchTool = new DynamicStructuredTool({
+  name: "live_doc_fetch",
+  description: "Fetches live, ephemeral content from an external integration (Notion, Snowflake, etc.) given a provider and connectionId. Use this when you need the most up-to-date data that might not be indexed yet.",
+  schema: z.object({
+    provider: z.string().describe("The integration provider (e.g., 'notion', 'snowflake')"),
+    connectionId: z.string().describe("The Nango connection ID for the user's integration")
+  }),
+  func: async ({ provider, connectionId }) => {
+    const fetcher = getProvider(provider);
+    if (!fetcher) {
+      return `Error: No fetcher registered for provider '${provider}'`;
+    }
 
-import { FetchedChunk } from '../../integrations/types';
+    try {
+      const chunks = await fetcher(connectionId);
+      if (chunks.length === 0) {
+        return "No content found for this connection.";
+      }
 
-type FetcherFunction = (connectionId: string, orgId: string, ...args: any[]) => Promise<FetchedChunk[]>;
+      return JSON.stringify(chunks.map(c => ({
+        title: c.title,
+        content: c.content,
+        url: c.source_url
+      })), null, 2);
+    } catch (error) {
+      return `Error fetching content: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+});
 
-const providers: Record<string, FetcherFunction> = {};
-
-export function registerProvider(name: string, fetcher: FetcherFunction) {
-  providers[name] = fetcher;
-}
-
-// Wrapper for github to fetch all 3
-export async function githubFetcher(connectionId: string, orgId: string, owner: string, repo: string): Promise<FetchedChunk[]> {
-  const issues = await githubIssuesFetcher(connectionId, orgId, owner, repo);
-  const prs = await githubPrsFetcher(connectionId, orgId, owner, repo);
-  const wiki = await githubWikiFetcher(connectionId, orgId, owner, repo);
-  return [...issues, ...prs, ...wiki];
-}
-
-// Wrapper for linear to fetch all 3
-export async function linearFetcher(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
-  const issues = await linearIssuesFetcher(connectionId, orgId);
-  const projects = await linearProjectsFetcher(connectionId, orgId);
-  const cycles = await linearCyclesFetcher(connectionId, orgId);
-  return [...issues, ...projects, ...cycles];
-}
-
-// Register providers
-registerProvider('github', githubFetcher);
-registerProvider('linear', linearFetcher);
-
-export async function fetchDocumentChunks(provider: string, connectionId: string, orgId: string, ...args: any[]): Promise<FetchedChunk[]> {
-  const fetcher = providers[provider];
-  if (!fetcher) throw new Error(`Provider ${provider} not found`);
-  return fetcher(connectionId, orgId, ...args);
-}
+// Register the tool
+registerTool(liveDocFetchTool);

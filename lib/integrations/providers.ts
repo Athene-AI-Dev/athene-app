@@ -1,232 +1,213 @@
-// ─── Provider Categories ─────────────────────────────────────────────────────
+export type ProviderKey =
+  | 'google'
+  | 'microsoft'
+  | 'slack'
+  | 'hubspot'
+  | 'notion'
+  | 'jira'
+  | 'confluence'
+  | 'salesforce'
+  | 'snowflake'
+  | 'github'
+  | 'linear'
+  | 'zendesk';
 
-export type ProviderCategory =
-  | 'crm'
-  | 'storage'
-  | 'communication'
-  | 'dev'
-  | 'productivity'
-  | 'data'
-
-// ─── Provider Definition ─────────────────────────────────────────────────────
-
-export interface ProviderDefinition {
-  /** Nango provider_config_key — used in all getToken() calls */
-  nangoKey: string
-  /** Human-readable name shown in UI */
-  displayName: string
-  /** Path to icon in /public/integrations/<icon> */
-  icon: string
-  /** Category for grouping in integrations page */
-  category: ProviderCategory
-  /** What data objects this provider exposes */
-  resources: string[]
-  /** Whether this provider supports live search (Mode B) */
-  supportsLiveSearch: boolean
-  /** Whether this provider supports write operations (email send, calendar create, etc.) */
-  supportsWrite: boolean
+export interface ProviderCapabilities {
+  canFetch: boolean;
+  canSearch: boolean;
+  requiresScopes: string[];
 }
 
-// ─── Provider Registry (Single Source of Truth) ──────────────────────────────
+export interface ProviderConfig {
+  key: ProviderKey;
+  displayName: string;
+  description: string;
+  icon: string;
+  category: string;
+  nangoIntegrationId: string;
+  resources: string[];
+  capabilities: ProviderCapabilities;
+}
 
-export const PROVIDER_REGISTRY = {
-  // ── Microsoft ──────────────────────────────────────────────────────────────
-  sharepoint: {
-    nangoKey: 'sharepoint',
-    displayName: 'SharePoint',
-    icon: 'sharepoint.svg',
-    category: 'storage',
-    resources: ['documents', 'sites'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
+  google: {
+    key: 'google',
+    displayName: 'Google Workspace',
+    description: 'Gmail, Drive, Calendar',
+    icon: '/integrations/gdrive.svg',
+    category: 'productivity',
+    nangoIntegrationId: 'google',
+    resources: ['gmail', 'drive', 'calendar'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['gmail.readonly', 'drive.readonly', 'calendar.readonly'],
+    },
   },
-  onedrive: {
-    nangoKey: 'onedrive',
-    displayName: 'OneDrive',
-    icon: 'onedrive.svg',
-    category: 'storage',
-    resources: ['files'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+  microsoft: {
+    key: 'microsoft',
+    displayName: 'Microsoft 365',
+    description: 'Outlook, OneDrive, SharePoint, Calendar',
+    icon: '/integrations/outlook.svg',
+    category: 'productivity',
+    nangoIntegrationId: 'microsoft',
+    resources: ['emails', 'files', 'documents', 'events'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['Mail.Read', 'Files.Read.All', 'Sites.Read.All', 'Calendars.Read'],
+    },
   },
-  outlook: {
-    nangoKey: 'outlook',
-    displayName: 'Outlook',
-    icon: 'outlook.svg',
+  slack: {
+    key: 'slack',
+    displayName: 'Slack',
+    description: 'Channels and threads',
+    icon: '/integrations/slack.svg',
     category: 'communication',
-    resources: ['emails'],
-    supportsLiveSearch: true,
-    supportsWrite: true,
-  },
-  ms_calendar: {
-    nangoKey: 'ms-calendar',
-    displayName: 'Outlook Calendar',
-    icon: 'outlook.svg',
-    category: 'productivity',
-    resources: ['events'],
-    supportsLiveSearch: false,
-    supportsWrite: true,
-  },
-
-  // ── Google ─────────────────────────────────────────────────────────────────
-  google_drive: {
-    nangoKey: 'google-drive',
-    displayName: 'Google Drive',
-    icon: 'gdrive.svg',
-    category: 'storage',
-    resources: ['files', 'docs', 'sheets'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-  gmail: {
-    nangoKey: 'gmail',
-    displayName: 'Gmail',
-    icon: 'gmail.svg',
-    category: 'communication',
-    resources: ['emails', 'threads'],
-    supportsLiveSearch: true,
-    supportsWrite: true,
-  },
-  google_calendar: {
-    nangoKey: 'google-calendar',
-    displayName: 'Google Calendar',
-    icon: 'gcalendar.svg',
-    category: 'productivity',
-    resources: ['events'],
-    supportsLiveSearch: false,
-    supportsWrite: true,
-  },
-
-  // ── Atlassian ──────────────────────────────────────────────────────────────
-  jira: {
-    nangoKey: 'jira',
-    displayName: 'Jira',
-    icon: 'jira.svg',
-    category: 'dev',
-    resources: ['issues', 'comments'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-  confluence: {
-    nangoKey: 'confluence',
-    displayName: 'Confluence',
-    icon: 'confluence.svg',
-    category: 'productivity',
-    resources: ['pages', 'spaces'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-
-  // ── CRM ────────────────────────────────────────────────────────────────────
-  salesforce: {
-    nangoKey: 'salesforce',
-    displayName: 'Salesforce',
-    icon: 'salesforce.svg',
-    category: 'crm',
-    resources: ['accounts', 'opportunities', 'cases'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+    nangoIntegrationId: 'slack',
+    resources: ['channels', 'threads'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['channels:history', 'channels:read'],
+    },
   },
   hubspot: {
-    nangoKey: 'hubspot',
+    key: 'hubspot',
     displayName: 'HubSpot',
-    icon: 'hubspot.svg',
+    description: 'Contacts, Companies, Deals, Notes',
+    icon: '/integrations/hubspot.svg',
     category: 'crm',
+    nangoIntegrationId: 'hubspot',
     resources: ['contacts', 'companies', 'deals', 'notes'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['crm.objects.contacts.read'],
+    },
   },
-
-  // ── Dev / Project Management ───────────────────────────────────────────────
-  github: {
-    nangoKey: 'github',
-    displayName: 'GitHub',
-    icon: 'github.svg',
-    category: 'dev',
-    resources: ['issues', 'prs', 'wiki'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-  linear: {
-    nangoKey: 'linear',
-    displayName: 'Linear',
-    icon: 'linear.svg',
-    category: 'dev',
-    resources: ['issues', 'projects', 'cycles'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-
-  // ── Communications ─────────────────────────────────────────────────────────
-  slack: {
-    nangoKey: 'slack',
-    displayName: 'Slack',
-    icon: 'slack.svg',
-    category: 'communication',
-    resources: ['channels', 'threads'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-  zendesk: {
-    nangoKey: 'zendesk',
-    displayName: 'Zendesk',
-    icon: 'zendesk.svg',
-    category: 'crm',
-    resources: ['tickets', 'articles'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
-  },
-
-  // ── Knowledge & Data ───────────────────────────────────────────────────────
   notion: {
-    nangoKey: 'notion',
+    key: 'notion',
     displayName: 'Notion',
-    icon: 'notion.svg',
+    description: 'Pages and databases',
+    icon: '/integrations/notion.svg',
     category: 'productivity',
+    nangoIntegrationId: 'notion',
     resources: ['pages', 'databases'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: [],
+    },
+  },
+  jira: {
+    key: 'jira',
+    displayName: 'Jira',
+    description: 'Issues and comments',
+    icon: '/integrations/jira.svg',
+    category: 'dev',
+    nangoIntegrationId: 'jira',
+    resources: ['issues', 'comments'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['read:jira-work'],
+    },
+  },
+  confluence: {
+    key: 'confluence',
+    displayName: 'Confluence',
+    description: 'Pages and spaces',
+    icon: '/integrations/confluence.svg',
+    category: 'productivity',
+    nangoIntegrationId: 'confluence',
+    resources: ['pages', 'spaces'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['read:confluence-content.summary'],
+    },
+  },
+  salesforce: {
+    key: 'salesforce',
+    displayName: 'Salesforce',
+    description: 'Accounts, Opportunities, Cases',
+    icon: '/integrations/salesforce.svg',
+    category: 'crm',
+    nangoIntegrationId: 'salesforce',
+    resources: ['accounts', 'opportunities', 'cases'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['api', 'refresh_token', 'offline_access'],
+    },
   },
   snowflake: {
-    nangoKey: 'snowflake',
+    key: 'snowflake',
     displayName: 'Snowflake',
-    icon: 'snowflake.svg',
+    description: 'Tables and views',
+    icon: '/integrations/snowflake.svg',
     category: 'data',
+    nangoIntegrationId: 'snowflake',
     resources: ['tables', 'views'],
-    supportsLiveSearch: true,
-    supportsWrite: false,
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: [],
+    },
   },
-} as const satisfies Record<string, ProviderDefinition>
+  github: {
+    key: 'github',
+    displayName: 'GitHub',
+    description: 'Issues, PRs, Wiki',
+    icon: '/integrations/github.svg',
+    category: 'dev',
+    nangoIntegrationId: 'github',
+    resources: ['issues', 'prs', 'wiki'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['repo', 'read:user'],
+    },
+  },
+  linear: {
+    key: 'linear',
+    displayName: 'Linear',
+    description: 'Issues, projects, cycles',
+    icon: '/integrations/linear.svg',
+    category: 'dev',
+    nangoIntegrationId: 'linear',
+    resources: ['issues', 'projects', 'cycles'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['read'],
+    },
+  },
+  zendesk: {
+    key: 'zendesk',
+    displayName: 'Zendesk',
+    description: 'Tickets and articles',
+    icon: '/integrations/zendesk.svg',
+    category: 'crm',
+    nangoIntegrationId: 'zendesk',
+    resources: ['tickets', 'articles'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      requiresScopes: ['tickets:read', 'help_center:read'],
+    },
+  },
+};
 
-// ─── Derived Types ───────────────────────────────────────────────────────────
-
-/** Union of all registry keys — the canonical way to reference a provider */
-export type ProviderKey = keyof typeof PROVIDER_REGISTRY
-
-// ─── Lookup Helpers ──────────────────────────────────────────────────────────
-
-/** Get a specific provider definition by its registry key */
-export function getProvider(key: ProviderKey): ProviderDefinition {
-  return PROVIDER_REGISTRY[key]
+export function getProviderConfig(key: ProviderKey): ProviderConfig {
+  return PROVIDER_REGISTRY[key];
 }
 
-/** Reverse-lookup: find a provider by its Nango provider_config_key */
-export function getProviderByNangoKey(
-  nangoKey: string,
-): ProviderDefinition | undefined {
-  return Object.values(PROVIDER_REGISTRY).find((p) => p.nangoKey === nangoKey)
+export function getProvidersByCategory(category: string): ProviderConfig[] {
+  return Object.values(PROVIDER_REGISTRY).filter((p) => p.category === category);
 }
 
-/** Get all providers in a specific category */
-export function getProvidersByCategory(
-  category: ProviderCategory,
-): ProviderDefinition[] {
-  return Object.values(PROVIDER_REGISTRY).filter(
-    (p) => p.category === category,
-  )
-}
-
-/** Get all providers that support write operations */
-export function getWriteProviders(): ProviderDefinition[] {
-  return Object.values(PROVIDER_REGISTRY).filter((p) => p.supportsWrite)
+export function getAllProviders(): ProviderConfig[] {
+  return Object.values(PROVIDER_REGISTRY);
 }

@@ -1,86 +1,65 @@
 import { describe, it, expect } from 'vitest'
 import {
   PROVIDER_REGISTRY,
-  getProvider,
-  getProviderByNangoKey,
+  getProviderConfig,
   getProvidersByCategory,
-  getWriteProviders,
+  getAllProviders,
 } from '@/lib/integrations/providers'
 import type { ProviderKey } from '@/lib/integrations/providers'
 
 describe('Provider Registry', () => {
-  it('contains all 17 providers', () => {
+  it('contains all 12 providers', () => {
     const keys = Object.keys(PROVIDER_REGISTRY)
-    expect(keys).toHaveLength(17)
+    expect(keys).toHaveLength(12)
   })
 
   it('every provider has required fields', () => {
     for (const [key, def] of Object.entries(PROVIDER_REGISTRY)) {
-      expect(def.nangoKey, `${key} missing nangoKey`).toBeTruthy()
+      expect(def.nangoIntegrationId, `${key} missing nangoIntegrationId`).toBeTruthy()
       expect(def.displayName, `${key} missing displayName`).toBeTruthy()
       expect(def.icon, `${key} missing icon`).toBeTruthy()
       expect(def.category, `${key} missing category`).toBeTruthy()
+      expect(def.description, `${key} missing description`).toBeTruthy()
       expect(def.resources.length, `${key} has no resources`).toBeGreaterThan(0)
-      expect(typeof def.supportsLiveSearch).toBe('boolean')
-      expect(typeof def.supportsWrite).toBe('boolean')
+      expect(typeof def.capabilities.canFetch).toBe('boolean')
+      expect(typeof def.capabilities.canSearch).toBe('boolean')
+      expect(Array.isArray(def.capabilities.requiresScopes)).toBe(true)
     }
   })
 
-  it('getProvider returns correct definition', () => {
-    const drive = getProvider('google_drive')
-    expect(drive.displayName).toBe('Google Drive')
-    expect(drive.nangoKey).toBe('google-drive')
-    expect(drive.category).toBe('storage')
-  })
-
-  it('getProviderByNangoKey works for reverse lookup', () => {
-    const outlook = getProviderByNangoKey('outlook')
-    expect(outlook).toBeDefined()
-    expect(outlook!.displayName).toBe('Outlook')
-
-    const missing = getProviderByNangoKey('nonexistent')
-    expect(missing).toBeUndefined()
+  it('getProviderConfig returns correct definition', () => {
+    const google = getProviderConfig('google')
+    expect(google.displayName).toBe('Google Workspace')
+    expect(google.nangoIntegrationId).toBe('google')
+    expect(google.category).toBe('productivity')
+    expect(google.capabilities.requiresScopes).toContain('gmail.readonly')
   })
 
   it('getProvidersByCategory returns correct subset', () => {
     const crm = getProvidersByCategory('crm')
-    expect(crm.length).toBeGreaterThanOrEqual(2)
+    expect(crm.length).toBeGreaterThanOrEqual(1)
     expect(crm.every(p => p.category === 'crm')).toBe(true)
 
     const displayNames = crm.map(p => p.displayName)
     expect(displayNames).toContain('Salesforce')
     expect(displayNames).toContain('HubSpot')
+    expect(displayNames).toContain('Zendesk')
   })
 
-  it('getWriteProviders returns only write-capable providers', () => {
-    const writers = getWriteProviders()
-    expect(writers.length).toBeGreaterThan(0)
-    expect(writers.every(p => p.supportsWrite)).toBe(true)
-
-    const displayNames = writers.map(p => p.displayName)
-    expect(displayNames).toContain('Gmail')
-    expect(displayNames).toContain('Google Calendar')
-    expect(displayNames).toContain('Outlook')
-    expect(displayNames).not.toContain('Slack') // read-only
-  })
-
-  it('nangoKeys are all unique', () => {
-    const nangoKeys = Object.values(PROVIDER_REGISTRY).map(p => p.nangoKey)
-    const uniqueKeys = new Set(nangoKeys)
-    expect(uniqueKeys.size).toBe(nangoKeys.length)
+  it('getAllProviders returns array of all providers', () => {
+    const all = getAllProviders()
+    expect(all.length).toBe(12)
+    const github = all.find(p => p.key === 'github')
+    expect(github).toBeDefined()
   })
 
   it('ProviderKey type covers all registry keys', () => {
     // Compile-time check: these should all be valid ProviderKey values
     const keys: ProviderKey[] = [
-      'sharepoint', 'onedrive', 'outlook', 'ms_calendar',
-      'google_drive', 'gmail', 'google_calendar',
-      'jira', 'confluence',
-      'salesforce', 'hubspot',
-      'github', 'linear',
-      'slack', 'zendesk',
-      'notion', 'snowflake',
+      'google', 'microsoft', 'slack', 'hubspot',
+      'notion', 'jira', 'confluence', 'salesforce',
+      'snowflake', 'github', 'linear', 'zendesk'
     ]
-    expect(keys).toHaveLength(17)
+    expect(keys).toHaveLength(12)
   })
 })

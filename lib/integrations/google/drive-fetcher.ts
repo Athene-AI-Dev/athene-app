@@ -64,7 +64,7 @@ export async function listDriveFiles(
   if (pageToken) params.set('pageToken', pageToken)
 
   const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
-  return googleFetch<DriveListResponse>(connectionId, orgId, 'google_drive', url)
+  return googleFetch<DriveListResponse>(connectionId, orgId, url)
 }
 
 /**
@@ -92,7 +92,7 @@ export async function searchDrive(
   if (pageToken) params.set('pageToken', pageToken)
 
   const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
-  return googleFetch<DriveListResponse>(connectionId, orgId, 'google_drive', url)
+  return googleFetch<DriveListResponse>(connectionId, orgId, url)
 }
 
 // ─── Content Extraction ──────────────────────────────────────────────────────
@@ -113,17 +113,17 @@ export async function fetchDriveFileContent(
 ): Promise<string> {
   if (mimeType === GOOGLE_DOC_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`
-    return googleFetch<string>(connectionId, orgId, 'google_drive', url)
+    return googleFetch<string>(connectionId, orgId, url)
   }
 
   if (mimeType === GOOGLE_SHEET_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`
-    return googleFetch<string>(connectionId, orgId, 'google_drive', url)
+    return googleFetch<string>(connectionId, orgId, url)
   }
 
   if (mimeType === GOOGLE_SLIDES_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`
-    return googleFetch<string>(connectionId, orgId, 'google_drive', url)
+    return googleFetch<string>(connectionId, orgId, url)
   }
 
   if (mimeType === GOOGLE_FOLDER_MIME) {
@@ -132,7 +132,7 @@ export async function fetchDriveFileContent(
 
   // Regular files (PDF, DOCX, TXT, etc.) → download raw bytes
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
-  const res = await googleFetchRaw(connectionId, orgId, 'google_drive', url)
+  const res = await googleFetchRaw(connectionId, orgId, url)
   const buffer = await res.arrayBuffer()
 
   if (mimeType.startsWith('text/')) {
@@ -153,7 +153,7 @@ export async function getStartPageToken(
   orgId: string
 ): Promise<string> {
   const url = 'https://www.googleapis.com/drive/v3/changes/startPageToken'
-  const res = await googleFetch<{ startPageToken: string }>(connectionId, orgId, 'google_drive', url)
+  const res = await googleFetch<{ startPageToken: string }>(connectionId, orgId, url)
   return res.startPageToken
 }
 
@@ -176,7 +176,7 @@ export async function fetchChanges(
     changes: DriveChange[]
     newStartPageToken?: string
     nextPageToken?: string
-  }>(connectionId, orgId, 'google_drive', url)
+  }>(connectionId, orgId, url)
 
   return {
     changes: res.changes || [],

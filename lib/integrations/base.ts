@@ -1,6 +1,5 @@
 import { getConnectionToken } from '@/lib/nango/client'
-import { PROVIDER_REGISTRY } from './providers'
-import type { ProviderKey } from './providers'
+import { getProviderConfig, type ProviderKey } from './providers'
 
 // ─── Shared output type ─────────────────────────────────────────────────────
 
@@ -33,11 +32,11 @@ export interface FetchedChunk {
  * Retrieves an OAuth access token for the given provider via Nango.
  * Centralizes auth so individual fetchers never touch Nango directly.
  *
- * Looks up the Nango `provider_config_key` from the registry so callers
- * only need to pass the canonical ProviderKey (e.g. 'google_drive').
+ * Looks up the Nango `nangoIntegrationId` from the registry so callers
+ * only need to pass the canonical ProviderKey (e.g. 'google', 'outlook').
  *
  * @param connectionId - The Nango connectionId tied to a specific user/org.
- * @param providerKey  - The canonical registry key (e.g. 'google_drive', 'outlook').
+ * @param providerKey  - The canonical registry key (e.g. 'google', 'microsoft').
  * @param orgId        - The organization ID for ownership verification.
  * @returns The raw OAuth access token string.
  */
@@ -46,8 +45,8 @@ export async function getProviderToken(
   providerKey: ProviderKey,
   orgId: string,
 ): Promise<string> {
-  const nangoKey = PROVIDER_REGISTRY[providerKey].nangoKey
-  return getConnectionToken(connectionId, nangoKey, orgId)
+  const nangoIntegrationId = getProviderConfig(providerKey).nangoIntegrationId
+  return getConnectionToken(connectionId, nangoIntegrationId, orgId)
 }
 
 // ─── Retry + rate-limit fetch ────────────────────────────────────────────────

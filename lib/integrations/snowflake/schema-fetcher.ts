@@ -21,7 +21,13 @@ export async function discoverSchema(connectionId: string): Promise<TableSchema[
   // Snowflake SQL API returns data in row-column format.
   // We need to parse it to get our results.
   
+  const identifierRegex = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/
+
   for (const tableFullName of allowlist) {
+    if (!identifierRegex.test(tableFullName)) {
+      console.warn(`Invalid Snowflake identifier in allowlist: ${tableFullName}. Skipping.`)
+      continue
+    }
     // Expected format: DATABASE.SCHEMA.TABLE or just TABLE if defaults set
     const parts = tableFullName.split('.')
     let database = ''

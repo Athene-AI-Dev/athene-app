@@ -1,5 +1,6 @@
-import { notionFetcher } from './notion'
-import { snowflakeFetcher } from './snowflake'
+import './notion'
+import './snowflake'
+import './microsoft'
 import { getProvider } from './registry'
 import { indexDocument } from './indexing'
 import { FetchedChunk } from './types'

@@ -13,7 +13,10 @@ export async function snowflakeSearch(connectionId: string, query: string): Prom
 
   const chunks: FetchedChunk[] = []
 
+  const identifierRegex = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/
+
   for (const tableFullName of allowlist) {
+    if (!identifierRegex.test(tableFullName)) continue
     try {
       // Find columns that are strings to search with LIKE
       const describeRes = await snowflakeFetch(connectionId, `DESCRIBE TABLE ${tableFullName}`)

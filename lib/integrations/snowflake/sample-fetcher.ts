@@ -13,7 +13,10 @@ export async function fetchSnowflakeSamples(connectionId: string): Promise<Fetch
 
   const chunks: FetchedChunk[] = []
 
+  const identifierRegex = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/
+
   for (const tableFullName of allowlist) {
+    if (!identifierRegex.test(tableFullName)) continue
     try {
       const response = await snowflakeFetch(connectionId, `SELECT * FROM ${tableFullName} LIMIT 100`)
       const rows = parseSnowflakeRows(response)

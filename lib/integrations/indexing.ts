@@ -13,6 +13,7 @@
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { baseFetch } from './base'
 import type { FetchedChunk } from './base'
 
 // ---- Constants --------------------------------------------------

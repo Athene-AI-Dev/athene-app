@@ -6,7 +6,7 @@
 // ============================================================
 
 import { salesforceFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 const SOQL = `SELECT+Id,Subject,Description,Status+FROM+Case`
 
@@ -37,7 +37,7 @@ export async function fetchSalesforceCases(
         source_url: `${instanceUrl}/lightning/r/Case/${record.Id}/view`,
         metadata: {
           provider:    'salesforce',
-          object_type: 'Case',
+          resource_type: 'cases',
           id:          record.Id,
           status:      record.Status,
         },

@@ -6,7 +6,7 @@
 // ============================================================
 
 import { hubspotFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 interface HubSpotNote {
   id: string
@@ -54,7 +54,7 @@ export async function fetchHubSpotNotes(
         source_url: `https://app.hubspot.com/contacts/note/${record.id}`,
         metadata: {
           provider:    'hubspot',
-          object_type: 'note',
+          resource_type: 'notes',
           id:          record.id,
           timestamp:   timestamp ?? null,
           owner_id:    p.hubspot_owner_id ?? null,

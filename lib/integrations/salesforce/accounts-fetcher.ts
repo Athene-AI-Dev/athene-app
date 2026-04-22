@@ -7,7 +7,7 @@
 // ============================================================
 
 import { salesforceFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 const SOQL = `SELECT+Id,Name,Industry,Description+FROM+Account`
 
@@ -38,7 +38,7 @@ export async function fetchSalesforceAccounts(
         source_url: `${instanceUrl}/lightning/r/Account/${record.Id}/view`,
         metadata: {
           provider:    'salesforce',
-          object_type: 'Account',
+          resource_type: 'accounts',
           id:          record.Id,
           industry:    record.Industry ?? null,
         },

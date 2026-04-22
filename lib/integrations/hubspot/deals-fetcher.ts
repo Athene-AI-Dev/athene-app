@@ -6,7 +6,7 @@
 // ============================================================
 
 import { hubspotFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 interface HubSpotDeal {
   id: string
@@ -55,7 +55,7 @@ export async function fetchHubSpotDeals(
         source_url: `https://app.hubspot.com/contacts/deal/${record.id}`,
         metadata: {
           provider:    'hubspot',
-          object_type: 'deal',
+          resource_type: 'deals',
           id:          record.id,
           stage:       p.dealstage ?? null,
           pipeline:    p.pipeline ?? null,

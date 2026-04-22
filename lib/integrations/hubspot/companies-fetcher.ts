@@ -6,7 +6,7 @@
 // ============================================================
 
 import { hubspotFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 interface HubSpotCompany {
   id: string
@@ -55,7 +55,7 @@ export async function fetchHubSpotCompanies(
         source_url: `https://app.hubspot.com/contacts/company/${record.id}`,
         metadata: {
           provider:    'hubspot',
-          object_type: 'company',
+          resource_type: 'companies',
           id:          record.id,
           domain:      p.domain ?? null,
           industry:    p.industry ?? null,

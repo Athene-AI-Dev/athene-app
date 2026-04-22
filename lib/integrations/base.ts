@@ -1,18 +1,30 @@
-// ============================================================
-// base.ts — Shared base fetcher with retry + rate-limit (ATH-72)
-//
-// Common token fetch, retry with exponential backoff, 429/5xx
-// rate-limit handling, and FetchedChunk typing. All integration
-// clients (Salesforce, HubSpot, Microsoft, Google) should use
-// baseFetch<T>() instead of calling fetch() directly.
-//
-// Critical rule: token is fetched once per request, used
-// immediately, and never stored or logged.
-// ============================================================
-
 import { getConnectionToken } from '@/lib/nango/client'
+import { getProviderConfig, type ProviderKey } from './providers'
 
-export type { FetchedChunk } from './types'
+// ─── Shared output type ─────────────────────────────────────────────────────
+
+/**
+ * Canonical chunk shape returned by every fetcher.
+ * Content lives in RAM only — never written to the DB.
+ */
+export interface FetchedChunk {
+  /** Opaque ID — used by live-doc-fetch to re-fetch on query time */
+  chunk_id: string
+  /** Human-readable title shown in citations */
+  title: string
+  /** The actual content — RAM only, never written to DB */
+  content: string
+  /** Deep link back to the source */
+  source_url: string
+  /** Lightweight metadata — NO body/content fields allowed */
+  metadata: {
+    provider: string
+    resource_type: string
+    last_modified?: string
+    author?: string
+    [key: string]: unknown
+  }
+}
 
 // ─── Token helper ────────────────────────────────────────────────────────────
 
@@ -20,17 +32,21 @@ export type { FetchedChunk } from './types'
  * Retrieves an OAuth access token for the given provider via Nango.
  * Centralizes auth so individual fetchers never touch Nango directly.
  *
+ * Looks up the Nango `nangoIntegrationId` from the registry so callers
+ * only need to pass the canonical ProviderKey (e.g. 'google', 'outlook').
+ *
  * @param connectionId - The Nango connectionId tied to a specific user/org.
- * @param providerKey  - The canonical registry key (e.g. 'salesforce', 'hubspot').
+ * @param providerKey  - The canonical registry key (e.g. 'google', 'microsoft').
  * @param orgId        - The organization ID for ownership verification.
  * @returns The raw OAuth access token string.
  */
 export async function getProviderToken(
   connectionId: string,
-  providerKey: string,
+  providerKey: ProviderKey,
   orgId: string,
 ): Promise<string> {
-  return getConnectionToken(connectionId, providerKey, orgId)
+  const nangoIntegrationId = getProviderConfig(providerKey).nangoIntegrationId
+  return getConnectionToken(connectionId, nangoIntegrationId, orgId)
 }
 
 // ─── Retry + rate-limit fetch ────────────────────────────────────────────────
@@ -38,99 +54,120 @@ export async function getProviderToken(
 export interface BaseFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   headers?: Record<string, string>
-  body?: string
+  body?: unknown
   /** Max retries on 429 / 5xx. Default 3. */
   maxRetries?: number
-  /** Initial backoff delay in ms. Doubles each retry. Default 500. */
-  initialBackoffMs?: number
-  /** Max backoff delay in ms. Default 30000 (30s). */
-  maxBackoffMs?: number
+  /** If true, return the raw Response instead of parsing JSON. */
+  rawResponse?: boolean
 }
 
-const DEFAULT_MAX_RETRIES = 3
-const DEFAULT_INITIAL_BACKOFF_MS = 500
-const DEFAULT_MAX_BACKOFF_MS = 30_000
-
-/** HTTP status codes that warrant a retry. */
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504])
-
 /**
- * Make an HTTP request with automatic retry and rate-limit handling.
+ * Shared HTTP fetch with automatic retry on rate-limits (429) and
+ * server errors (5xx). Every provider fetcher should use this instead
+ * of calling fetch() directly.
  *
- * - **429 Too Many Requests**: Respects `Retry-After` header if
- *   present, otherwise uses exponential backoff.
- * - **5xx Server Errors**: Retried with exponential backoff.
- * - **4xx Client Errors** (except 429): Thrown immediately, no retry.
+ * Retry strategy:
+ * - 429: Respect Retry-After header, fall back to 2s.
+ * - 5xx: Exponential backoff (500ms, 1s, 2s, …).
  *
- * @param url Full URL to fetch
- * @param options Retry and request configuration
- * @returns Parsed JSON response typed as T
+ * @param url     - The full API endpoint URL.
+ * @param options - Method, headers, body, retry config.
+ * @returns Parsed JSON response of type T.
  */
 export async function baseFetch<T = unknown>(
   url: string,
-  options: BaseFetchOptions = {}
+  options: BaseFetchOptions = {},
 ): Promise<T> {
-  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES
-  const initialBackoff = options.initialBackoffMs ?? DEFAULT_INITIAL_BACKOFF_MS
-  const maxBackoff = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS
-  const method = options.method ?? 'GET'
+  const {
+    method = 'GET',
+    headers = {},
+    body,
+    maxRetries = 3,
+    rawResponse = false,
+  } = options
 
-  let lastError: Error | null = null
+  let attempt = 0
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...(options.body ? { body: options.body } : {}),
-      })
+  while (attempt <= maxRetries) {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+    })
 
-      // ---- Success ----
-      if (res.ok) {
-        return (await res.json()) as T
-      }
+    // ── Rate limited — back off and retry ────────────────────────────────
+    if (res.status === 429) {
+      const retryAfterHeader = res.headers.get('Retry-After')
+      const retryAfterMs = retryAfterHeader
+        ? Number(retryAfterHeader) * 1000
+        : 2000
+      console.warn(
+        `[baseFetch] 429 rate-limited on ${url}, retrying in ${retryAfterMs}ms (attempt ${attempt + 1}/${maxRetries})`,
+      )
+      await sleep(retryAfterMs)
+      attempt++
+      continue
+    }
 
-      // ---- Non-retryable error ----
-      if (!RETRYABLE_STATUS_CODES.has(res.status)) {
-        const body = await res.text().catch(() => '')
-        throw new Error(
-          `API error: ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 200)}` : ''}`
-        )
-      }
+    // ── Server error — exponential backoff ───────────────────────────────
+    if (res.status >= 500 && attempt < maxRetries) {
+      const backoffMs = 2 ** attempt * 500
+      console.warn(
+        `[baseFetch] ${res.status} server error on ${url}, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`,
+      )
+      await sleep(backoffMs)
+      attempt++
+      continue
+    }
 
-      // ---- Retryable: calculate backoff ----
-      if (attempt < maxRetries) {
-        const backoff = calculateBackoff(res, attempt, initialBackoff, maxBackoff)
-        console.warn(
-          `[baseFetch] returned ${res.status}, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`
-        )
-        await sleep(backoff)
-      } else {
-        throw new Error(
-          `API error: ${res.status} ${res.statusText} after ${maxRetries} retries`
-        )
-      }
-    } catch (err) {
-      if (err instanceof TypeError || (err instanceof Error && isNetworkError(err))) {
-        lastError = err instanceof Error ? err : new Error(String(err))
-        if (attempt < maxRetries) {
-          const backoff = Math.min(initialBackoff * 2 ** attempt, maxBackoff)
-          console.warn(
-            `[baseFetch] network error: ${lastError.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`
-          )
-          await sleep(backoff)
-          continue
-        }
-      }
+    // ── Non-retryable error ──────────────────────────────────────────────
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      const err = new Error(
+        `[baseFetch] ${method} ${url} → ${res.status}: ${text}`,
+      )
+      ;(err as any).status = res.status
       throw err
     }
+
+    // ── Success ──────────────────────────────────────────────────────────
+    if (rawResponse) {
+      return res as unknown as T
+    }
+
+    // Handle empty responses (e.g. 204 No Content from DELETE)
+    const contentType = res.headers.get('content-type') || ''
+    if (
+      res.status === 204 ||
+      !contentType.includes('application/json')
+    ) {
+      const text = await res.text()
+      return text as unknown as T
+    }
+
+    return res.json() as Promise<T>
   }
 
-  throw lastError ?? new Error(`Request failed after ${maxRetries} retries`)
+  throw new Error(`[baseFetch] Max retries (${maxRetries}) exceeded for ${method} ${url}`)
+}
+
+/**
+ * Variant of baseFetch that returns the raw Response object.
+ * Useful for binary downloads (PDFs, images) where we need the stream.
+ */
+export async function baseFetchRaw(
+  url: string,
+  options: Omit<BaseFetchOptions, 'rawResponse'> = {},
+): Promise<Response> {
+  return baseFetch<Response>(url, { ...options, rawResponse: true })
 }
 
 // ─── Metadata safety guard ───────────────────────────────────────────────────
 
+/**
+ * Keys that must never appear in FetchedChunk.metadata.
+ * Content must stay in the `content` field only — never in metadata.
+ */
 const FORBIDDEN_METADATA_KEYS = new Set([
   'content',
   'body',
@@ -141,6 +178,12 @@ const FORBIDDEN_METADATA_KEYS = new Set([
   'plaintext',
 ])
 
+/**
+ * Validates that no content-bearing keys have leaked into metadata.
+ * Call this when constructing FetchedChunk objects to catch bugs early.
+ *
+ * @throws Error if a forbidden key is found.
+ */
 export function assertSafeMetadata(
   metadata: Record<string, unknown>,
 ): void {
@@ -153,44 +196,7 @@ export function assertSafeMetadata(
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function calculateBackoff(
-  res: Response,
-  attempt: number,
-  initialBackoff: number,
-  maxBackoff: number
-): number {
-  const retryAfter = res.headers.get('Retry-After')
-
-  if (retryAfter) {
-    const seconds = parseInt(retryAfter, 10)
-    if (!isNaN(seconds)) {
-      return Math.min(seconds * 1000, maxBackoff)
-    }
-    const date = new Date(retryAfter)
-    if (!isNaN(date.getTime())) {
-      const delayMs = date.getTime() - Date.now()
-      return Math.min(Math.max(delayMs, 0), maxBackoff)
-    }
-  }
-
-  const exponential = initialBackoff * 2 ** attempt
-  const jitter = Math.random() * initialBackoff
-  return Math.min(exponential + jitter, maxBackoff)
-}
-
-function isNetworkError(err: Error): boolean {
-  const msg = err.message.toLowerCase()
-  return (
-    msg.includes('econnreset') ||
-    msg.includes('etimedout') ||
-    msg.includes('enotfound') ||
-    msg.includes('econnrefused') ||
-    msg.includes('fetch failed') ||
-    msg.includes('network')
-  )
-}
+// ─── Internal helpers ────────────────────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

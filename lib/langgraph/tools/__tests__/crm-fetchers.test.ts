@@ -137,36 +137,36 @@ beforeEach(() => {
 
     // Salesforce routing
     if (url.includes('/services/data/v59.0/query?q=') && url.includes('Account')) {
-      return new Response(JSON.stringify(SF_ACCOUNTS_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(SF_ACCOUNTS_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/services/data/v59.0/query?q=') && url.includes('Opportunity')) {
-      return new Response(JSON.stringify(SF_OPPORTUNITIES_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(SF_OPPORTUNITIES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/services/data/v59.0/query?q=') && url.includes('Case')) {
-      return new Response(JSON.stringify(SF_CASES_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(SF_CASES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
 
     // Salesforce pagination
     if (url.includes('query/01g0000000A-1')) {
-      return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_2), { status: 200 })
+      return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_2), { status: 200, headers: { 'content-type': 'application/json' } })
     }
 
     // HubSpot routing
     if (url.includes('/crm/v3/objects/contacts')) {
       // Check for pagination
       if (url.includes('after=cursor-page2')) {
-        return new Response(JSON.stringify(HS_CONTACTS_PAGE_2), { status: 200 })
+        return new Response(JSON.stringify(HS_CONTACTS_PAGE_2), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      return new Response(JSON.stringify(HS_CONTACTS_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(HS_CONTACTS_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/crm/v3/objects/companies')) {
-      return new Response(JSON.stringify(HS_COMPANIES_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(HS_COMPANIES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/crm/v3/objects/deals')) {
-      return new Response(JSON.stringify(HS_DEALS_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(HS_DEALS_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (url.includes('/crm/v3/objects/notes')) {
-      return new Response(JSON.stringify(HS_NOTES_RESPONSE), { status: 200 })
+      return new Response(JSON.stringify(HS_NOTES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
 
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404 })
@@ -182,7 +182,7 @@ function assertChunkShape(chunk: unknown): void {
     source_url: expect.any(String),
     metadata:   expect.objectContaining({
       provider:    expect.any(String),
-      object_type: expect.any(String),
+      resource_type: expect.any(String),
       id:          expect.any(String),
     }),
   })
@@ -208,7 +208,7 @@ describe('Salesforce fetchers (mocked)', () => {
     expect(chunks[0].content).toContain('Industry: Technology')
     expect(chunks[0].source_url).toContain('myorg.salesforce.com')
     expect(chunks[0].metadata.provider).toBe('salesforce')
-    expect(chunks[0].metadata.object_type).toBe('Account')
+    expect(chunks[0].metadata.resource_type).toBe('accounts')
 
     // Second record has null fields — they should be filtered out
     expect(chunks[1].chunk_id).toBe('sf-account-001DEF')
@@ -224,7 +224,7 @@ describe('Salesforce fetchers (mocked)', () => {
     assertChunkShape(chunks[0])
     expect(chunks[0].chunk_id).toBe('sf-opportunity-006ABC')
     expect(chunks[0].content).toContain('Stage: Closed Won')
-    expect(chunks[0].metadata.object_type).toBe('Opportunity')
+    expect(chunks[0].metadata.resource_type).toBe('opportunities')
   })
 
   it('fetches Cases with correct FetchedChunk shape', async () => {
@@ -236,7 +236,7 @@ describe('Salesforce fetchers (mocked)', () => {
     expect(chunks[0].chunk_id).toBe('sf-case-500ABC')
     expect(chunks[0].title).toBe('Login Issue')
     expect(chunks[0].content).toContain('Status: Open')
-    expect(chunks[0].metadata.object_type).toBe('Case')
+    expect(chunks[0].metadata.resource_type).toBe('cases')
   })
 
   it('handles cursor-based pagination', async () => {
@@ -244,10 +244,10 @@ describe('Salesforce fetchers (mocked)', () => {
     globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('query?q=') && url.includes('Account')) {
-        return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_1), { status: 200 })
+        return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_1), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (url.includes('query/01g0000000A-1')) {
-        return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_2), { status: 200 })
+        return new Response(JSON.stringify(SF_ACCOUNTS_PAGE_2), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 404 })
     }) as typeof fetch
@@ -278,7 +278,7 @@ describe('HubSpot fetchers (mocked)', () => {
     expect(chunks[0].title).toBe('Jane Doe')
     expect(chunks[0].content).toContain('Email: jane@example.com')
     expect(chunks[0].metadata.provider).toBe('hubspot')
-    expect(chunks[0].metadata.object_type).toBe('contact')
+    expect(chunks[0].metadata.resource_type).toBe('contacts')
 
     // Unnamed contact
     expect(chunks[1].title).toBe('Unnamed Contact')
@@ -314,17 +314,17 @@ describe('HubSpot fetchers (mocked)', () => {
     assertChunkShape(chunks[0])
     expect(chunks[0].chunk_id).toBe('hs-note-401')
     expect(chunks[0].content).toContain('Called client, discussed renewal')
-    expect(chunks[0].metadata.object_type).toBe('note')
+    expect(chunks[0].metadata.resource_type).toBe('notes')
   })
 
   it('handles cursor-based pagination', async () => {
     globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/crm/v3/objects/contacts') && url.includes('after=cursor-page2')) {
-        return new Response(JSON.stringify(HS_CONTACTS_PAGE_2), { status: 200 })
+        return new Response(JSON.stringify(HS_CONTACTS_PAGE_2), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (url.includes('/crm/v3/objects/contacts')) {
-        return new Response(JSON.stringify(HS_CONTACTS_PAGE_1), { status: 200 })
+        return new Response(JSON.stringify(HS_CONTACTS_PAGE_1), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response('{}', { status: 404 })
     }) as typeof fetch

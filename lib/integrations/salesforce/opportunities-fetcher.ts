@@ -6,7 +6,7 @@
 // ============================================================
 
 import { salesforceFetch } from './client'
-import type { FetchedChunk } from '@/lib/integrations/types'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 const SOQL = `SELECT+Id,Name,StageName,Description+FROM+Opportunity`
 
@@ -37,7 +37,7 @@ export async function fetchSalesforceOpportunities(
         source_url: `${instanceUrl}/lightning/r/Opportunity/${record.Id}/view`,
         metadata: {
           provider:    'salesforce',
-          object_type: 'Opportunity',
+          resource_type: 'opportunities',
           id:          record.Id,
           stage:       record.StageName,
         },

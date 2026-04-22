@@ -112,6 +112,28 @@ export async function getConnectionToken(
 }
 
 /**
+ * Convenience wrapper for getToken to match Graph integration requirements.
+ * Note: This bypasses the orgId check if not provided, but uses the internal Nango method.
+ */
+export async function getToken(connectionId: string, providerConfigKey: string): Promise<string> {
+    const nango = getNango();
+    try {
+        return await (nango as any).getConnectionToken(providerConfigKey, connectionId);
+    } catch (error: unknown) {
+        return handleNangoError(error, 'getToken');
+    }
+}
+
+export async function getConnection(connectionId: string, providerConfigKey: string) {
+    const nango = getNango();
+    try {
+        return await nango.getConnection(providerConfigKey, connectionId);
+    } catch (error: unknown) {
+        return handleNangoError(error, 'getConnection');
+    }
+}
+
+/**
  * Lists connections for an organization.
  * 🔒 Properly fixed: Uses server-side filtering (Supabase) to avoid fetching all connections.
  */

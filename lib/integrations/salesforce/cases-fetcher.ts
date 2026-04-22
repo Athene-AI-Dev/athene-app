@@ -1,5 +1,12 @@
+// ============================================================
+// Salesforce Cases fetcher (ATH-67)
+//
+// SOQL: SELECT Id, Subject, Description, Status FROM Case
+// Returns FetchedChunk[] with cursor-based pagination.
+// ============================================================
+
 import { salesforceFetch } from './client'
-import type { FetchedChunk } from './accounts-fetcher'
+import type { FetchedChunk } from '@/lib/integrations/types'
 
 const SOQL = `SELECT+Id,Subject,Description,Status+FROM+Case`
 
@@ -12,7 +19,7 @@ export async function fetchSalesforceCases(
   let nextUrl: string | null = `/query?q=${SOQL}`
 
   while (nextUrl) {
-    const data = await salesforceFetch(connectionId, nextUrl, orgId) as {
+    const data = await salesforceFetch(connectionId, nextUrl, orgId, instanceUrl) as {
       records: { Id: string; Subject: string; Description: string | null; Status: string }[]
       nextRecordsUrl?: string
       done: boolean

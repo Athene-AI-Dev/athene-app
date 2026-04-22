@@ -1,12 +1,15 @@
-import { salesforceFetch } from './client'
+// ============================================================
+// Salesforce Accounts fetcher (ATH-67)
+//
+// SOQL: SELECT Id, Name, Industry, Description FROM Account
+// Returns FetchedChunk[] with cursor-based pagination.
+// Content is ephemeral — only used for embedding, never stored.
+// ============================================================
 
-export interface FetchedChunk {
-  chunk_id: string
-  content: string
-  source_url: string
-  title: string
-  metadata: Record<string, unknown>
-}
+import { salesforceFetch } from './client'
+import type { FetchedChunk } from '@/lib/integrations/types'
+
+export type { FetchedChunk }
 
 const SOQL = `SELECT+Id,Name,Industry,Description+FROM+Account`
 
@@ -19,7 +22,7 @@ export async function fetchSalesforceAccounts(
   let nextUrl: string | null = `/query?q=${SOQL}`
 
   while (nextUrl) {
-    const data = await salesforceFetch(connectionId, nextUrl, orgId) as {
+    const data = await salesforceFetch(connectionId, nextUrl, orgId, instanceUrl) as {
       records: { Id: string; Name: string; Industry: string | null; Description: string | null }[]
       nextRecordsUrl?: string
       done: boolean

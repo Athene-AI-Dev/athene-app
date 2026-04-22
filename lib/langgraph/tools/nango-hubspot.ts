@@ -5,7 +5,7 @@ import { fetchHubSpotDeals }       from '@/lib/integrations/hubspot/deals-fetche
 import { fetchHubSpotNotes }       from '@/lib/integrations/hubspot/notes-fetcher'
 import { indexDocument }           from '@/lib/langgraph/tools/indexer'
 import type { RLSContext }         from '@/lib/supabase/rls-client'
-import type { FetchedChunk }       from '@/lib/integrations/salesforce/accounts-fetcher'
+import type { FetchedChunk }       from '@/lib/integrations/types'
 import type { Visibility }         from '@/lib/knowledge-graph/types'
 
 export interface NangoHubSpotInput {

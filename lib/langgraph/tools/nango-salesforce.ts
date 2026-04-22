@@ -4,7 +4,7 @@ import { fetchSalesforceOpportunities } from '@/lib/integrations/salesforce/oppo
 import { fetchSalesforceCases }         from '@/lib/integrations/salesforce/cases-fetcher'
 import { indexDocument }                from '@/lib/langgraph/tools/indexer'
 import type { RLSContext }              from '@/lib/supabase/rls-client'
-import type { FetchedChunk }            from '@/lib/integrations/salesforce/accounts-fetcher'
+import type { FetchedChunk }            from '@/lib/integrations/types'
 import type { Visibility }              from '@/lib/knowledge-graph/types'
 
 export interface NangoSalesforceInput {

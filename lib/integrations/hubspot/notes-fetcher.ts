@@ -1,5 +1,12 @@
+// ============================================================
+// HubSpot Notes fetcher (ATH-67)
+//
+// GET /crm/v3/objects/notes with cursor-based pagination.
+// Returns FetchedChunk[] — content is ephemeral, never stored.
+// ============================================================
+
 import { hubspotFetch } from './client'
-import type { FetchedChunk } from './contacts-fetcher'
+import type { FetchedChunk } from '@/lib/integrations/types'
 
 interface HubSpotNote {
   id: string

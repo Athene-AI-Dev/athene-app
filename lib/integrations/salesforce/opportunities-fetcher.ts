@@ -1,5 +1,12 @@
+// ============================================================
+// Salesforce Opportunities fetcher (ATH-67)
+//
+// SOQL: SELECT Id, Name, StageName, Description FROM Opportunity
+// Returns FetchedChunk[] with cursor-based pagination.
+// ============================================================
+
 import { salesforceFetch } from './client'
-import type { FetchedChunk } from './accounts-fetcher'
+import type { FetchedChunk } from '@/lib/integrations/types'
 
 const SOQL = `SELECT+Id,Name,StageName,Description+FROM+Opportunity`
 
@@ -12,7 +19,7 @@ export async function fetchSalesforceOpportunities(
   let nextUrl: string | null = `/query?q=${SOQL}`
 
   while (nextUrl) {
-    const data = await salesforceFetch(connectionId, nextUrl, orgId) as {
+    const data = await salesforceFetch(connectionId, nextUrl, orgId, instanceUrl) as {
       records: { Id: string; Name: string; StageName: string; Description: string | null }[]
       nextRecordsUrl?: string
       done: boolean

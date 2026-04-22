@@ -1,12 +1,14 @@
-import { hubspotFetch } from './client'
+// ============================================================
+// HubSpot Contacts fetcher (ATH-67)
+//
+// GET /crm/v3/objects/contacts with cursor-based pagination.
+// Returns FetchedChunk[] — content is ephemeral, never stored.
+// ============================================================
 
-export interface FetchedChunk {
-  chunk_id: string
-  content: string
-  source_url: string
-  title: string
-  metadata: Record<string, unknown>
-}
+import { hubspotFetch } from './client'
+import type { FetchedChunk } from '@/lib/integrations/types'
+
+export type { FetchedChunk }
 
 interface HubSpotContact {
   id: string

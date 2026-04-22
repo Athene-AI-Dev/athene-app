@@ -1,3 +1,10 @@
+// ============================================================
+// Salesforce provider — live-doc-fetch integration (ATH-67)
+//
+// Registers with the provider registry so that live-doc-fetch
+// can retrieve fresh content from Salesforce by external ID.
+// ============================================================
+
 import { registerProvider } from '@/lib/langgraph/tools/live-doc-fetch'
 import { salesforceFetch }  from './client'
 
@@ -15,6 +22,9 @@ registerProvider('salesforce', async ({ orgId, connectionId, externalId }) => {
   type SFRecord = Record<string, string | null>
   let record: SFRecord | null = null
 
+  // Note: instanceUrl is not available at live-fetch time — we skip it
+  // and let the client fall back to login.salesforce.com. For production
+  // orgs the instance URL should be stored in the connection metadata.
   if (objectType === 'account') {
     record = await salesforceFetch(connectionId, `/sobjects/Account/${sfId}?fields=Id,Name,Industry,Description`, orgId) as SFRecord
   } else if (objectType === 'opportunity') {

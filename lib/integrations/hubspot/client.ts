@@ -1,22 +1,28 @@
-import { getConnectionToken } from '@/lib/nango/client'
+// ============================================================
+// HubSpot base client (ATH-67)
+//
+// Uses baseFetch<T>() for retry + rate-limit handling.
+// Critical rule: token is fetched from Nango per-request,
+// used once, then falls out of scope. Never stored, never logged.
+// ============================================================
 
-export async function hubspotFetch(
+import { baseFetch, type BaseFetchOptions } from '@/lib/integrations/base'
+
+/**
+ * Make an authenticated GET request to the HubSpot API.
+ *
+ * @param connectionId – Nango connection ID for this org's HubSpot link
+ * @param path – API path (e.g. `/crm/v3/objects/contacts?limit=100`)
+ * @param orgId – Clerk org ID for ownership verification
+ * @param fetchOptions – Optional retry/method configuration passed to baseFetch
+ */
+export async function hubspotFetch<T = unknown>(
   connectionId: string,
   path: string,
-  orgId: string
-): Promise<unknown> {
-  const accessToken = await getConnectionToken(connectionId, 'hubspot', orgId)
+  orgId: string,
+  fetchOptions?: BaseFetchOptions
+): Promise<T> {
+  const url = `https://api.hubapi.com${path}`
 
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  })
-
-  if (!res.ok) {
-    throw new Error(`HubSpot API error: ${res.status} ${res.statusText}`)
-  }
-
-  return res.json()
+  return baseFetch<T>(connectionId, 'hubspot', orgId, url, fetchOptions)
 }

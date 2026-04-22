@@ -108,6 +108,32 @@ export async function getConnectionToken(
 }
 
 /**
+ * Fetches the full Nango connection object to extract metadata.
+ * 🔒 Strictly verified against Nango metadata to prevent cross-org leaks.
+ */
+export async function getConnectionMetadata(
+  connectionId: string,
+  providerConfigKey: string,
+  orgId: string
+): Promise<any> {
+  if (!orgId) {
+    throw new Error('orgId is required to fetch connection metadata');
+  }
+
+  const nango = getNango();
+
+  try {
+    const conn = await nango.getConnection(providerConfigKey, connectionId);
+    if (conn.metadata?.org_id !== orgId) {
+      throw new Error('Unauthorized: Connection does not belong to this organization');
+    }
+    return conn;
+  } catch (error: unknown) {
+    return handleNangoError(error, 'getConnectionMetadata');
+  }
+}
+
+/**
  * Lists connections for an organization.
  * 🔒 Properly fixed: Uses server-side filtering (Supabase) to avoid fetching all connections.
  */

@@ -44,44 +44,19 @@ export async function runSalesforceIndexPipeline(
 
   for (const chunk of allChunks) {
     try {
-      const { data: docRow, error: docErr } = await supabaseAdmin
-        .from('documents')
-        .upsert(
-          {
-            org_id:        orgId,
-            connection_id: dbConnectionId,
-            external_id:   chunk.chunk_id,
-            title:         chunk.title,
-            source_type:   'salesforce',
-            department_id: deptId,
-            owner_user_id: ownerUserId,
-            visibility,
-            external_url:  chunk.source_url,
-            metadata: {
-              provider:    chunk.metadata['provider'],
-              object_type: chunk.metadata['object_type'],
-              sf_id:       chunk.metadata['id'],
-            },
-          },
-          { onConflict: 'org_id,connection_id,external_id' }
-        )
-        .select('id')
-        .single()
-
-      if (docErr || !docRow) {
-        console.error(`[nango-salesforce] doc upsert failed for ${chunk.chunk_id}:`, docErr?.message)
-        failed++
-        continue
-      }
-
       await indexDocument({
         orgId,
-        documentId:  docRow.id,
         deptId,
         sourceType:  'salesforce',
         content:     chunk.content,
         visibility,
         ownerUserId,
+        documentData: {
+          connectionId: dbConnectionId,
+          externalId: chunk.chunk_id,
+          title: chunk.title,
+          sourceUrl: chunk.source_url,
+        },
         metadata: {
           title:       chunk.title,
           provider:    chunk.metadata['provider'],

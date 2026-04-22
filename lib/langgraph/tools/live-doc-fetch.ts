@@ -18,7 +18,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import type { RLSContext } from "@/lib/supabase/rls-client";
 import { withRLS } from "@/lib/supabase/rls-client";
 
-export type FetchedChunk = {
+export type LiveDocFetchedChunk = {
   chunk_id: string;
   document_id: string;
   chunk_index: number;
@@ -70,7 +70,7 @@ export function getRegisteredProviders(): string[] {
 export async function liveDocFetch(
   ctx: RLSContext,
   chunkIds: string[]
-): Promise<FetchedChunk[]> {
+): Promise<LiveDocFetchedChunk[]> {
   if (!Array.isArray(chunkIds) || chunkIds.length === 0) return [];
 
   // 1. Load metadata under RLS
@@ -89,7 +89,7 @@ export async function liveDocFetch(
 
   // 2. Dispatch to provider fetchers in parallel, bounded
   const CONCURRENCY = 8;
-  const results: FetchedChunk[] = [];
+  const results: LiveDocFetchedChunk[] = [];
   for (let i = 0; i < rows.length; i += CONCURRENCY) {
     const batch = rows.slice(i, i + CONCURRENCY);
     const settled = await Promise.all(
@@ -116,7 +116,7 @@ export async function liveDocFetch(
             source_url: row.documents.external_url,
             source_type: row.source_type,
             content: out.content,
-          } satisfies FetchedChunk;
+          } satisfies LiveDocFetchedChunk;
         } catch (err) {
           console.error(
             `[live-doc-fetch] provider "${row.source_type}" failed:`,
@@ -140,7 +140,7 @@ export async function liveDocFetch(
 export async function liveDocFetchAdmin(
   orgId: string,
   chunkIds: string[]
-): Promise<FetchedChunk[]> {
+): Promise<LiveDocFetchedChunk[]> {
   if (!Array.isArray(chunkIds) || chunkIds.length === 0) return [];
 
   const { data, error } = await supabaseAdmin
@@ -153,7 +153,7 @@ export async function liveDocFetchAdmin(
   if (error) throw new Error(`live-doc-fetch admin metadata lookup failed: ${error.message}`);
 
   const rows = (data ?? []) as unknown as ChunkMetadataRow[];
-  const results: FetchedChunk[] = [];
+  const results: LiveDocFetchedChunk[] = [];
   for (const row of rows) {
     if (!row.documents) continue;
     const fetcher = providerRegistry.get(row.source_type);

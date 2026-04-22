@@ -22,9 +22,7 @@ registerProvider('salesforce', async ({ orgId, connectionId, externalId }) => {
   type SFRecord = Record<string, string | null>
   let record: SFRecord | null = null
 
-  // Note: instanceUrl is not available at live-fetch time — we skip it
-  // and let the client fall back to login.salesforce.com. For production
-  // orgs the instance URL should be stored in the connection metadata.
+  // instanceUrl is automatically fetched from Nango if omitted by salesforceFetch.
   if (objectType === 'account') {
     record = await salesforceFetch(connectionId, `/sobjects/Account/${sfId}?fields=Id,Name,Industry,Description`, orgId) as SFRecord
   } else if (objectType === 'opportunity') {

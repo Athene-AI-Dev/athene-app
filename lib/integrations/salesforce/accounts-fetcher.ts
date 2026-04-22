@@ -9,8 +9,6 @@
 import { salesforceFetch } from './client'
 import type { FetchedChunk } from '@/lib/integrations/types'
 
-export type { FetchedChunk }
-
 const SOQL = `SELECT+Id,Name,Industry,Description+FROM+Account`
 
 export async function fetchSalesforceAccounts(

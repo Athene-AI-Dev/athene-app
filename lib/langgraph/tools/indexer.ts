@@ -25,8 +25,15 @@ import { embed, EMBEDDING_CONFIG } from "./embedder";
 
 export type IndexDocumentInput = {
   orgId: string;
-  /** FK to documents.id — document row MUST exist before calling. */
-  documentId: string;
+  /** FK to documents.id — document row MUST exist before calling if documentData is omitted. */
+  documentId?: string;
+  /** Pass this to have the canonical indexer upsert the document. */
+  documentData?: {
+    connectionId: string;
+    externalId: string;
+    title: string | null;
+    sourceUrl: string | null;
+  };
   deptId?: string | null;
   sourceType: string;
   /** Ephemeral document body. Not stored. */
@@ -73,12 +80,45 @@ export async function indexDocument(
   } = input;
 
   if (!orgId) throw new Error("orgId is required");
-  if (!documentId) throw new Error("documentId is required");
+  
+  // Fail-fast if caller passed the body into metadata
+  assertNoContentInMetadata(metadata);
+
+  let docId = input.documentId;
+
+  if (input.documentData) {
+    const { data: docRow, error: docErr } = await supabaseAdmin
+      .from("documents")
+      .upsert(
+        {
+          org_id: orgId,
+          connection_id: input.documentData.connectionId,
+          external_id: input.documentData.externalId,
+          title: input.documentData.title,
+          source_type: sourceType,
+          department_id: deptId,
+          owner_user_id: ownerUserId,
+          visibility,
+          external_url: input.documentData.sourceUrl,
+          metadata,
+        },
+        { onConflict: "org_id,connection_id,external_id" }
+      )
+      .select("id")
+      .single();
+
+    if (docErr || !docRow) {
+      throw new Error(`Canonical indexer failed to upsert document: ${docErr?.message}`);
+    }
+    docId = docRow.id;
+  }
+
+  if (!docId) throw new Error("Either documentId or documentData is required");
+
   if (typeof content !== "string" || content.length === 0) {
     return emptyResult();
   }
-  // Fail-fast if caller passed the body into metadata
-  assertNoContentInMetadata(metadata);
+
 
   // ---- 1. Chunk in RAM --------------------------------------
   const chunks = chunkText(content);
@@ -92,7 +132,7 @@ export async function indexDocument(
     .from("document_embeddings")
     .select("content_hash")
     .eq("org_id", orgId)
-    .eq("document_id", documentId);
+    .eq("document_id", docId);
   if (fetchErr) throw new Error(`dedup fetch failed: ${fetchErr.message}`);
 
   const existingHashes = new Set<string>(
@@ -123,7 +163,7 @@ export async function indexDocument(
   if (newChunkIndices.length > 0) {
     const rows = newChunkIndices.map((chunkIdx, i) => ({
       org_id: orgId,
-      document_id: documentId,
+      document_id: docId,
       chunk_index: chunks[chunkIdx].chunk_index,
       content_hash: hashes[chunkIdx],
       embedding: vectors[i],
@@ -150,7 +190,7 @@ export async function indexDocument(
         last_indexed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", documentId);
+      .eq("id", docId);
     if (error) {
       // Non-fatal — the embeddings are correct even if this fails
       console.warn(`[indexer] documents update failed: ${error.message}`);
@@ -170,7 +210,7 @@ export async function indexDocument(
         text: c.text,
         chunk_index: c.chunk_index,
         org_id: orgId,
-        document_id: documentId,
+        document_id: docId as string,
         department_id: deptId,
         visibility,
       }));
@@ -209,6 +249,9 @@ export async function indexDocument(
 export async function reindexDocument(
   input: IndexDocumentInput
 ): Promise<IndexDocumentResult> {
+  if (!input.documentId) {
+    throw new Error("reindexDocument requires documentId to be provided");
+  }
   if (input.rlsContext && input.buildGraph !== false) {
     await deleteByDocument(input.rlsContext, input.documentId);
   }

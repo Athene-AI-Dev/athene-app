@@ -6,7 +6,7 @@
 // used once, then falls out of scope. Never stored, never logged.
 // ============================================================
 
-import { baseFetch, type BaseFetchOptions } from '@/lib/integrations/base'
+import { baseFetch, getProviderToken, type BaseFetchOptions } from '@/lib/integrations/base'
 
 /**
  * Make an authenticated GET request to the HubSpot API.
@@ -23,6 +23,12 @@ export async function hubspotFetch<T = unknown>(
   fetchOptions?: BaseFetchOptions
 ): Promise<T> {
   const url = `https://api.hubapi.com${path}`
+  const token = await getProviderToken(connectionId, 'hubspot', orgId)
 
-  return baseFetch<T>(connectionId, 'hubspot', orgId, url, fetchOptions)
+  const headers = {
+    ...fetchOptions?.headers,
+    Authorization: `Bearer ${token}`
+  }
+
+  return baseFetch<T>(url, { ...fetchOptions, headers })
 }

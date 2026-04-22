@@ -34,14 +34,12 @@ export async function hubspotSearch(
 
   for (const objType of objectTypes) {
     try {
-      const searchBody = JSON.stringify({
-        query,
-        limit: perType,
-      })
-
       const data = await hubspotFetch(conn.connectionId, `/crm/v3/objects/${objType}/search`, orgId, {
         method: 'POST',
-        body: searchBody,
+        body: {
+          query,
+          limit: perType,
+        },
       }) as {
         results: Array<{
           id: string

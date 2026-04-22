@@ -6,9 +6,10 @@ vi.mock("../../ai/embedder", () => ({
   embed: vi.fn(async () => Array(1536).fill(0.1)),
 }));
 
-vi.mock("../../db/pool", () => ({
-  pool: {
-    connect: vi.fn(() => ({
+vi.mock("../../supabase/rls-client", () => ({
+  withRLS: vi.fn(async (orgId, userId, role, fn) => {
+    // Mock the transaction client
+    const mockTx = {
       query: vi.fn(async (sql) => {
         // Handle standard search
         if (sql.includes("SELECT") && !sql.includes("bi_accessible")) {
@@ -17,7 +18,6 @@ vi.mock("../../db/pool", () => ({
               {
                 chunk_id: "chk_std_1",
                 document_id: "doc_std_1",
-                content_preview: "Standard results...",
                 metadata: { category: "general" },
                 score: 0.9,
               },
@@ -31,7 +31,6 @@ vi.mock("../../db/pool", () => ({
               {
                 chunk_id: "chk_bi_1",
                 document_id: "doc_bi_1",
-                content_preview: "Confidential BI data...",
                 metadata: { category: "revenue" },
                 score: 0.99,
               },
@@ -40,9 +39,9 @@ vi.mock("../../db/pool", () => ({
         }
         return { rows: [] };
       }),
-      release: vi.fn(),
-    })),
-  },
+    };
+    return fn(mockTx);
+  }),
 }));
 
 describe("Vector Search Access Control", () => {
@@ -57,7 +56,6 @@ describe("Vector Search Access Control", () => {
     const first = results[0];
     expect(first).toHaveProperty("chunk_id");
     expect(first).toHaveProperty("document_id");
-    expect(first).toHaveProperty("content_preview");
     expect(first).toHaveProperty("metadata");
     expect(first).toHaveProperty("score");
 

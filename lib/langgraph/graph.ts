@@ -3,6 +3,7 @@ import { AtheneState } from "./state";
 import { supervisor } from "./nodes/supervisor";
 import { retrievalAgent } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
+import { checkpointer } from "./checkpointer";
 
 // 1. Initialize the graph with our state definition
 const workflow = new StateGraph(AtheneState)
@@ -26,5 +27,7 @@ workflow.addConditionalEdges("supervisor", (state) => state.next || "FINISH", {
   FINISH: END,
 });
 
-// 5. Compile the graph
-export const agentGraph = workflow.compile();
+// 5. Compile the graph with a checkpointer
+export const agentGraph = workflow.compile({
+  checkpointer,
+});

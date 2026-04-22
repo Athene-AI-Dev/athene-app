@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { message } = await req.json();
+    const { message, threadId } = await req.json();
 
     // Map Clerk roles to our internal RLS roles
     const role = orgRole === "admin" ? "admin" : 
@@ -24,21 +24,49 @@ export async function POST(req: NextRequest) {
       role,
     };
 
-    // Run the graph with security metadata
-    const result = await agentGraph.invoke(initialState, {
-      configurable: {
-        thread_id: userId, // Simple per-user persistence
-      },
-      metadata: {
-        orgId,
-        userId,
-        role,
-      },
-    });
+    const encoder = new TextEncoder();
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
 
-    return NextResponse.json({
-      response: result.messages[result.messages.length - 1].content,
-      docs: result.retrievedDocs,
+    // Start execution in background
+    (async () => {
+      try {
+        const eventStream = await agentGraph.stream(initialState, {
+          configurable: {
+            thread_id: threadId || `user-${userId}`, // Scoped to conversation if threadId provided
+          },
+          metadata: {
+            orgId,
+            userId,
+            role,
+          },
+          streamMode: "values",
+        });
+
+        for await (const chunk of eventStream) {
+          const lastMessage = chunk.messages?.[chunk.messages.length - 1];
+          if (lastMessage) {
+            const data = JSON.stringify({
+              content: lastMessage.content,
+              docs: chunk.retrievedDocs,
+              node: chunk.next,
+            });
+            await writer.write(encoder.encode(`data: ${data}\n\n`));
+          }
+        }
+        await writer.close();
+      } catch (err: any) {
+        console.error("Stream Error:", err);
+        await writer.abort(err);
+      }
+    })();
+
+    return new Response(stream.readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
     });
   } catch (error: any) {
     console.error("Agent API Error:", error);

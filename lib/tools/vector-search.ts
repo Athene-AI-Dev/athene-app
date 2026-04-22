@@ -1,4 +1,4 @@
-import { withRLS } from "../db/with-rls";
+import { withRLS } from "../supabase/rls-client";
 import { embed } from "../ai/embedder";
 
 type Params = {
@@ -31,7 +31,6 @@ export async function vectorSearch({
       SELECT 
         chunk_id,
         document_id,
-        LEFT(content, 200) AS content_preview,
         metadata,
         1 - (embedding <=> $1) AS score
       FROM document_embeddings
@@ -69,7 +68,6 @@ export async function crossDeptVectorSearch(params: Params) {
         SELECT 
           chunk_id,
           document_id,
-          LEFT(content, 200) AS content_preview,
           metadata,
           1 - (embedding <=> $1) AS score
         FROM document_embeddings

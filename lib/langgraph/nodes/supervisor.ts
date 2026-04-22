@@ -1,6 +1,6 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { AtheneStateType } from "../state";
 import { z } from "zod";
+import { model } from "../llm-factory";
 
 const supervisorPrompt = `You are a supervisor tasked with managing a conversation between the following workers: {workers}. 
 Given the following user request, respond with the worker to act next. Each worker has a specialized role:
@@ -13,8 +13,6 @@ If you have finished gathering information, respond with FINISH.`;
  * Supervisor node that routes queries to the appropriate specialist.
  */
 export async function supervisor(state: AtheneStateType) {
-  const model = new ChatOpenAI({ model: "gpt-4o", temperature: 0 });
-
   const workers = ["retrieval", "cross_dept_retrieval"];
   
   const tool = {

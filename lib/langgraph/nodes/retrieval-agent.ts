@@ -2,6 +2,9 @@ import { vectorSearchTool, crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
+// 🛠️ ToolNode singleton
+const toolNode = new ToolNode([vectorSearchTool]);
+
 /**
  * Standard retrieval agent worker.
  * Uses the orgId, userId, and role from the state to call RLS-protected tools.
@@ -20,7 +23,6 @@ export async function retrievalAgent(state: AtheneStateType, config: any) {
     },
   };
 
-  const toolNode = new ToolNode([vectorSearchTool]);
   const result = await toolNode.invoke({ messages: state.messages }, toolConfig);
 
   return {

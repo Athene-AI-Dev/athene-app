@@ -2,6 +2,18 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { vectorSearch, crossDeptVectorSearch } from "../../tools/vector-search";
 
+/**
+ * Ahaon's Pattern: Central registry for all tools.
+ */
+export const toolsRegistry: DynamicStructuredTool[] = [];
+
+export function registerTool(tool: DynamicStructuredTool) {
+  toolsRegistry.push(tool);
+}
+
+/**
+ * Vishwas's Pattern: Export individual tools for static usage.
+ */
 export const vectorSearchTool = new DynamicStructuredTool({
   name: "vector_search",
   description: "Search documents using semantic similarity within your organization.",
@@ -63,3 +75,7 @@ export const crossDeptVectorSearchTool = new DynamicStructuredTool({
     );
   },
 });
+
+// Register initial tools
+registerTool(vectorSearchTool);
+registerTool(crossDeptVectorSearchTool);

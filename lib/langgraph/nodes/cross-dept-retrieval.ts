@@ -2,6 +2,9 @@ import { crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
+// 🛠️ ToolNode singleton
+const toolNode = new ToolNode([crossDeptVectorSearchTool]);
+
 /**
  * BI Specialist agent worker.
  * Specifically uses crossDeptVectorSearchTool which enforces the bi_analyst role and visibility filters.
@@ -32,13 +35,19 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
     },
   };
 
-  const toolNode = new ToolNode([crossDeptVectorSearchTool]);
   const result = await toolNode.invoke({ messages: state.messages }, toolConfig);
 
   return {
     messages: result.messages,
     retrievedDocs: result.messages
       .filter((m: any) => m._getType() === "tool")
-      .flatMap((m: any) => JSON.parse(m.content)),
+      .flatMap((m: any) => {
+        try {
+          return JSON.parse(m.content);
+        } catch (e) {
+          console.error("Error parsing tool output:", e);
+          return [];
+        }
+      }),
   };
 }

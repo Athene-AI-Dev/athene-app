@@ -1,5 +1,5 @@
 import { getConnectionToken } from '@/lib/nango/client'
-import { getProviderConfig, type ProviderKey } from './providers'
+import type { ProviderKey } from './providers'
 
 // ─── Shared output type ─────────────────────────────────────────────────────
 
@@ -37,8 +37,7 @@ export async function getProviderToken(
   providerKey: ProviderKey,
   orgId: string,
 ): Promise<string> {
-  const nangoIntegrationId = getProviderConfig(providerKey).nangoIntegrationId
-  return getConnectionToken(connectionId, nangoIntegrationId, orgId)
+  return getConnectionToken(connectionId, providerKey, orgId)
 }
 
 // ─── Retry + rate-limit fetch ────────────────────────────────────────────────

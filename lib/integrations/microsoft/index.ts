@@ -12,6 +12,10 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
   // 1. Outlook Emails
   try {
     const emails = await fetchUnreadEmails(connectionId, orgId)
+    /**
+     * Architectural Rule: Email bodies are NEVER indexed to the database.
+     * We use bodyPreview (truncated by Graph API) only for real-time briefings.
+     */
     for (const email of emails) {
       chunks.push({
         chunk_id: `ms_email_${email.id}`,

@@ -10,7 +10,7 @@ export async function runIntegrationFetch(provider: string, connectionId: string
     throw new Error(`No fetcher registered for provider: ${provider}`)
   }
 
-  const chunks = await fetcher(connectionId)
+  const chunks = await fetcher(connectionId, orgId)
   
   // TODO: Rose's indexing implementation will be merged here
   // for (const chunk of chunks) {

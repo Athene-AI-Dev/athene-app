@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { vectorSearch, crossDeptVectorSearch } from "../vector-search";
 
 // 🎭 Mocking the database and embedder
-vi.mock("@/lib/ai/embedder", () => ({
+vi.mock("../../ai/embedder", () => ({
   embed: vi.fn(async () => Array(1536).fill(0.1)),
 }));
 

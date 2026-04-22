@@ -11,7 +11,7 @@ export const vectorSearchTool = new DynamicStructuredTool({
   }),
   func: async ({ query, topK }, runManager, config) => {
     // Extract RLS context from metadata
-    const { orgId, userId, role } = config.metadata as {
+    const { orgId, userId, role } = (config?.metadata || {}) as {
       orgId: string;
       userId: string;
       role: any;
@@ -42,7 +42,7 @@ export const crossDeptVectorSearchTool = new DynamicStructuredTool({
     topK: z.number().optional(),
   }),
   func: async ({ query, topK }, runManager, config) => {
-    const { orgId, userId, role } = config.metadata as {
+    const { orgId, userId, role } = (config?.metadata || {}) as {
       orgId: string;
       userId: string;
       role: any;

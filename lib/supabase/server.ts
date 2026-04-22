@@ -10,25 +10,19 @@ export const supabase = (supabaseUrl && supabaseServiceKey)
   : new Proxy({} as any, {
       get(_, prop) {
         if (prop === 'from') {
-          return () => ({
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    maybeSingle: () => Promise.resolve({ data: null, error: null }),
-                    single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
-                  }),
-                  single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
-                  eq: () => ({
-                    maybeSingle: () => Promise.resolve({ data: null, error: null })
-                  })
-                })
-              }),
-              limit: () => ({
-                eq: () => Promise.resolve({ data: [], error: null })
-              })
-            })
-          });
+          const mockSingle = () => Promise.resolve({ data: null, error: null });
+          const mockMany = () => Promise.resolve({ data: [], error: null });
+          const chain = {
+            select: () => chain,
+            eq: () => chain,
+            maybeSingle: mockSingle,
+            single: mockSingle,
+            limit: () => chain,
+            order: () => chain,
+            upsert: mockSingle,
+            delete: () => chain,
+          };
+          return () => chain;
         }
         return undefined;
       }

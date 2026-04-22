@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AtheneState } from "./state";
 import { supervisor } from "./nodes/supervisor";
@@ -30,4 +28,3 @@ workflow.addConditionalEdges("supervisor", (state) => state.next || "FINISH", {
 
 // 5. Compile the graph
 export const agentGraph = workflow.compile();
->>>>>>> Stashed changes

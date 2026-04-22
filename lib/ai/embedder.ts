@@ -1,8 +1,15 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+let openai: OpenAI | null = null;
+
+function getOpenAI() {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY!,
+    });
+  }
+  return openai;
+}
 
 /**
  * Generates an embedding for the given text using OpenAI.
@@ -13,7 +20,7 @@ export async function embed(text: string): Promise<number[]> {
     throw new Error("OPENAI_API_KEY is not defined in environment variables");
   }
 
-  const res = await openai.embeddings.create({
+  const res = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: text,
   });

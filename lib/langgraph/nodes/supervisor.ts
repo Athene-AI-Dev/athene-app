@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 import { ChatOpenAI } from "@langchain/openai";
 import { AtheneStateType } from "../state";
 import { z } from "zod";
@@ -40,4 +38,3 @@ export async function supervisor(state: AtheneStateType) {
     next: route?.next || "FINISH",
   };
 }
->>>>>>> Stashed changes

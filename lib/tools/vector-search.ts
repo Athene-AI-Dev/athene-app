@@ -1,5 +1,5 @@
-import { withRLS } from "@/lib/db/with-rls";
-import { embed } from "@/lib/ai/embedder";
+import { withRLS } from "../db/with-rls";
+import { embed } from "../ai/embedder";
 
 type Params = {
   orgId: string;

@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 
 /**
@@ -11,6 +9,7 @@ export const AtheneState = Annotation.Root({
   orgId: Annotation<string>(),
   userId: Annotation<string>(),
   role: Annotation<string>(),
+  next: Annotation<string>(),
   retrievedDocs: Annotation<any[]>({
     reducer: (x, y) => x.concat(y),
     default: () => [],
@@ -18,4 +17,3 @@ export const AtheneState = Annotation.Root({
 });
 
 export type AtheneStateType = typeof AtheneState.State;
->>>>>>> Stashed changes

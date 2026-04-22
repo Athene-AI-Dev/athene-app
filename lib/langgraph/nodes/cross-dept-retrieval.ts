@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 import { crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
@@ -44,4 +42,3 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
       .flatMap((m: any) => JSON.parse(m.content)),
   };
 }
->>>>>>> Stashed changes

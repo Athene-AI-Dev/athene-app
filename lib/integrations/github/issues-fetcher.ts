@@ -1,6 +1,6 @@
 import { githubFetch } from './client';
-import { FetchedChunk } from '../types';
-import { indexDocument } from '../indexer';
+import { FetchedChunk } from '../base';
+import { indexDocument } from '../indexing';
 
 const ISSUES_QUERY = `
   query GetIssues($owner: String!, $repo: String!, $cursor: String) {
@@ -43,18 +43,21 @@ export async function githubIssuesFetcher(connectionId: string, orgId: string, o
       const fullContent = `Issue: ${issue.title}\n\n${issue.body}\n\nComments:\n${allComments}`;
       
       const chunk: FetchedChunk = {
-        id: issue.id,
+        chunk_id: issue.id,
         title: issue.title,
         content: fullContent,
-        url: issue.url,
-        provider: 'github',
-        type: 'issue',
-        createdAt: issue.createdAt,
-        metadata: { owner, repo }
+        source_url: issue.url,
+        metadata: {
+          provider: 'github',
+          resource_type: 'issue',
+          created_at: issue.createdAt,
+          owner,
+          repo
+        }
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk);
+      await indexDocument(chunk, orgId);
     }
     
     hasNextPage = issuesResult.pageInfo.hasNextPage;

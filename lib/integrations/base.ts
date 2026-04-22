@@ -18,7 +18,7 @@ export interface FetchedChunk {
   source_url: string
   /** Lightweight metadata — NO body/content fields allowed */
   metadata: {
-    provider: string
+    provider: ProviderKey
     resource_type: string
     last_modified?: string
     author?: string
@@ -122,7 +122,7 @@ export async function baseFetch<T = unknown>(
       const err = new Error(
         `[baseFetch] ${method} ${url} → ${res.status}: ${text}`,
       )
-      ;(err as any).status = res.status
+        ; (err as any).status = res.status
       throw err
     }
 

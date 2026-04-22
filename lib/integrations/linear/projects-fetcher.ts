@@ -1,6 +1,6 @@
 import { linearFetch } from './client';
-import { FetchedChunk } from '../types';
-import { indexDocument } from '../indexer';
+import { FetchedChunk } from '../base';
+import { indexDocument } from '../indexing';
 
 const PROJECTS_QUERY = `
   query GetProjects($cursor: String) {
@@ -44,17 +44,19 @@ export async function linearProjectsFetcher(connectionId: string, orgId: string)
       const fullContent = `Linear Project: ${project.name}\n\n${project.description || ''}\n\nUpdates:\n${updates}`;
       
       const chunk: FetchedChunk = {
-        id: project.id,
+        chunk_id: project.id,
         title: project.name,
         content: fullContent,
-        url: project.url,
-        provider: 'linear',
-        type: 'project',
-        createdAt: project.createdAt,
+        source_url: project.url,
+        metadata: {
+          provider: 'linear',
+          resource_type: 'project',
+          created_at: project.createdAt,
+        }
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk);
+      await indexDocument(chunk, orgId);
     }
     
     hasNextPage = projectsResult.pageInfo.hasNextPage;

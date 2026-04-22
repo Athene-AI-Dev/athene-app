@@ -1,6 +1,6 @@
 import { linearFetch } from './client';
-import { FetchedChunk } from '../types';
-import { indexDocument } from '../indexer';
+import { FetchedChunk } from '../base';
+import { indexDocument } from '../indexing';
 
 const CYCLES_QUERY = `
   query GetCycles($cursor: String) {
@@ -44,15 +44,18 @@ export async function linearCyclesFetcher(connectionId: string, orgId: string): 
       const fullContent = `Linear Cycle: ${cycle.name}\nDates: ${cycle.startsAt} to ${cycle.endsAt}\n\n${cycle.description || ''}\n\nIssues in Cycle:\n${issuesSummary}`;
       
       const chunk: FetchedChunk = {
-        id: cycle.id,
+        chunk_id: cycle.id,
         title: cycle.name,
         content: fullContent,
-        provider: 'linear',
-        type: 'cycle',
+        source_url: '',
+        metadata: {
+          provider: 'linear',
+          resource_type: 'cycle',
+        }
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk);
+      await indexDocument(chunk, orgId);
     }
     
     hasNextPage = cyclesResult.pageInfo.hasNextPage;

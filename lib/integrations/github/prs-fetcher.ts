@@ -1,6 +1,6 @@
 import { githubFetch } from './client';
-import { FetchedChunk } from '../types';
-import { indexDocument } from '../indexer';
+import { FetchedChunk } from '../base';
+import { indexDocument } from '../indexing';
 
 const PRS_QUERY = `
   query GetPRs($owner: String!, $repo: String!, $cursor: String) {
@@ -43,18 +43,21 @@ export async function githubPrsFetcher(connectionId: string, orgId: string, owne
       const fullContent = `Pull Request: ${pr.title}\n\n${pr.body}\n\nReviews:\n${allReviews}`;
       
       const chunk: FetchedChunk = {
-        id: pr.id,
+        chunk_id: pr.id,
         title: pr.title,
         content: fullContent,
-        url: pr.url,
-        provider: 'github',
-        type: 'pull_request',
-        createdAt: pr.createdAt,
-        metadata: { owner, repo }
+        source_url: pr.url,
+        metadata: {
+          provider: 'github',
+          resource_type: 'pull_request',
+          created_at: pr.createdAt,
+          owner,
+          repo
+        }
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk);
+      await indexDocument(chunk, orgId);
     }
     
     hasNextPage = prsResult.pageInfo.hasNextPage;

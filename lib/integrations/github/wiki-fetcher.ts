@@ -1,6 +1,6 @@
 import { githubRestFetch } from './client';
-import { FetchedChunk } from '../types';
-import { indexDocument } from '../indexer';
+import { FetchedChunk } from '../base';
+import { indexDocument } from '../indexing';
 
 export async function githubWikiFetcher(connectionId: string, orgId: string, owner: string, repo: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = [];
@@ -32,17 +32,21 @@ export async function githubWikiFetcher(connectionId: string, orgId: string, own
         }
 
         const chunk: FetchedChunk = {
-          id: file.sha,
+          chunk_id: file.sha,
           title: file.path, // Use path as title for markdown files
           content: contentStr,
-          url: `https://github.com/${owner}/${repo}/blob/${defaultBranch}/${file.path}`,
-          provider: 'github',
-          type: 'markdown_file',
-          metadata: { owner, repo, path: file.path }
+          source_url: `https://github.com/${owner}/${repo}/blob/${defaultBranch}/${file.path}`,
+          metadata: { 
+            provider: 'github',
+            resource_type: 'markdown_file',
+            owner, 
+            repo, 
+            path: file.path 
+          }
         };
 
         chunks.push(chunk);
-        await indexDocument(chunk);
+        await indexDocument(chunk, orgId);
       }
     }
   } catch (error) {

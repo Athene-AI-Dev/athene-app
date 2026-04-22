@@ -2,16 +2,39 @@
  * Provider Registry for Communications Integrations
  */
 
+export type ProviderKey = 'slack' | 'zendesk' | 'google' | 'microsoft';
+
 export interface ProviderConfig {
   name: string;
-  configKey: string;
+  nangoIntegrationId: string;
 }
 
-export const providers: ProviderConfig[] = [
-  { name: 'Slack', configKey: 'slack' },
-  { name: 'Zendesk', configKey: 'zendesk' },
-];
+export const providers: Record<ProviderKey, ProviderConfig> = {
+  slack: { 
+    name: 'Slack', 
+    nangoIntegrationId: 'slack' 
+  },
+  zendesk: { 
+    name: 'Zendesk', 
+    nangoIntegrationId: 'zendesk' 
+  },
+  google: {
+    name: 'Google',
+    nangoIntegrationId: 'google'
+  },
+  microsoft: {
+    name: 'Microsoft',
+    nangoIntegrationId: 'microsoft'
+  }
+};
 
-export function getProviderConfig(name: string): ProviderConfig | undefined {
-  return providers.find((p) => p.name.toLowerCase() === name.toLowerCase());
+/**
+ * Retrieves the configuration for a given provider key.
+ */
+export function getProviderConfig(key: ProviderKey): ProviderConfig {
+  const config = providers[key];
+  if (!config) {
+    throw new Error(`[providers] Unknown provider key: ${key}`);
+  }
+  return config;
 }

@@ -88,28 +88,19 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     throw new Error('Missing OPENAI_API_KEY environment variable')
   }
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
+  const data = await baseFetch<{
+    data: Array<{ embedding: number[]; index: number }>
+  }>('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: {
       model: EMBEDDING_MODEL,
       input: texts,
       dimensions: EMBEDDING_DIMENSIONS,
-    }),
+    },
   })
-
-  if (!response.ok) {
-    throw new Error(
-      `OpenAI embeddings API error: ${response.status} ${response.statusText}`
-    )
-  }
-
-  const data = (await response.json()) as {
-    data: Array<{ embedding: number[]; index: number }>
-  }
 
   // Sort by index to maintain order
   return data.data

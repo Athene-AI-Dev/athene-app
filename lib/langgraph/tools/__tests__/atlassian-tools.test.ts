@@ -9,39 +9,49 @@ vi.mock('@/lib/integrations/atlassian/client', () => ({
   atlassianFetch: vi.fn(),
 }))
 
+// Mock the shared indexing pipeline
+vi.mock('@/lib/integrations/indexing', () => ({
+  indexDocuments: vi.fn().mockResolvedValue({ indexed: 1, errors: 0 }),
+}))
+
+import { indexDocuments } from '@/lib/integrations/indexing'
+
 describe('Atlassian LangGraph Tools', () => {
   const mockOrgId = 'org-123'
   const mockDeptId = 'dept-456'
   const mockConnId = 'conn-789'
   const mockCloudId = 'cloud-abc'
 
+  const mockIssue = {
+    key: 'PROJ-1',
+    fields: {
+      summary: 'Test Issue',
+      description: { type: 'doc', content: [] },
+      status: { name: 'To Do' },
+      priority: { name: 'High' },
+      assignee: { displayName: 'Alice' },
+      issuetype: { name: 'Bug' },
+      updated: '2026-04-22T00:00:00Z',
+      labels: ['bug'],
+    },
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     ;(client.getCloudId as any).mockResolvedValue(mockCloudId)
+    ;(indexDocuments as any).mockResolvedValue({ indexed: 1, errors: 0 })
   })
 
   describe('Jira Tool', () => {
     it('indexJiraProject fetches issues with correct JQL and fields', async () => {
-      // Mock one page of results
       ;(client.atlassianFetch as any).mockResolvedValueOnce({
-        issues: [
-          {
-            key: 'PROJ-1',
-            fields: {
-              summary: 'Test Issue',
-              status: { name: 'To Do' },
-              priority: { name: 'High' },
-              updated: '2026-04-22T00:00:00Z',
-              labels: ['bug'],
-              issuetype: { name: 'Bug' },
-              description: { type: 'doc', content: [] }
-            }
-          }
-        ]
+        issues: [mockIssue],
+        total: 1,
       })
 
-      await indexJiraProject(mockConnId, 'PROJ', mockOrgId, mockDeptId)
+      const result = await indexJiraProject(mockConnId, 'PROJ', mockOrgId, mockDeptId)
 
+      expect(client.getCloudId).toHaveBeenCalledWith(mockConnId, mockOrgId, 'jira')
       expect(client.atlassianFetch).toHaveBeenCalledWith(
         mockConnId,
         mockCloudId,
@@ -49,53 +59,113 @@ describe('Atlassian LangGraph Tools', () => {
         mockOrgId,
         'jira'
       )
-      
+
       // Verify metadata fields were requested
       const url = (client.atlassianFetch as any).mock.calls[0][2]
       expect(url).toContain('fields=summary,description,status,assignee,updated,labels,issuetype,priority')
+      expect(result).toEqual({ indexed: 1, failed: 0 })
     })
 
-    it('indexJiraProject handles pagination correctly', async () => {
-      // Mock two pages of 100 issues and one final empty page
-      ;(client.atlassianFetch as any)
-        .mockResolvedValueOnce({ issues: Array(100).fill({ key: 'P-1', fields: { status: {}, issuetype: {} } }) })
-        .mockResolvedValueOnce({ issues: Array(100).fill({ key: 'P-2', fields: { status: {}, issuetype: {} } }) })
-        .mockResolvedValueOnce({ issues: [] })
+    it('indexJiraProject passes correct FetchedChunk shape to indexDocuments', async () => {
+      ;(client.atlassianFetch as any).mockResolvedValueOnce({
+        issues: [mockIssue],
+        total: 1,
+      })
 
       await indexJiraProject(mockConnId, 'PROJ', mockOrgId, mockDeptId)
 
-      expect(client.atlassianFetch).toHaveBeenCalledTimes(3)
-      expect(client.atlassianFetch).toHaveBeenNthCalledWith(2, expect.any(String), expect.any(String), expect.stringContaining('startAt=100'), expect.any(String), 'jira')
+      expect(indexDocuments).toHaveBeenCalledOnce()
+      const [chunks, orgId, deptId] = (indexDocuments as any).mock.calls[0]
+
+      expect(orgId).toBe(mockOrgId)
+      expect(deptId).toBe(mockDeptId)
+      expect(chunks).toHaveLength(1)
+
+      const chunk = chunks[0]
+      expect(chunk.chunk_id).toBe('jira-issue-PROJ-1')
+      expect(chunk.title).toBe('PROJ-1: Test Issue')
+      expect(chunk.source_url).toContain('PROJ-1')
+      expect(chunk.content).toContain('Test Issue')
+      expect(chunk.metadata.provider).toBe('jira')
+      expect(chunk.metadata.resource_type).toBe('issue')
+      expect(chunk.metadata.project_key).toBe('PROJ')
+      // Ensure no content-bearing keys leaked into metadata
+      expect(chunk.metadata).not.toHaveProperty('content')
+      expect(chunk.metadata).not.toHaveProperty('body')
     })
 
-    it('liveJiraSearch returns raw results for Mode B', async () => {
-      const mockResults = { total: 1, issues: [] }
-      ;(client.atlassianFetch as any).mockResolvedValue(mockResults)
+    it('indexJiraProject handles pagination correctly', async () => {
+      const paginatedIssue = {
+        key: 'P-1',
+        fields: {
+          summary: 'Paginated Issue',
+          description: null,
+          status: { name: 'Done' },
+          priority: { name: 'Low' },
+          assignee: null,
+          issuetype: { name: 'Task' },
+          updated: '2026-04-22T00:00:00Z',
+          labels: [],
+        },
+      }
+
+      ;(client.atlassianFetch as any)
+        .mockResolvedValueOnce({ issues: Array(100).fill(paginatedIssue), total: 250 })
+        .mockResolvedValueOnce({ issues: Array(100).fill(paginatedIssue), total: 250 })
+        .mockResolvedValueOnce({ issues: [], total: 250 })
+
+      const result = await indexJiraProject(mockConnId, 'PROJ', mockOrgId, mockDeptId)
+
+      expect(client.atlassianFetch).toHaveBeenCalledTimes(3)
+      expect(client.atlassianFetch).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String),
+        expect.any(String),
+        expect.stringContaining('startAt=100'),
+        expect.any(String),
+        'jira'
+      )
+      expect(indexDocuments).toHaveBeenCalledTimes(2)
+      expect(result.indexed).toBe(2) // 1 per indexDocuments call (mocked)
+    })
+
+    it('liveJiraSearch returns FetchedChunk[] for Mode B', async () => {
+      ;(client.atlassianFetch as any).mockResolvedValueOnce({
+        issues: [mockIssue],
+        total: 1,
+      })
 
       const results = await liveJiraSearch(mockConnId, 'key = PROJ-1', mockOrgId)
 
-      expect(results).toEqual(mockResults)
+      expect(Array.isArray(results)).toBe(true)
+      expect(results).toHaveLength(1)
+      expect(results[0].chunk_id).toBe('jira-issue-PROJ-1')
+      expect(results[0].title).toBe('PROJ-1: Test Issue')
+      expect(results[0].source_url).toContain('PROJ-1')
+      // liveJiraSearch must NOT call indexDocuments — results are ephemeral
+      expect(indexDocuments).not.toHaveBeenCalled()
     })
   })
 
   describe('Confluence Tool', () => {
+    const mockPage = {
+      id: 'page-1',
+      title: 'Test Page',
+      body: { storage: { value: '<h1>Hello</h1><p>Some content here.</p>' } },
+      version: { when: '2026-04-22T00:00:00Z', by: { displayName: 'Alice' } },
+      metadata: { labels: { results: [{ name: 'internal' }] } },
+      _links: { webui: '/pages/viewpage.action?pageId=1' },
+    }
+
     it('indexConfluenceSpace fetches pages with labels expanded', async () => {
       ;(client.atlassianFetch as any).mockResolvedValueOnce({
-        results: [
-          {
-            id: 'page-1',
-            title: 'Test Page',
-            body: { storage: { value: '<p>Hello</p>' } },
-            version: { when: '2026-04-22T00:00:00Z', by: { displayName: 'Alice' } },
-            metadata: { labels: { results: [{ name: 'internal' }] } },
-            _links: { webui: '/pages/viewpage.action?pageId=1' }
-          }
-        ],
-        _links: {}
+        results: [mockPage],
+        _links: {},
       })
 
-      await indexConfluenceSpace(mockConnId, 'SPACE', mockOrgId, mockDeptId)
+      const result = await indexConfluenceSpace(mockConnId, 'SPACE', mockOrgId, mockDeptId)
 
+      expect(client.getCloudId).toHaveBeenCalledWith(mockConnId, mockOrgId, 'confluence')
       expect(client.atlassianFetch).toHaveBeenCalledWith(
         mockConnId,
         mockCloudId,
@@ -104,31 +174,66 @@ describe('Atlassian LangGraph Tools', () => {
         'confluence'
       )
 
-      // Verify expansion includes labels
       const url = (client.atlassianFetch as any).mock.calls[0][2]
       expect(url).toContain('expand=body.storage,version,metadata.labels')
+      expect(result).toEqual({ indexed: 1, failed: 0 })
     })
 
-    it('indexConfluenceSpace extracts clean text from HTML', async () => {
+    it('indexConfluenceSpace passes correct FetchedChunk shape to indexDocuments', async () => {
       ;(client.atlassianFetch as any).mockResolvedValueOnce({
-        results: [
-          {
-            id: 'page-1',
-            title: 'Clean Text Test',
-            body: { storage: { value: '<h1>Title</h1><p>Some <b>bold</b> text.</p>' } },
-            version: { when: '2026-04-22' },
-            metadata: { labels: { results: [] } },
-            _links: { webui: '/wiki' }
-          }
-        ],
-        _links: {}
+        results: [mockPage],
+        _links: {},
       })
 
-      // We'll verify this by checking the console output or by modifying indexDocument to be spyable
-      // For now, the test passing means stripHtml didn't crash, and we verified the logic in atlassian-utils.test.ts
       await indexConfluenceSpace(mockConnId, 'SPACE', mockOrgId, mockDeptId)
-      
-      expect(client.atlassianFetch).toHaveBeenCalledOnce()
+
+      expect(indexDocuments).toHaveBeenCalledOnce()
+      const [chunks, orgId, deptId] = (indexDocuments as any).mock.calls[0]
+
+      expect(orgId).toBe(mockOrgId)
+      expect(deptId).toBe(mockDeptId)
+      expect(chunks).toHaveLength(1)
+
+      const chunk = chunks[0]
+      expect(chunk.chunk_id).toBe('confluence-page-page-1')
+      expect(chunk.title).toBe('Test Page')
+      expect(chunk.source_url).toContain('athene-ai.atlassian.net')
+      // HTML tags must be stripped from content
+      expect(chunk.content).not.toContain('<h1>')
+      expect(chunk.content).toContain('Hello')
+      expect(chunk.content).toContain('Some content here')
+      expect(chunk.metadata.provider).toBe('confluence')
+      expect(chunk.metadata.resource_type).toBe('page')
+      expect(chunk.metadata.space_key).toBe('SPACE')
+      expect(chunk.metadata.labels).toEqual(['internal'])
+      // Ensure no content-bearing keys leaked into metadata
+      expect(chunk.metadata).not.toHaveProperty('content')
+    })
+
+    it('indexConfluenceSpace skips empty pages', async () => {
+      ;(client.atlassianFetch as any).mockResolvedValueOnce({
+        results: [
+          { ...mockPage, id: 'empty-page', body: { storage: { value: '   ' } } },
+        ],
+        _links: {},
+      })
+
+      const result = await indexConfluenceSpace(mockConnId, 'SPACE', mockOrgId, mockDeptId)
+
+      // Empty content — indexDocuments should not be called
+      expect(indexDocuments).not.toHaveBeenCalled()
+      expect(result).toEqual({ indexed: 0, failed: 0 })
+    })
+
+    it('indexConfluenceSpace handles pagination via _links.next', async () => {
+      ;(client.atlassianFetch as any)
+        .mockResolvedValueOnce({ results: [mockPage], _links: { next: '/next' } })
+        .mockResolvedValueOnce({ results: [mockPage], _links: {} })
+
+      await indexConfluenceSpace(mockConnId, 'SPACE', mockOrgId, mockDeptId)
+
+      expect(client.atlassianFetch).toHaveBeenCalledTimes(2)
+      expect(indexDocuments).toHaveBeenCalledTimes(2)
     })
   })
 })

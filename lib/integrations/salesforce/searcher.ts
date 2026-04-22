@@ -1,6 +1,6 @@
 import { salesforceFetch } from './client'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import type { LiveSearchResult } from '@/lib/langgraph/tools/live-search'
+import type { FetchedChunk } from '@/lib/integrations/base'
 
 async function getOrgConnection(orgId: string, provider: string) {
   const { data, error } = await supabaseAdmin
@@ -18,12 +18,13 @@ async function getOrgConnection(orgId: string, provider: string) {
   }
 }
 
-export async function salesforceSearch(args: {
-  orgId: string
-  query: string
-  limit: number
-}): Promise<LiveSearchResult[]> {
-  const { orgId, query, limit } = args
+export async function salesforceSearch(
+  connectionId: string,
+  orgId: string,
+  query: string,
+  args?: any
+): Promise<FetchedChunk[]> {
+  const limit = args?.limit ?? 5;
   const conn = await getOrgConnection(orgId, 'salesforce')
   if (!conn) {
     console.warn('[live-search:salesforce] no active connection for org', orgId)
@@ -51,13 +52,23 @@ export async function salesforceSearch(args: {
     }
 
     const baseUrl = instanceUrl ?? 'https://login.salesforce.com'
-    return (data.searchRecords ?? []).slice(0, limit).map((rec) => ({
-      source_type: 'salesforce',
-      external_id: `sf-${rec.attributes.type.toLowerCase()}-${rec.Id}`,
-      title:       rec.Name ?? rec.Subject ?? rec.Id,
-      snippet:     null,
-      url:         `${baseUrl}/lightning/r/${rec.attributes.type}/${rec.Id}/view`,
-    }))
+    return (data.searchRecords ?? []).slice(0, limit).map((rec) => {
+      const typeLower = rec.attributes.type.toLowerCase();
+      const resourceType = typeLower === 'account' ? 'accounts' : 
+                           typeLower === 'opportunity' ? 'opportunities' : 
+                           typeLower === 'case' ? 'cases' : 'unknown';
+      return {
+        chunk_id: `sf-${typeLower}-${rec.Id}`,
+        title:       rec.Name ?? rec.Subject ?? rec.Id,
+        content:     rec.Name ?? rec.Subject ?? rec.Id, // fallback for content
+        source_url:         `${baseUrl}/lightning/r/${rec.attributes.type}/${rec.Id}/view`,
+        metadata: {
+          provider: 'salesforce',
+          resource_type: resourceType,
+          id: rec.Id
+        }
+      };
+    })
   } catch (err) {
     console.error('[live-search:salesforce] SOSL query failed:', err instanceof Error ? err.message : String(err))
     return []

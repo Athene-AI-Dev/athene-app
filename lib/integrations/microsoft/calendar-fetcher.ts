@@ -29,16 +29,16 @@ export interface EventDraft {
 /**
  * Fetches calendar events within a specific time range.
  */
-export async function fetchEvents(connectionId: string, startDate: Date, endDate: Date) {
-  return graphFetch(connectionId, `/me/calendarView?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`)
+export async function fetchEvents(connectionId: string, orgId: string, startDate: Date, endDate: Date) {
+  return graphFetch(connectionId, orgId, `/me/calendarView?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`)
 }
 
 /**
  * Creates a new calendar event.
  * Requires approval upstream.
  */
-export async function createEvent(connectionId: string, event: EventDraft) {
-  return graphFetch(connectionId, `/me/events`, {
+export async function createEvent(connectionId: string, orgId: string, event: EventDraft) {
+  return graphFetch(connectionId, orgId, `/me/events`, {
     method: 'POST',
     body: JSON.stringify(event),
   })
@@ -48,13 +48,13 @@ export async function createEvent(connectionId: string, event: EventDraft) {
  * Finds free meeting slots for a group of attendees.
  * @param duration Duration in minutes.
  */
-export async function findFreeSlots(connectionId: string, attendees: string[], duration: number) {
+export async function findFreeSlots(connectionId: string, orgId: string, attendees: string[], duration: number) {
   const attendeeList = attendees.map(email => ({
     emailAddress: { address: email },
     type: 'required'
   }))
 
-  return graphFetch(connectionId, `/me/findMeetingTimes`, {
+  return graphFetch(connectionId, orgId, `/me/findMeetingTimes`, {
     method: 'POST',
     body: JSON.stringify({ 
       attendees: attendeeList, 

@@ -2,8 +2,7 @@ import './notion'
 import './snowflake'
 import './microsoft'
 import { getProvider } from './registry'
-import { indexDocument } from './indexing'
-import { FetchedChunk } from './types'
+import { FetchedChunk } from './base'
 
 export async function runIntegrationFetch(provider: string, connectionId: string, orgId: string) {
   const fetcher = getProvider(provider)
@@ -13,14 +12,14 @@ export async function runIntegrationFetch(provider: string, connectionId: string
 
   const chunks = await fetcher(connectionId)
   
-  for (const chunk of chunks) {
-    await indexDocument(chunk, orgId)
-  }
+  // TODO: Rose's indexing implementation will be merged here
+  // for (const chunk of chunks) {
+  //   await indexDocument(chunk, orgId)
+  // }
 
   return { count: chunks.length }
 }
 
 export * from './registry'
-export * from './indexing'
 export * from './notion/client'
 export * from './snowflake/client'

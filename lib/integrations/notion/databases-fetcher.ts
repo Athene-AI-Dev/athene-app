@@ -1,14 +1,14 @@
 import { notionFetch } from './client'
-import { FetchedChunk } from '../types'
+import { FetchedChunk } from '../base'
 
-export async function fetchAllDatabases(connectionId: string): Promise<FetchedChunk[]> {
+export async function fetchAllDatabases(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
   let hasMore = true
   let startCursor: string | undefined = undefined
 
   while (hasMore) {
     // 1. Search for all databases
-    const searchResults = await notionFetch(connectionId, '/search', {
+    const searchResults = await notionFetch(connectionId, orgId, '/search', {
       filter: {
         property: 'object',
         value: 'database'
@@ -20,12 +20,18 @@ export async function fetchAllDatabases(connectionId: string): Promise<FetchedCh
       if (db.object !== 'database') continue
 
       const title = getDatabaseTitle(db)
-      const content = await fetchDatabaseContent(connectionId, db.id)
+      const content = await fetchDatabaseContent(connectionId, orgId, db.id)
 
       chunks.push({
+        chunk_id: `notion_db_${db.id}`,
         title: `Database: ${title}`,
         content,
-        source_url: db.url
+        source_url: db.url,
+        metadata: {
+          provider: 'notion',
+          resource_type: 'database',
+          last_modified: db.last_edited_time
+        }
       })
     }
 
@@ -36,13 +42,13 @@ export async function fetchAllDatabases(connectionId: string): Promise<FetchedCh
   return chunks
 }
 
-async function fetchDatabaseContent(connectionId: string, databaseId: string): Promise<string> {
+async function fetchDatabaseContent(connectionId: string, orgId: string, databaseId: string): Promise<string> {
   let content = ''
   let hasMore = true
   let startCursor: string | undefined = undefined
 
   while (hasMore) {
-    const response = await notionFetch(connectionId, `/databases/${databaseId}/query`, {
+    const response = await notionFetch(connectionId, orgId, `/databases/${databaseId}/query`, {
       start_cursor: startCursor
     })
 

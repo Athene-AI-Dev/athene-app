@@ -3,21 +3,26 @@ import { fetchEvents } from './calendar-fetcher'
 import { listOneDriveDocs, fetchOneDriveDocContent } from './onedrive-fetcher'
 import { listSharePointDocs, fetchDocContent as fetchSharePointDocContent } from './sharepoint-fetcher'
 import { registerProvider, registerSearcher } from '../registry'
-import { FetchedChunk } from '../types'
+import { FetchedChunk } from '../base'
 import { microsoftSearch } from './searcher'
 
-export async function microsoftFetcher(connectionId: string): Promise<FetchedChunk[]> {
+export async function microsoftFetcher(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
 
   // 1. Outlook Emails
   try {
-    const emails = await fetchUnreadEmails(connectionId)
+    const emails = await fetchUnreadEmails(connectionId, orgId)
     for (const email of emails) {
       chunks.push({
+        chunk_id: `ms_email_${email.id}`,
         title: `Email: ${email.subject}`,
         content: `From: ${email.from?.emailAddress?.name}\n\n${email.bodyPreview}`,
         source_url: email.webLink,
-        metadata: { id: email.id, type: 'email' }
+        metadata: { 
+          provider: 'microsoft',
+          resource_type: 'email',
+          id: email.id 
+        }
       })
     }
   } catch (error) {
@@ -28,14 +33,19 @@ export async function microsoftFetcher(connectionId: string): Promise<FetchedChu
   try {
     const now = new Date()
     const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    const eventsData = await fetchEvents(connectionId, now, nextWeek)
+    const eventsData = await fetchEvents(connectionId, orgId, now, nextWeek)
     if (eventsData.value) {
       for (const event of eventsData.value) {
         chunks.push({
+          chunk_id: `ms_event_${event.id}`,
           title: `Event: ${event.subject}`,
           content: `Start: ${event.start.dateTime}\nEnd: ${event.end.dateTime}\n\n${event.bodyPreview || ''}`,
           source_url: event.webLink,
-          metadata: { id: event.id, type: 'event' }
+          metadata: { 
+            provider: 'microsoft',
+            resource_type: 'event',
+            id: event.id 
+          }
         })
       }
     }
@@ -45,14 +55,19 @@ export async function microsoftFetcher(connectionId: string): Promise<FetchedChu
 
   // 3. OneDrive Documents
   try {
-    const driveDocs = await listOneDriveDocs(connectionId)
+    const driveDocs = await listOneDriveDocs(connectionId, orgId)
     for (const doc of driveDocs) {
-      const content = await fetchOneDriveDocContent(connectionId, doc.id)
+      const content = await fetchOneDriveDocContent(connectionId, orgId, doc.id)
       chunks.push({
+        chunk_id: `ms_drive_${doc.id}`,
         title: `OneDrive: ${doc.name}`,
         content,
         source_url: doc.webLink,
-        metadata: { id: doc.id, type: 'onedrive_doc' }
+        metadata: { 
+          provider: 'microsoft',
+          resource_type: 'onedrive_doc',
+          id: doc.id 
+        }
       })
     }
   } catch (error) {

@@ -1,14 +1,14 @@
 import { notionFetch } from './client'
-import { FetchedChunk } from '../types'
+import { FetchedChunk } from '../base'
 
-export async function fetchAllPages(connectionId: string): Promise<FetchedChunk[]> {
+export async function fetchAllPages(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
   let hasMore = true
   let startCursor: string | undefined = undefined
 
   while (hasMore) {
     // 1. Search for all pages
-    const searchResults = await notionFetch(connectionId, '/search', {
+    const searchResults = await notionFetch(connectionId, orgId, '/search', {
       filter: {
         property: 'object',
         value: 'page'
@@ -20,12 +20,18 @@ export async function fetchAllPages(connectionId: string): Promise<FetchedChunk[
       if (page.object !== 'page') continue
 
       const title = getPageTitle(page)
-      const content = await fetchPageContent(connectionId, page.id)
+      const content = await fetchPageContent(connectionId, orgId, page.id)
       
       chunks.push({
+        chunk_id: `notion_page_${page.id}`,
         title,
         content,
-        source_url: page.url
+        source_url: page.url,
+        metadata: {
+          provider: 'notion',
+          resource_type: 'page',
+          last_modified: page.last_edited_time
+        }
       })
     }
 
@@ -36,17 +42,17 @@ export async function fetchAllPages(connectionId: string): Promise<FetchedChunk[
   return chunks
 }
 
-async function fetchPageContent(connectionId: string, blockId: string): Promise<string> {
+async function fetchPageContent(connectionId: string, orgId: string, blockId: string): Promise<string> {
   let content = ''
   let hasMore = true
   let startCursor: string | undefined = undefined
 
   while (hasMore) {
     const url = `/blocks/${blockId}/children${startCursor ? `?start_cursor=${startCursor}` : ''}`
-    const response = await notionFetch(connectionId, url)
+    const response = await notionFetch(connectionId, orgId, url)
     
     for (const block of response.results) {
-      content += await blockToText(connectionId, block)
+      content += await blockToText(connectionId, orgId, block)
     }
 
     hasMore = response.has_more
@@ -56,7 +62,7 @@ async function fetchPageContent(connectionId: string, blockId: string): Promise<
   return content
 }
 
-async function blockToText(connectionId: string, block: any): Promise<string> {
+async function blockToText(connectionId: string, orgId: string, block: any): Promise<string> {
   let text = ''
   const type = block.type
   const blockData = block[type]
@@ -64,7 +70,7 @@ async function blockToText(connectionId: string, block: any): Promise<string> {
   if (!blockData || !blockData.rich_text) {
     // Handle blocks with children that don't have rich_text directly (like toggle, column_list)
     if (block.has_children) {
-      return await fetchPageContent(connectionId, block.id)
+      return await fetchPageContent(connectionId, orgId, block.id)
     }
     return ''
   }
@@ -104,7 +110,7 @@ async function blockToText(connectionId: string, block: any): Promise<string> {
   }
 
   if (block.has_children) {
-    text += await fetchPageContent(connectionId, block.id)
+    text += await fetchPageContent(connectionId, orgId, block.id)
   }
 
   return text

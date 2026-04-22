@@ -1,65 +1,36 @@
-import { getToken } from '@/lib/nango/client'
+import { baseFetch, getProviderToken, baseFetchRaw } from '../base'
 
-export async function graphFetch(connectionId: string, endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<any> {
-  const token = await getToken(connectionId, 'microsoft')
-  try {
-    const res = await fetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
-      ...options,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (res.status === 429 && retryCount < 3) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10)
-        console.warn(`[Graph API] Rate limited. Retrying after ${retryAfter}s...`)
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000))
-        return graphFetch(connectionId, endpoint, options, retryCount + 1)
-    }
-
-    if (!res.ok) {
-        const errorText = await res.text()
-        throw new Error(`Graph API: ${res.status} ${errorText}`)
-    }
-    // Return empty object for empty responses (like 204 No Content)
-    if (res.status === 204) return {}
-    return res.json()
-  } finally {
-    // token goes out of scope — GC
-  }
+export async function graphFetch(connectionId: string, orgId: string, endpoint: string, options: any = {}): Promise<any> {
+  const token = await getProviderToken(connectionId, 'microsoft', orgId)
+  
+  return baseFetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
+    method: options.method || 'GET',
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`
+    },
+    body: options.body ? JSON.parse(options.body) : undefined
+  })
 }
 
-export async function graphDownload(connectionId: string, endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<ArrayBuffer> {
-    const token = await getToken(connectionId, 'microsoft')
-    const res = await fetch(`https://graph.microsoft.com/v1.0${endpoint}`, {
-        ...options,
+export async function graphDownload(connectionId: string, orgId: string, endpoint: string, options: any = {}): Promise<ArrayBuffer> {
+    const token = await getProviderToken(connectionId, 'microsoft', orgId)
+    const res = await baseFetchRaw(`https://graph.microsoft.com/v1.0${endpoint}`, {
+        method: 'GET',
         headers: {
             ...options.headers,
             Authorization: `Bearer ${token}`,
         },
     })
 
-    if (res.status === 429 && retryCount < 3) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10)
-        console.warn(`[Graph API Download] Rate limited. Retrying after ${retryAfter}s...`)
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000))
-        return graphDownload(connectionId, endpoint, options, retryCount + 1)
-    }
-
-    if (!res.ok) {
-        const errorText = await res.text()
-        throw new Error(`Graph API Download: ${res.status} ${errorText}`)
-    }
     return res.arrayBuffer()
 }
 
 // Helper for pagination (Graph uses @odata.nextLink)
-export async function* paginate(connectionId: string, endpoint: string) {
+export async function* paginate(connectionId: string, orgId: string, endpoint: string) {
   let url = endpoint
   while (url) {
-    const data = await graphFetch(connectionId, url)
+    const data = await graphFetch(connectionId, orgId, url)
     if (data.value && Array.isArray(data.value)) {
       yield* data.value
     }

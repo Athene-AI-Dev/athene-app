@@ -1,8 +1,8 @@
 import { notionFetch } from './client'
-import { FetchedChunk } from '../types'
+import { FetchedChunk } from '../base'
 
-export async function notionSearch(connectionId: string, query: string): Promise<FetchedChunk[]> {
-  const searchResults = await notionFetch(connectionId, '/search', {
+export async function notionSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
+  const searchResults = await notionFetch(connectionId, orgId, '/search', {
     query,
     filter: {
       property: 'object',
@@ -16,15 +16,16 @@ export async function notionSearch(connectionId: string, query: string): Promise
   for (const page of searchResults.results) {
     if (page.object !== 'page') continue
     
-    // For search, we might not want to fetch the whole content recursively if it's too slow.
-    // But the instructions say "uses /search endpoint".
-    // I'll return a snippet or title for now, or fetch if needed.
-    // The instructions for registerSearcher say: "uses /search endpoint"
-    
     chunks.push({
+      chunk_id: `notion_search_${page.id}`,
       title: getPageTitle(page),
-      content: `Page ID: ${page.id}. URL: ${page.url}`, // Simplified for search results
-      source_url: page.url
+      content: `Search result content - Page ID: ${page.id}. URL: ${page.url}`, 
+      source_url: page.url,
+      metadata: {
+        provider: 'notion',
+        resource_type: 'page',
+        last_modified: page.last_edited_time
+      }
     })
   }
 

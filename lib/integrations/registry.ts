@@ -1,7 +1,7 @@
-import { FetchedChunk } from './types'
+import { FetchedChunk } from './base'
 
-export type FetcherFn = (connectionId: string) => Promise<FetchedChunk[]>
-export type SearcherFn = (connectionId: string, query: string) => Promise<FetchedChunk[]>
+export type FetcherFn = (connectionId: string, orgId: string) => Promise<FetchedChunk[]>
+export type SearcherFn = (connectionId: string, orgId: string, query: string) => Promise<FetchedChunk[]>
 
 const providers: Record<string, FetcherFn> = {}
 const searchers: Record<string, SearcherFn> = {}

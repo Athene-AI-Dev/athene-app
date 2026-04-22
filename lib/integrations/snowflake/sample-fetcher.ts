@@ -1,9 +1,9 @@
 import { snowflakeFetch } from './client'
 import { parseSnowflakeRows } from './schema-fetcher'
 import { getConnection } from '@/lib/nango/client'
-import { FetchedChunk } from '../types'
+import { FetchedChunk } from '../base'
 
-export async function fetchSnowflakeSamples(connectionId: string): Promise<FetchedChunk[]> {
+export async function fetchSnowflakeSamples(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const connection = await getConnection(connectionId, 'snowflake')
   const allowlist = connection.metadata?.allowlist as string[] | undefined
 
@@ -18,7 +18,7 @@ export async function fetchSnowflakeSamples(connectionId: string): Promise<Fetch
   for (const tableFullName of allowlist) {
     if (!identifierRegex.test(tableFullName)) continue
     try {
-      const response = await snowflakeFetch(connectionId, `SELECT * FROM ${tableFullName} LIMIT 100`)
+      const response = await snowflakeFetch(connectionId, orgId, `SELECT * FROM ${tableFullName} LIMIT 100`)
       const rows = parseSnowflakeRows(response)
       
       if (rows.length === 0) continue
@@ -33,10 +33,13 @@ export async function fetchSnowflakeSamples(connectionId: string): Promise<Fetch
       const tableName = parts[parts.length - 1]
 
       chunks.push({
+        chunk_id: `snowflake_sample_${tableFullName}`,
         title: `table: ${tableName}`,
         content,
-        source_url: `snowflake://${tableFullName}`, // Identifier for source
+        source_url: `snowflake://${tableFullName}`, 
         metadata: {
+          provider: 'snowflake',
+          resource_type: 'table_sample',
           table: tableFullName,
           database: parts.length === 3 ? parts[0] : undefined,
           schema: parts.length >= 2 ? parts[parts.length - 2] : undefined

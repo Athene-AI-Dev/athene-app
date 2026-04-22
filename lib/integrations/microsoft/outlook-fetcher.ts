@@ -28,8 +28,8 @@ export interface EmailDraft {
  * CRITICAL: Email bodies are NEVER indexed. Only fetched live and discarded.
  * We only fetch the bodyPreview for the briefing.
  */
-export async function fetchUnreadEmails(connectionId: string, limit = 20) {
-  const data = await graphFetch(connectionId, `/me/messages?$filter=isRead eq false&$top=${limit}&$select=subject,from,receivedDateTime,bodyPreview`)
+export async function fetchUnreadEmails(connectionId: string, orgId: string, limit = 20) {
+  const data = await graphFetch(connectionId, orgId, `/me/messages?$filter=isRead eq false&$top=${limit}&$select=subject,from,receivedDateTime,bodyPreview`)
   return data.value
 }
 
@@ -37,8 +37,8 @@ export async function fetchUnreadEmails(connectionId: string, limit = 20) {
  * Fetches the full body of a specific email.
  * Implementation note: caller must discard after use.
  */
-export async function fetchEmailBody(connectionId: string, messageId: string): Promise<string> {
-  const data = await graphFetch(connectionId, `/me/messages/${messageId}?$select=body`)
+export async function fetchEmailBody(connectionId: string, orgId: string, messageId: string): Promise<string> {
+  const data = await graphFetch(connectionId, orgId, `/me/messages/${messageId}?$select=body`)
   return data.body.content
 }
 
@@ -46,8 +46,8 @@ export async function fetchEmailBody(connectionId: string, messageId: string): P
  * Sends an email on behalf of the user.
  * Requires approval upstream.
  */
-export async function sendEmail(connectionId: string, message: EmailDraft) {
-  await graphFetch(connectionId, `/me/sendMail`, {
+export async function sendEmail(connectionId: string, orgId: string, message: EmailDraft) {
+  await graphFetch(connectionId, orgId, `/me/sendMail`, {
     method: 'POST',
     body: JSON.stringify({ message, saveToSentItems: true }),
   })

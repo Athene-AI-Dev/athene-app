@@ -12,17 +12,18 @@ export const liveSearchTool = new DynamicStructuredTool({
   description: "Performs a real-time search across an external integration (Notion search endpoint, Snowflake SQL LIKE) for a specific query.",
   schema: z.object({
     provider: z.string().describe("The integration provider (e.g., 'notion', 'snowflake')"),
-    connectionId: z.string().describe("The Nango connection ID for the user's integration"),
-    query: z.string().describe("The search query string")
+    connectionId: z.string().describe("The Nango connection ID"),
+    orgId: z.string().describe("The organization ID for authentication verification"),
+    query: z.string().describe("The search query")
   }),
-  func: async ({ provider, connectionId, query }) => {
+  func: async ({ provider, connectionId, orgId, query }) => {
     const searcher = getSearcher(provider);
     if (!searcher) {
       return `Error: No searcher registered for provider '${provider}'`;
     }
 
     try {
-      const results = await searcher(connectionId, query);
+      const results = await searcher(connectionId, orgId, query);
       if (results.length === 0) {
         return `No results found for query: "${query}"`;
       }

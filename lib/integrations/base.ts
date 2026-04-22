@@ -1,5 +1,6 @@
 import { getConnectionToken } from '@/lib/nango/client'
 import { getProviderConfig, type ProviderKey } from './providers'
+import { Nango } from '@nangohq/node'
 
 // ─── Shared output type ─────────────────────────────────────────────────────
 
@@ -26,6 +27,25 @@ export interface FetchedChunk {
   }
 }
 
+/**
+ * Signature for a background fetcher (full sync).
+ */
+export type ProviderFetcher = (
+  connectionId: string,
+  orgId: string,
+  options?: { since?: string; limit?: number }
+) => Promise<FetchedChunk[]>
+
+/**
+ * Signature for a live searcher (query-time, ephemeral).
+ */
+export type ProviderSearcher = (
+  connectionId: string,
+  orgId: string,
+  query: string,
+  options?: { limit?: number }
+) => Promise<FetchedChunk[]>
+
 // ─── Token helper ────────────────────────────────────────────────────────────
 
 /**
@@ -47,6 +67,43 @@ export async function getProviderToken(
 ): Promise<string> {
   const nangoIntegrationId = getProviderConfig(providerKey).nangoIntegrationId
   return getConnectionToken(connectionId, nangoIntegrationId, orgId)
+}
+
+// ─── Metadata helper ─────────────────────────────────────────────────────────
+
+/**
+ * Fetches connection metadata from Nango.
+ * Used to retrieve subdomains, account IDs, etc.
+ * 🔒 Rule 1: Always pass orgId for verification.
+ */
+export async function getProviderMetadata(
+  connectionId: string,
+  providerKey: ProviderKey,
+  orgId: string
+): Promise<Record<string, any>> {
+  if (!orgId) {
+    throw new Error('orgId is required to fetch connection metadata');
+  }
+
+  const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+  if (!nangoSecretKey) {
+    throw new Error('Missing NANGO_SECRET_KEY environment variable');
+  }
+
+  const nangoIntegrationId = getProviderConfig(providerKey).nangoIntegrationId;
+  const nango = new Nango({ secretKey: nangoSecretKey });
+  const connection = await nango.getConnection(nangoIntegrationId, connectionId);
+
+  // Security check: verify metadata org_id matches
+  if (connection.metadata?.org_id && connection.metadata.org_id !== orgId) {
+    throw new Error('Unauthorized: Connection metadata orgId mismatch');
+  }
+
+  return {
+    ...connection.metadata,
+    ...connection.connection_config,
+    ...(connection as any).credentials?.raw,
+  };
 }
 
 // ─── Retry + rate-limit fetch ────────────────────────────────────────────────

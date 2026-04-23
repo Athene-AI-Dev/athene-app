@@ -20,7 +20,6 @@ import type {
   KGProvenance,
   Visibility,
 } from "./types";
-import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 2048;
@@ -258,13 +257,11 @@ async function extractFromChunk(chunk: ExtractorChunk): Promise<ExtractionResult
  * merged record unions `department_ids` and `source_documents`.
  */
 export async function extractEntitiesAndRelations(
-  ctx: RLSContext,
   chunks: ExtractorChunk[]
 ): Promise<ExtractionResult> {
-  return withRLS(ctx, async () => {
-    if (!Array.isArray(chunks) || chunks.length === 0) {
-      return { nodes: [], edges: [] };
-    }
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    return { nodes: [], edges: [] };
+  }
 
   // Running chunk LLM calls in parallel up to a small cap keeps wall
   // time reasonable without hammering the Haiku rate limit.
@@ -320,11 +317,10 @@ export async function extractEntitiesAndRelations(
     }
   }
 
-    return {
-      nodes: Array.from(nodeMap.values()),
-      edges: Array.from(edgeMap.values()),
-    };
-  });
+  return {
+    nodes: Array.from(nodeMap.values()),
+    edges: Array.from(edgeMap.values()),
+  };
 }
 
 // ---- Small pure helpers (exported for tests) ------------------

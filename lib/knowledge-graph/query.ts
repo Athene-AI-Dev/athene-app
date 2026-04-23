@@ -9,7 +9,7 @@ import type { KGNode } from "./types";
 
 export type GraphNode = KGNode & { 
   id: string; 
-  community?: number; 
+  community?: string; 
   updated_at?: string; 
 };
 
@@ -32,10 +32,13 @@ export type QueryResult = {
   nodes: GraphNode[];
   edges: GraphEdge[];
   boundary_reached: boolean;
+  truncated?: boolean;
 };
 
 /**
  * Find nodes by label or description (case-insensitive).
+ * Uses PostgREST ilike for prefix/infix matches. While this can utilize
+ * the gin_trgm index, it is not a true similarity() search.
  */
 export async function searchNodes(
   ctx: RLSContext,
@@ -57,14 +60,16 @@ export async function searchNodes(
     return {
       nodes,
       edges: [],
-      boundary_reached: nodes.length >= limit,
+      boundary_reached: false,
+      truncated: nodes.length >= limit,
     };
   });
 }
 
 /**
  * Filtered search for nodes.
- * Uses the gin_trgm index on the label column for performance.
+ * Uses PostgREST ilike for prefix/infix matches on the label column.
+ * Optimized by the gin_trgm index, but performs string matching rather than similarity search.
  */
 export async function findNodes(
   ctx: RLSContext,
@@ -95,7 +100,8 @@ export async function findNodes(
     return {
       nodes,
       edges: [],
-      boundary_reached: nodes.length >= limit,
+      boundary_reached: false,
+      truncated: nodes.length >= limit,
     };
   });
 }
@@ -139,7 +145,7 @@ export async function traverseFromNode(
       let query = supabase
         .from("kg_edges")
         .select("*, source:kg_nodes!source_node(*), target:kg_nodes!target_node(*)")
-        .or(`source_node.in.(${currentHopNodes.join(",")}),target_node.in.(${currentHopNodes.join(",")})`);
+        .or(`source_node.in.(${currentHopNodes.map(id => `"${id}"`).join(",")}),target_node.in.(${currentHopNodes.map(id => `"${id}"`).join(",")})`);
 
       if (relationFilter && relationFilter.length > 0) {
         query = query.in("relation", relationFilter);
@@ -314,7 +320,7 @@ export async function getRecentNodes(
  */
 export async function getCommunity(
   ctx: RLSContext,
-  communityId: number
+  communityId: string
 ): Promise<QueryResult> {
   return withRLS(ctx, async (supabase) => {
     const { data, error } = await supabase
@@ -324,9 +330,26 @@ export async function getCommunity(
       .eq("community", communityId);
 
     if (error) throw new Error(`getCommunity failed: ${error.message}`);
+    const nodes = (data ?? []) as GraphNode[];
+    const nodeIds = nodes.map(n => n.id);
+
+    if (nodeIds.length === 0) {
+      return { nodes: [], edges: [], boundary_reached: false };
+    }
+
+    // Fetch intra-community edges
+    const { data: edges, error: edgeErr } = await supabase
+      .from("kg_edges")
+      .select("*")
+      .eq("org_id", ctx.org_id)
+      .in("source_node", nodeIds)
+      .in("target_node", nodeIds);
+
+    if (edgeErr) throw new Error(`getCommunity edges failed: ${edgeErr.message}`);
+
     return {
-      nodes: (data ?? []) as GraphNode[],
-      edges: [],
+      nodes,
+      edges: (edges ?? []) as GraphEdge[],
       boundary_reached: false,
     };
   });

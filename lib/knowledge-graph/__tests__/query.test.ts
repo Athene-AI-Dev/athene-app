@@ -18,7 +18,7 @@ type NodeRow = {
   visibility: string;
   description: string | null;
   updated_at: string;
-  community?: number;
+  community?: string;
 };
 
 type EdgeRow = {
@@ -168,13 +168,29 @@ function queryBuilder(table: "kg_nodes" | "kg_edges", activeCtx: any) {
               return String(r[col]) === val;
             }
             if (op === "in") {
-              const list = val.replace(/[()]/g, "").split(",");
+              const list = val.replace(/[()]/g, "").split(",").map(v => v.replace(/^"(.*)"$/, "$1"));
               return list.includes(String(r[col]));
             }
             return false;
           });
         });
       }
+    }
+
+    const orderFilter = filters.find(f => f.kind === "order") as { col: string, ascending: boolean } | undefined;
+    if (orderFilter) {
+      results.sort((a, b) => {
+        const valA = a[orderFilter.col];
+        const valB = b[orderFilter.col];
+        if (valA < valB) return orderFilter.ascending ? -1 : 1;
+        if (valA > valB) return orderFilter.ascending ? 1 : -1;
+        return 0;
+      });
+    }
+
+    const limitFilter = filters.find(f => f.kind === "limit") as { count: number } | undefined;
+    if (limitFilter) {
+      results = results.slice(0, limitFilter.count);
     }
 
     // console.log(`[Stub ${table}] Post-Filter count:`, results.length);
@@ -468,5 +484,60 @@ describe("getNeighbors", () => {
     const res = await getNeighbors(ctx, "n1");
     expect(res.nodes).toHaveLength(1); // Only n1
     expect(res.boundary_reached).toBe(true);
+  });
+});
+
+describe("getCommunity", () => {
+  it("returns both nodes and intra-community edges", async () => {
+    nodes.push(
+      { id: "c1-n1", org_id: "org-1", label: "N1", community: "community-42", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
+      { id: "c1-n2", org_id: "org-1", label: "N2", community: "community-42", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
+      { id: "c2-n1", org_id: "org-1", label: "N3", community: "community-99", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null }
+    );
+    edges.push({
+      id: "e-internal",
+      org_id: "org-1",
+      source_node: "c1-n1",
+      target_node: "c1-n2",
+      relation: "KNOWS",
+      provenance: "E",
+      confidence: 1.0,
+    });
+    edges.push({
+      id: "e-external",
+      org_id: "org-1",
+      source_node: "c1-n1",
+      target_node: "c2-n1",
+      relation: "KNOWS",
+      provenance: "E",
+      confidence: 1.0,
+    });
+
+    const res = await getCommunity(ctx, "community-42");
+    expect(res.nodes).toHaveLength(2);
+    expect(res.edges).toHaveLength(1);
+    expect(res.edges[0].id).toBe("e-internal");
+  });
+});
+
+describe("Truncation Semantics", () => {
+  it("searchNodes returns truncated: true when limit is reached", async () => {
+    for (let i = 0; i < 5; i++) {
+      nodes.push({ id: `item-${i}`, org_id: "org-1", label: "SearchItem", entity_type: "c", department_ids: [], visibility: "public", source_documents: [], updated_at: "", description: null });
+    }
+    const res = await searchNodes(ctx, "SearchItem", 3);
+    expect(res.nodes).toHaveLength(3);
+    expect(res.truncated).toBe(true);
+    expect(res.boundary_reached).toBe(false);
+  });
+
+  it("findNodes returns truncated: true when limit is reached", async () => {
+    for (let i = 0; i < 5; i++) {
+      nodes.push({ id: `find-${i}`, org_id: "org-1", label: "FindItem", entity_type: "c", department_ids: [], visibility: "public", source_documents: [], updated_at: "", description: null });
+    }
+    const res = await findNodes(ctx, { query: "FindItem" }, 3);
+    expect(res.nodes).toHaveLength(3);
+    expect(res.truncated).toBe(true);
+    expect(res.boundary_reached).toBe(false);
   });
 });

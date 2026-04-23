@@ -62,6 +62,7 @@ export type KGNode = {
   source_documents: string[];
   description?: string | null;
   metadata?: Record<string, unknown>;
+  updated_at?: string;
 };
 
 /** An edge to be upserted into kg_edges. Source/target are labels, not UUIDs. */

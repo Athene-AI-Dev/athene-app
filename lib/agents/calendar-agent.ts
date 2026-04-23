@@ -1,9 +1,15 @@
 import { z } from "zod";
 import * as fs from "fs";
 import * as path from "path";
-import { model } from "../langgraph/llm-factory";
+import { getModel } from "../langgraph/llm-factory";
+import { AtheneStateType } from "../langgraph/state";
+import { AIMessage } from "@langchain/core/messages";
 
-// Define the schema for the calendar event draft
+// 1. Move prompt reading to module scope for performance
+const promptPath = path.join(process.cwd(), "lib", "agents", "prompts", "calendar-draft.md");
+const promptTemplate = fs.readFileSync(promptPath, "utf-8");
+
+// 2. Define a more robust schema for the calendar event draft
 export const calendarEventSchema = z.object({
   summary: z.string().describe("The title of the meeting"),
   start: z.object({
@@ -14,7 +20,10 @@ export const calendarEventSchema = z.object({
     dateTime: z.string().describe("ISO 8601 end time"),
     timeZone: z.string().describe("The user's timezone"),
   }),
-  attendees: z.array(z.object({ email: z.string() })).optional(),
+  attendees: z.array(z.object({ 
+    email: z.string().optional(),
+    displayName: z.string().optional().describe("Full name of the attendee")
+  })).optional(),
   location: z.string().optional(),
   description: z.string().optional(),
 });
@@ -25,14 +34,10 @@ export type CalendarEventDraft = z.infer<typeof calendarEventSchema>;
  * Calendar Agent Node
  * Extracts event details from natural language and prepares a draft.
  */
-export async function calendarAgent(state: any) {
-  // 1. Load the prompt from the markdown file
-  const promptPath = path.join(__dirname, "prompts", "calendar-draft.md");
-  const promptTemplate = fs.readFileSync(promptPath, "utf-8");
-
-  // 2. Set the current context (Date and Timezone)
+export async function calendarAgent(state: AtheneStateType) {
+  // 3. Set the current context (Date and Timezone)
   const now = new Date();
-  const userTimezone = state.user?.timezone || "UTC";
+  const userTimezone = state.timezone || "UTC";
   
   const dateContext = `
 Current System Time: ${now.toISOString()}
@@ -42,8 +47,8 @@ User Timezone: ${userTimezone}
   
   const systemPrompt = promptTemplate.replace("{dateContext}", dateContext);
 
-  // 3. Draft the event using Structured Output
-  const draftModel = model.withStructuredOutput(calendarEventSchema, {
+  // 4. Draft the event using Structured Output
+  const draftModel = getModel().withStructuredOutput(calendarEventSchema, {
     name: "draft_calendar_event",
   });
 
@@ -53,7 +58,7 @@ User Timezone: ${userTimezone}
       ...state.messages,
     ]);
 
-    // 4. Return the state update (Gated by HITL interrupt)
+    // 5. Return the state update with standardized fields
     return {
       awaiting_approval: true,
       pending_action: {
@@ -62,9 +67,13 @@ User Timezone: ${userTimezone}
       },
     };
   } catch (error: any) {
-    console.error("DEBUG: OpenAI Error Details:", error.response?.data || error.message || error);
+    console.error("Calendar Agent Error:", error.message || error);
+    
+    // 6. Return a polite error message in the chat instead of crashing
     return {
-      error: "Could not parse calendar event details.",
+      messages: [new AIMessage({ 
+        content: "I'm sorry, I couldn't quite capture the meeting details. Could you please provide the time and date again?" 
+      })],
     };
   }
 }

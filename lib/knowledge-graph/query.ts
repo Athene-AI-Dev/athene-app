@@ -52,7 +52,7 @@ export async function searchNodes(
       .from("kg_nodes")
       .select("*")
       .eq("org_id", ctx.org_id)
-      .or(`label.ilike.%${query}%,description.ilike.%${query}%`)
+      .or(`label.ilike."%${query}%",description.ilike."%${query}%"`)
       .limit(limit);
 
     if (error) throw new Error(`searchNodes failed: ${error.message}`);
@@ -258,7 +258,7 @@ export async function getNeighbors(
       .from("kg_edges")
       .select("*, source:kg_nodes!source_node(*), target:kg_nodes!target_node(*)")
       .eq("org_id", ctx.org_id)
-      .or(`source_node.eq.${nodeId},target_node.eq.${nodeId}`);
+      .or(`source_node.eq."${nodeId}",target_node.eq."${nodeId}"`);
 
     if (edgeErr) throw new Error(`getNeighbors fetch failed: ${edgeErr.message}`);
 

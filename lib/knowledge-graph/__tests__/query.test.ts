@@ -153,22 +153,29 @@ function queryBuilder(table: "kg_nodes" | "kg_edges", activeCtx: any) {
         const needle = f.val.replace(/%/g, "").toLowerCase();
         results = results.filter((r) => String(r[f.col]).toLowerCase().includes(needle));
       } else if (f.kind === "or") {
-        const terms = f.query.split(",");
+        // Split by comma but NOT inside parentheses (for .in. filters)
+        const terms = f.query.split(/,(?![^()]*\))/);
         results = results.filter((r) => {
           return terms.some((term) => {
-            const parts = term.split(".");
-            const col = parts[0];
-            const op = parts[1];
-            const val = parts[2];
+            // Match col.op.val where op is eq, ilike, in
+            const match = term.match(/^([^.]+)\.([^.]+)\.(.*)$/);
+            if (!match) return false;
+            const [, col, op, rawVal] = match;
+
+            const unquote = (s: string) => s.replace(/^"(.*)"$/, "$1");
+
             if (op === "ilike") {
-              const needle = val.replace(/%/g, "").toLowerCase();
+              const needle = unquote(rawVal).replace(/%/g, "").toLowerCase();
               return String(r[col]).toLowerCase().includes(needle);
             }
             if (op === "eq") {
-              return String(r[col]) === val;
+              return String(r[col]) === unquote(rawVal);
             }
             if (op === "in") {
-              const list = val.replace(/[()]/g, "").split(",").map(v => v.replace(/^"(.*)"$/, "$1"));
+              // Extract values between parentheses and handle quotes
+              const inside = rawVal.replace(/^\((.*)\)$/, "$1");
+              // Split by comma but ignore commas inside double quotes
+              const list = inside.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => unquote(v.trim()));
               return list.includes(String(r[col]));
             }
             return false;

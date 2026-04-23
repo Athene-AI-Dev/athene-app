@@ -25,6 +25,16 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
+// ---- Mock withRLS to call directly --------------
+vi.mock("@/lib/supabase/rls-client", () => {
+  return {
+    withRLS: async <T,>(
+      _ctx: unknown,
+      cb: (sb: unknown) => Promise<T>
+    ): Promise<T> => cb({} as any), // Empty stub since we don't use supabase here
+  };
+});
+
 import {
   extractEntitiesAndRelations,
   maxVisibility,
@@ -38,6 +48,13 @@ beforeEach(() => {
   mockCallCount = 0;
   process.env.ANTHROPIC_API_KEY = "test-key";
 });
+
+const ctx = {
+  org_id: "org-1",
+  user_id: "user-1",
+  user_role: "admin" as const,
+  department_id: "dept-1",
+};
 
 const baseChunk = (overrides: Partial<ExtractorChunk> = {}): ExtractorChunk => ({
   text: "Project Helios uses AWS EKS for orchestration.",
@@ -71,7 +88,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { nodes, edges } = await extractEntitiesAndRelations(ctx, [baseChunk()]);
 
     expect(nodes).toHaveLength(2);
     const helios = nodes.find((n) => n.label === "Project Helios");
@@ -102,7 +119,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const result = await extractEntitiesAndRelations([
+    const result = await extractEntitiesAndRelations(ctx, [
       baseChunk({ chunk_index: 0, document_id: "doc-A", department_id: "dept-1" }),
       baseChunk({ chunk_index: 1, document_id: "doc-B", department_id: "dept-2" }),
     ]);
@@ -133,7 +150,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations(ctx, [baseChunk()]);
     expect(edges).toHaveLength(1);
     expect(edges[0].confidence).toBe(1.0);
   });
@@ -159,7 +176,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations(ctx, [baseChunk()]);
     expect(edges[0].provenance).toBe("AMBIGUOUS");
     expect(edges[0].confidence).toBeGreaterThanOrEqual(0);
     expect(edges[0].confidence).toBeLessThanOrEqual(1);
@@ -182,7 +199,7 @@ describe("extractEntitiesAndRelations", () => {
         ],
       }),
     ];
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations(ctx, [baseChunk()]);
     expect(edges).toHaveLength(0);
   });
 
@@ -195,13 +212,13 @@ describe("extractEntitiesAndRelations", () => {
         }) +
         "\n```",
     ];
-    const { nodes } = await extractEntitiesAndRelations([baseChunk()]);
+    const { nodes } = await extractEntitiesAndRelations(ctx, [baseChunk()]);
     expect(nodes).toHaveLength(1);
     expect(nodes[0].label).toBe("X");
   });
 
   it("returns empty result for empty input", async () => {
-    const r = await extractEntitiesAndRelations([]);
+    const r = await extractEntitiesAndRelations(ctx, []);
     expect(r.nodes).toEqual([]);
     expect(r.edges).toEqual([]);
   });

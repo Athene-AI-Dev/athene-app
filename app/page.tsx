@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 export default async function Home() {
   const { userId } = await auth();
   
-  // BYPASS: In development, always redirect to /chat if you want to skip the landing page
-  if (process.env.NODE_ENV === 'development' || userId) {
+  // Redirect to /chat if already authenticated
+  if (userId) {
     redirect("/chat");
   }
 

@@ -1,84 +1,95 @@
-import { withRLS } from "../supabase/rls-client";
+import { withRLS, type RLSContext } from "../supabase/rls-client";
 import { embed } from "../ai/embedder";
+import { searchNodes } from "../knowledge-graph/query";
 
 type Params = {
-  orgId: string;
-  userId: string;
-  role: "member" | "admin" | "bi_analyst";
+import { withRLS, type RLSContext } from "../supabase/rls-client";
+import { embed } from "../ai/embedder";
+import { searchNodes } from "../knowledge-graph/query";
+
+type Params = {
+  ctx: RLSContext;
   query: string;
   topK?: number;
+  includeGraph?: boolean;
 };
 
 /**
- * Standard vector search for documents within the user's organization and access context.
- * Utilizes Postgres RLS via the withRLS wrapper.
+ * Standard vector search for documents.
+ * Integrates knowledge graph results as a secondary context source (ATH-33).
  */
 export async function vectorSearch({
-  orgId,
-  userId,
-  role,
+  ctx,
   query,
   topK = 5,
+  includeGraph = true,
 }: Params) {
-  // 1️⃣ Embed query
-  const embedding = await embed(query); // returns number[1536]
+  const embedding = await embed(query);
 
-  return withRLS(orgId, userId, role, async (tx) => {
-    // 🔍 Query the document_embeddings table. 
-    // The <=> operator is used for cosine distance in pgvector.
-    const res = await tx.query(
-      `
-      SELECT 
-        chunk_id,
-        document_id,
-        metadata,
-        1 - (embedding <=> $1) AS score
-      FROM document_embeddings
-      ORDER BY embedding <=> $1
-      LIMIT $2;
-      `,
-      [JSON.stringify(embedding), topK]
+  return withRLS(ctx, async (supabase) => {
+    // match_documents is the correct RPC name from 008_rls_helpers.sql
+    const { data: vectorResults, error: vectorErr } = await supabase.rpc(
+      "match_documents",
+      {
+        query_embedding: embedding,
+        match_threshold: 0.5,
+        match_count: topK,
+      }
     );
 
-    return res.rows;
+    if (vectorErr) throw new Error(`Vector search failed: ${vectorErr.message}`);
+
+    let graphContext: any[] = [];
+    if (includeGraph) {
+      const graphRes = await searchNodes(ctx, query, 10);
+      graphContext = graphRes.nodes;
+    }
+
+    return {
+      documents: vectorResults ?? [],
+      graph: graphContext,
+    };
   });
 }
 
 /**
- * Cross-department vector search for bi_analysts.
- * Enforces strict role checks and visibility filters.
+ * Cross-department vector search for privileged users.
+ * Enforces strict role checks and relies on RLS to handle broader visibility.
  */
 export async function crossDeptVectorSearch(params: Params) {
-  const { role } = params;
+  const { ctx, query, topK = 5, includeGraph = true } = params;
 
-  // ⚠️ STRICT Role Check
-  if (role !== "bi_analyst") {
-    throw new Error("Unauthorized: requires bi_analyst role");
+  // Strict local check for cross-dept capability
+  if (ctx.user_role !== "super_user" && ctx.user_role !== "admin") {
+    throw new Error("Unauthorized: requires admin or super_user role");
   }
 
-  const embedding = await embed(params.query);
+  const embedding = await embed(query);
 
-  return withRLS(
-    params.orgId,
-    params.userId,
-    params.role,
-    async (tx) => {
-      const res = await tx.query(
-        `
-        SELECT 
-          chunk_id,
-          document_id,
-          metadata,
-          1 - (embedding <=> $1) AS score
-        FROM document_embeddings
-        WHERE visibility = 'bi_accessible'
-        ORDER BY embedding <=> $1
-        LIMIT $2;
-        `,
-        [JSON.stringify(embedding), params.topK || 5]
-      );
+  return withRLS(ctx, async (supabase) => {
+    // We use the same match_documents function; RLS policies for admins
+    // and super_users automatically grant wider visibility.
+    const { data: vectorResults, error: vectorErr } = await supabase.rpc(
+      "match_documents",
+      {
+        query_embedding: embedding,
+        match_threshold: 0.3, // Lower threshold for exploratory cross-dept search
+        match_count: topK,
+      }
+    );
 
-      return res.rows;
+    if (vectorErr)
+      throw new Error(`Cross-dept search failed: ${vectorErr.message}`);
+
+    let graphContext: any[] = [];
+    if (includeGraph) {
+      const graphRes = await searchNodes(ctx, query, 20);
+      graphContext = graphRes.nodes;
     }
-  );
+
+    return {
+      documents: vectorResults ?? [],
+      graph: graphContext,
+    };
+  });
 }

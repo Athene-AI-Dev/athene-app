@@ -69,6 +69,7 @@ function parseEmailDraft(raw: string): {
   cc: string[];
   subject: string;
   body: string;
+  _warning?: string;
 } {
   const fallback = { to: [], cc: [], subject: "", body: "" };
 
@@ -87,6 +88,7 @@ function parseEmailDraft(raw: string): {
       cc: Array.isArray(parsed.cc) ? parsed.cc : [],
       subject: typeof parsed.subject === "string" ? parsed.subject : "",
       body: typeof parsed.body === "string" ? parsed.body : "",
+      _warning: typeof parsed._warning === "string" ? parsed._warning : undefined,
     };
   } catch {
     console.error("[email-agent] Failed to parse LLM JSON:", text.slice(0, 200));

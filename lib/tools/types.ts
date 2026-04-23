@@ -5,7 +5,14 @@
 // role-gating contract that the registry enforces.
 // ============================================================
 
-import type { UserRole } from '@/lib/langgraph/state'
+/**
+ * Authenticated user roles that the tool registry understands.
+ * Intentionally self-contained — does not import from state or auth/rbac
+ * so the tools module has no circular dependencies.
+ *
+ * Keep in sync with UserRole in lib/langgraph/state.ts and lib/auth/rbac.ts.
+ */
+export type UserRole = 'member' | 'super_user' | 'admin'
 
 // ---- Tool name catalogue ----------------------------------------
 

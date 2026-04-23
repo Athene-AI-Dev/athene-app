@@ -18,8 +18,7 @@
 
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
-import type { UserRole } from '@/lib/auth/rbac'
-import type { ToolName, ToolMeta } from './types'
+import type { UserRole, ToolName, ToolMeta } from './types'
 
 // ---- Tool metadata catalogue ------------------------------------
 

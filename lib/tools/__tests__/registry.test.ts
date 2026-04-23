@@ -7,19 +7,18 @@ import {
   getAllToolMeta,
 } from '../registry'
 import type { ToolName } from '../types'
-import type { UserRole } from '../../langgraph/state'
 
 // ─── Role-gating tests ──────────────────────────────────────────────────────
 
 describe('Tool Registry — getToolsForRole', () => {
-  it('member gets vectorSearch, draftEmail, draftCalendarEvent but NOT crossDeptVectorSearch or planReport', () => {
+  it('member gets vectorSearch, draftEmail, draftCalendarEvent, planReport but NOT crossDeptVectorSearch', () => {
     const names = getToolNamesForRole('member')
 
     expect(names).toContain('vectorSearch')
     expect(names).toContain('draftEmail')
     expect(names).toContain('draftCalendarEvent')
+    expect(names).toContain('planReport')
     expect(names).not.toContain('crossDeptVectorSearch')
-    expect(names).not.toContain('planReport')
   })
 
   it('super_user (BI analyst) gets ALL tools including crossDeptVectorSearch', () => {
@@ -49,7 +48,7 @@ describe('Tool Registry — getToolsForRole', () => {
     const superTools = getToolsForRole('super_user')
     const adminTools = getToolsForRole('admin')
 
-    expect(memberTools).toHaveLength(3)
+    expect(memberTools).toHaveLength(4)
     expect(superTools).toHaveLength(5)
     expect(adminTools).toHaveLength(5)
 
@@ -124,14 +123,14 @@ describe('Tool Registry — Zod schemas', () => {
   it('draftEmail tool produces a structured draft', async () => {
     const tool = getToolByName('draftEmail')
     const result = await tool.invoke({
-      to: 'alice@example.com',
+      to: ['alice@example.com'],
       subject: 'Q1 Summary',
       body: 'Hi Alice, here is the summary...',
     })
     const parsed = JSON.parse(result)
 
     expect(parsed.tool).toBe('draftEmail')
-    expect(parsed.draft.to).toBe('alice@example.com')
+    expect(parsed.draft.to).toEqual(['alice@example.com'])
     expect(parsed.draft.subject).toBe('Q1 Summary')
   })
 

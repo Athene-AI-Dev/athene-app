@@ -18,7 +18,7 @@
 
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
-import type { UserRole } from '@/lib/langgraph/state'
+import type { UserRole } from '@/lib/auth/rbac'
 import type { ToolName, ToolMeta } from './types'
 
 // ---- Tool metadata catalogue ------------------------------------
@@ -60,8 +60,8 @@ const TOOL_META: Record<ToolName, ToolMeta> = {
     name: 'planReport',
     displayName: 'Plan Report',
     description:
-      'Plans a structured report by generating an outline with sections, data sources, and key questions. Available to super_users and admins.',
-    allowedRoles: ['super_user', 'admin'],
+      'Plans a structured report by generating an outline with sections, data sources, and key questions.',
+    allowedRoles: ['member', 'super_user', 'admin'],
     requiresApproval: false,
   },
 }
@@ -130,7 +130,7 @@ const draftEmailTool = new DynamicStructuredTool({
   name: 'draftEmail',
   description: TOOL_META.draftEmail.description,
   schema: z.object({
-    to: z.string().describe('Recipient email address.'),
+    to: z.array(z.string()).describe('Recipient email addresses.'),
     subject: z.string().describe('Email subject line.'),
     body: z.string().describe('Email body content in plain text.'),
     cc: z

@@ -1,11 +1,14 @@
 import { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
-import { model as synthesisModel } from "../langgraph/llm-factory";
+// import { model as synthesisModel } from "../langgraph/llm-factory"; // Removed in favor of optimally spec'd mini model
+
 import { vectorSearch } from "../tools/vector-search";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 
 // Lightweight model for the planning step — only produces a JSON array of titles.
 const plannerModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
+const synthesisModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2 }); // Slightly higher temperature for prose
+
 
 // Inlined prompt template — avoids fs.readFileSync which crashes in Edge Runtime.
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
@@ -32,17 +35,11 @@ export async function reportAgent(
   // (e.g. [{ type: "text", text: "..." }]).  Template-string interpolation
   // on an array silently produces "[object Object]", so we normalise here.
   const lastMessage = messages && messages.length > 0 ? messages[messages.length - 1] : null;
-  const rawContent = lastMessage?.content;
   const query: string =
-    typeof rawContent === "string"
-      ? rawContent
-      : Array.isArray(rawContent)
-        ? rawContent
-            .filter((b: any) => b.type === "text")
-            .map((b: any) => b.text)
-            .join(" ")
-          || "Generate a report"
-        : "Generate a report";
+    typeof lastMessage?.content === "string"
+      ? lastMessage.content
+      : JSON.stringify(lastMessage?.content ?? "Generate a report");
+
 
   // 1. Plan sections using LLM
   const planPrompt = PLAN_PROMPT_TEMPLATE.replace("{{query}}", query);

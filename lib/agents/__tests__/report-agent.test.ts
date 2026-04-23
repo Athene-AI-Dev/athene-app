@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { reportAgent } from "../report-agent";
 import { HumanMessage } from "@langchain/core/messages";
-import { model } from "../../langgraph/llm-factory";
+import { ChatOpenAI } from "@langchain/openai";
 import { vectorSearch } from "../../tools/vector-search";
 
 // Mock the vector search
@@ -9,12 +9,24 @@ vi.mock("../../tools/vector-search", () => ({
   vectorSearch: vi.fn()
 }));
 
-// Mock the LLM factory
-vi.mock("../../langgraph/llm-factory", () => ({
-  model: {
-    invoke: vi.fn()
-  }
+const { mockInvoke } = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
 }));
+
+vi.mock("@langchain/openai", () => {
+  return {
+    ChatOpenAI: vi.fn().mockImplementation(function () {
+      return {
+        invoke: mockInvoke,
+      };
+    }),
+  };
+});
+
+
+
+
+
 
 describe("reportAgent", () => {
   beforeEach(() => {
@@ -27,14 +39,14 @@ describe("reportAgent", () => {
   });
 
   it("generates a 2-section report with citations preserved per section", async () => {
-    (model.invoke as any).mockImplementation(async (messages: any[]) => {
+    mockInvoke.mockImplementation(async (messages: any[]) => {
       const prompt = messages[0].content.toString();
       if (prompt.includes("Report Planning Prompt") || prompt.includes("Return a JSON array")) {
         return { content: '["Section A", "Section B"]' };
       }
-      // Simulate LLM obeying the citation format
       return { content: "Activity was high last week [source: chk_001]. Deployment count increased [source: chk_002]." };
     });
+
 
     const fakeState: any = {
       orgId: "org_123",
@@ -64,20 +76,23 @@ describe("reportAgent", () => {
     expect(vectorSearch).toHaveBeenCalledTimes(2);
 
     // Verify chunk_id was passed to the synthesis prompt
-    const synthesisCalls = (model.invoke as any).mock.calls.filter(
+    const synthesisCalls = mockInvoke.mock.calls.filter(
       (call: any) => call[0][0].content.includes("chunk_id=")
     );
     expect(synthesisCalls.length).toBe(2);
+
+
   });
 
   it("generates a 5-section report with citations preserved per section", async () => {
-    (model.invoke as any).mockImplementation(async (messages: any[]) => {
+    mockInvoke.mockImplementation(async (messages: any[]) => {
       const prompt = messages[0].content.toString();
       if (prompt.includes("Report Planning Prompt") || prompt.includes("Return a JSON array")) {
         return { content: '["Intro", "Metrics", "Events", "Risks", "Conclusion"]' };
       }
       return { content: "Data shows growth [source: chk_001]. Risk identified in deployment pipeline [source: chk_002]." };
     });
+
 
     const fakeState: any = {
       orgId: "org_123",
@@ -110,20 +125,23 @@ describe("reportAgent", () => {
     expect(vectorSearch).toHaveBeenCalledTimes(5);
 
     // Verify chunk_id metadata was passed into every synthesis prompt
-    const synthesisCalls = (model.invoke as any).mock.calls.filter(
+    const synthesisCalls = mockInvoke.mock.calls.filter(
       (call: any) => call[0][0].content.includes("chunk_id=")
     );
     expect(synthesisCalls.length).toBe(5);
+
+
   });
 
   it("handles array-style content blocks without producing [object Object]", async () => {
-    (model.invoke as any).mockImplementation(async (messages: any[]) => {
+    mockInvoke.mockImplementation(async (messages: any[]) => {
       const prompt = messages[0].content.toString();
       if (prompt.includes("Report Planning Prompt") || prompt.includes("Return a JSON array")) {
         return { content: '["Overview"]' };
       }
       return { content: "Weekly summary data [source: chk_001]." };
     });
+
 
     // Simulate a LangChain message whose .content is an array of blocks
     const fakeState: any = {

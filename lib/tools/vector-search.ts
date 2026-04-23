@@ -1,84 +1,43 @@
-import { withRLS } from "../supabase/rls-client";
 import { embed } from "../ai/embedder";
+import { similaritySearch, type SearchResult } from "../supabase/vector";
+import type { RLSContext } from "../supabase/rls-client";
+
+export type { SearchResult };
 
 type Params = {
-  orgId: string;
-  userId: string;
-  role: "member" | "admin" | "bi_analyst";
+  ctx: RLSContext;
   query: string;
   topK?: number;
 };
 
 /**
- * Standard vector search for documents within the user's organization and access context.
- * Utilizes Postgres RLS via the withRLS wrapper.
+ * Standard vector search for documents within the user's organisation and access context.
+ * Delegates to similaritySearch() which uses withRLS() for full Postgres RLS enforcement
+ * via the match_documents() RPC function.
  */
 export async function vectorSearch({
-  orgId,
-  userId,
-  role,
+  ctx,
   query,
   topK = 5,
-}: Params) {
-  // 1️⃣ Embed query
-  const embedding = await embed(query); // returns number[1536]
-
-  return withRLS(orgId, userId, role, async (tx) => {
-    // 🔍 Query the document_embeddings table. 
-    // The <=> operator is used for cosine distance in pgvector.
-    const res = await tx.query(
-      `
-      SELECT 
-        chunk_id,
-        document_id,
-        metadata,
-        1 - (embedding <=> $1) AS score
-      FROM document_embeddings
-      ORDER BY embedding <=> $1
-      LIMIT $2;
-      `,
-      [JSON.stringify(embedding), topK]
-    );
-
-    return res.rows;
-  });
+}: Params): Promise<SearchResult[]> {
+  const embedding = await embed(query);
+  return similaritySearch(ctx, embedding, 0.5, topK);
 }
 
 /**
- * Cross-department vector search for bi_analysts.
- * Enforces strict role checks and visibility filters.
+ * Cross-department vector search — requires super_user or admin role.
+ * Raises if called by a regular member.
  */
-export async function crossDeptVectorSearch(params: Params) {
-  const { role } = params;
+export async function crossDeptVectorSearch(
+  params: Params
+): Promise<SearchResult[]> {
+  const { ctx } = params;
 
-  // ⚠️ STRICT Role Check
-  if (role !== "bi_analyst") {
-    throw new Error("Unauthorized: requires bi_analyst role");
+  if (ctx.user_role !== "super_user" && ctx.user_role !== "admin") {
+    throw new Error(
+      "Unauthorized: crossDeptVectorSearch requires super_user or admin role"
+    );
   }
 
-  const embedding = await embed(params.query);
-
-  return withRLS(
-    params.orgId,
-    params.userId,
-    params.role,
-    async (tx) => {
-      const res = await tx.query(
-        `
-        SELECT 
-          chunk_id,
-          document_id,
-          metadata,
-          1 - (embedding <=> $1) AS score
-        FROM document_embeddings
-        WHERE visibility = 'bi_accessible'
-        ORDER BY embedding <=> $1
-        LIMIT $2;
-        `,
-        [JSON.stringify(embedding), params.topK || 5]
-      );
-
-      return res.rows;
-    }
-  );
+  return vectorSearch(params);
 }

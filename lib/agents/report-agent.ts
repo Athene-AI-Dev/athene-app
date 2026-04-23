@@ -1,14 +1,14 @@
-import { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
-// import { model as synthesisModel } from "../langgraph/llm-factory"; // Removed in favor of optimally spec'd mini model
-
+import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
+import type { RLSContext } from "../supabase/rls-client";
+import type { MessageContentComplex } from "@langchain/core/messages";
 
 // Lightweight model for the planning step — only produces a JSON array of titles.
 const plannerModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
-const synthesisModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2 }); // Slightly higher temperature for prose
-
+// Slightly higher temperature for prose generation
+const synthesisModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2 });
 
 // Inlined prompt template — avoids fs.readFileSync which crashes in Edge Runtime.
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
@@ -24,22 +24,62 @@ Query: {{query}}
 Example Output:
 ["Executive Summary", "Key Metrics", "Recent Developments", "Challenges & Risks", "Conclusion"]`;
 
+/**
+ * Extract plain text from a LangChain message content value.
+ *
+ * LangChain `.content` can be a plain string OR a MessageContentComplex[] (e.g. vision
+ * or tool-result blocks). Template-string interpolation of an array produces the
+ * infamous "[object Object]" string, so we normalise here instead.
+ */
+function extractText(
+  content: string | MessageContentComplex[],
+  fallback = "Generate a report"
+): string {
+  if (typeof content === "string") return content || fallback;
+  const text = content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        typeof block === "object" &&
+        block !== null &&
+        "type" in block &&
+        block.type === "text"
+    )
+    .map((block) => block.text)
+    .join(" ")
+    .trim();
+  return text || fallback;
+}
+
 export async function reportAgent(
   state: AtheneStateType,
-  config: any
+  _config: unknown
 ): Promise<AtheneStateUpdate> {
-  const { orgId, userId, role, messages } = state;
+  const {
+    org_id,
+    user_id,
+    user_role,
+    user_dept_id,
+    accessible_dept_ids,
+    messages,
+  } = state;
 
-  // Extract the latest query.
-  // LangChain .content can be a string OR an array of content blocks
-  // (e.g. [{ type: "text", text: "..." }]).  Template-string interpolation
-  // on an array silently produces "[object Object]", so we normalise here.
-  const lastMessage = messages && messages.length > 0 ? messages[messages.length - 1] : null;
-  const query: string =
-    typeof lastMessage?.content === "string"
-      ? lastMessage.content
-      : JSON.stringify(lastMessage?.content ?? "Generate a report");
+  // Build RLS context for scoped vector search
+  const ctx: RLSContext = {
+    org_id,
+    user_id,
+    user_role,
+    department_id: user_dept_id ?? undefined,
+    accessible_dept_ids: accessible_dept_ids ?? [],
+  };
 
+  // Extract the latest query — safe against MessageContentComplex[].
+  const lastMessage =
+    messages && messages.length > 0 ? messages[messages.length - 1] : null;
+  const query: string = lastMessage
+    ? extractText(
+        lastMessage.content as string | MessageContentComplex[]
+      )
+    : "Generate a report";
 
   // 1. Plan sections using LLM
   const planPrompt = PLAN_PROMPT_TEMPLATE.replace("{{query}}", query);
@@ -50,12 +90,16 @@ export async function reportAgent(
 
   let sections: string[] = [];
   try {
-    // Attempt to parse the content as JSON.
-    let content = planResponse.content.toString();
-    if (content.startsWith("\`\`\`json")) {
-      content = content.replace(/^\`\`\`json\n?/, "").replace(/\n?\`\`\`$/, "");
+    let rawContent = extractText(
+      planResponse.content as string | MessageContentComplex[]
+    );
+    // Strip markdown code fences if the model wrapped the JSON
+    if (rawContent.startsWith("```json")) {
+      rawContent = rawContent
+        .replace(/^```json\n?/, "")
+        .replace(/\n?```$/, "");
     }
-    sections = JSON.parse(content);
+    sections = JSON.parse(rawContent);
     if (!Array.isArray(sections)) {
       sections = ["Introduction", "Key Findings", "Conclusion"];
     }
@@ -67,24 +111,29 @@ export async function reportAgent(
   // Guard: clamp to a maximum of 6 sections per spec
   sections = sections.slice(0, 6);
 
-  // 2. For each section, search and synthesize — in parallel for speed.
+  // 2. For each section, search and synthesise — in parallel for speed.
   const compiledSections = await Promise.all(
     sections.map(async (section) => {
-      // Vector search
+      // Vector search scoped to the user's RLS context
       const results = await vectorSearch({
-        orgId,
-        userId,
-        role: role as "member" | "admin" | "bi_analyst",
+        ctx,
         query: `${query} - ${section}`,
         topK: 5,
       });
 
-      // Build a structured source list with chunk_id + document_id for citations
+      // Build a structured source list with chunk_id + document_id for citations.
       const sourceDocs = results.map((r: any, i: number) => ({
         index: i + 1,
-        chunk_id: r.chunk_id ?? `chunk_${i}`,
+        chunk_id: r.chunk_id ?? r.id ?? `chunk_${i}`,
         document_id: r.document_id ?? "unknown",
-        content: r.metadata?.text_preview ?? r.metadata?.content ?? (typeof r.metadata === "object" ? JSON.stringify(r.metadata) : String(r.metadata)),
+        content:
+          r.content_preview ??
+          r.metadata?.text_preview ??
+          r.metadata?.content ??
+          r.metadata?.text ??
+          (typeof r.metadata === "object"
+            ? JSON.stringify(r.metadata)
+            : String(r.metadata ?? "")),
       }));
 
       const sourceBlock = sourceDocs
@@ -94,7 +143,7 @@ export async function reportAgent(
         )
         .join("\n\n");
 
-      // Synthesize with mandatory citation format
+      // Synthesise with mandatory citation format
       const synthesizePrompt = `You are a helpful analyst writing a section for a report.
 Section Title: ${section}
 
@@ -113,7 +162,10 @@ INSTRUCTIONS:
         new HumanMessage("Write the section now."),
       ]);
 
-      return `## ${section}\n\n${synthesizeResponse.content}`;
+      const sectionContent = extractText(
+        synthesizeResponse.content as string | MessageContentComplex[]
+      );
+      return `## ${section}\n\n${sectionContent}`;
     })
   );
 

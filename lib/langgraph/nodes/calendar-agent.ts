@@ -3,10 +3,10 @@
 // Full implementation: ATH-27
 // ============================================================
 
-import type { AtheneState, AtheneStateUpdate } from "../state";
+import type { AtheneStateType, AtheneStateUpdate } from "../state";
 
 export async function calendarAgentNode(
-  state: AtheneState,
+  state: AtheneStateType,
 ): Promise<AtheneStateUpdate> {
   // TODO (ATH-27): handle calendar-read, find-free-slot, calendar-create.
   // For create: set awaiting_approval=true and pending_write_action

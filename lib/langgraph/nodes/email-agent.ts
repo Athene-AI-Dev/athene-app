@@ -3,10 +3,10 @@
 // Full implementation: ATH-26
 // ============================================================
 
-import type { AtheneState, AtheneStateUpdate } from "../state";
+import type { AtheneStateType, AtheneStateUpdate } from "../state";
 
 export async function emailAgentNode(
-  state: AtheneState,
+  state: AtheneStateType,
 ): Promise<AtheneStateUpdate> {
   // TODO (ATH-26): handle email-read, email-draft, email-send.
   // For send: set awaiting_approval=true and pending_write_action

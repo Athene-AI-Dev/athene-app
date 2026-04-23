@@ -3,31 +3,30 @@ import mammoth from 'mammoth'
 import * as pdf from 'pdf-parse'
 import * as xlsx from 'xlsx'
 
-export async function listSharePointDocs(connectionId: string, siteId: string, itemId: string = 'root') {
+export async function listSharePointDocs(connectionId: string, orgId: string, siteId: string, itemId: string = 'root') {
   const items: any[] = []
-  const endpoint = itemId === 'root' 
-    ? `/sites/${siteId}/drive/root/children` 
+  const endpoint = itemId === 'root'
+    ? `/sites/${siteId}/drive/root/children`
     : `/sites/${siteId}/drive/items/${itemId}/children`
-    
-  for await (const item of paginate(connectionId, endpoint)) {
+
+  for await (const item of paginate(connectionId, orgId, endpoint)) {
     if (item.file) {
       items.push(item)
     } else if (item.folder) {
-      // Recurse to find all files in subfolders
-      const children = await listSharePointDocs(connectionId, siteId, item.id)
+      const children = await listSharePointDocs(connectionId, orgId, siteId, item.id)
       items.push(...children)
     }
   }
   return items
 }
 
-export async function fetchDocContent(connectionId: string, driveId: string, itemId: string): Promise<string> {
+export async function fetchDocContent(connectionId: string, orgId: string, driveId: string, itemId: string): Promise<string> {
   // 1. Get item metadata to determine file type
-  const item = await graphFetch(connectionId, `/drives/${driveId}/items/${itemId}`)
+  const item = await graphFetch(connectionId, orgId, `/drives/${driveId}/items/${itemId}`)
   const fileName = item.name.toLowerCase()
-  
+
   // 2. Download content
-  const arrayBuffer = await graphDownload(connectionId, `/drives/${driveId}/items/${itemId}/content`)
+  const arrayBuffer = await graphDownload(connectionId, orgId, `/drives/${driveId}/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
   if (fileName.endsWith('.docx')) {
@@ -58,7 +57,7 @@ export async function fetchDocContent(connectionId: string, driveId: string, ite
  * Fetches the assigned permissions for a specific SharePoint document.
  * This includes who has access (people, groups) and what role they have.
  */
-export async function getSharePointItemPermissions(connectionId: string, driveId: string, itemId: string) {
-  const data = await graphFetch(connectionId, `/drives/${driveId}/items/${itemId}/permissions`)
+export async function getSharePointItemPermissions(connectionId: string, orgId: string, driveId: string, itemId: string) {
+  const data = await graphFetch(connectionId, orgId, `/drives/${driveId}/items/${itemId}/permissions`)
   return data.value // Returns a list of Permission objects
 }

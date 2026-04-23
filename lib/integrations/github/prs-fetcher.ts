@@ -1,6 +1,5 @@
 import { githubFetch } from './client';
 import { FetchedChunk } from '../base';
-import { indexDocument } from '../indexing';
 
 const PRS_QUERY = `
   query GetPRs($owner: String!, $repo: String!, $cursor: String) {
@@ -57,9 +56,8 @@ export async function githubPrsFetcher(connectionId: string, orgId: string, owne
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk, orgId);
     }
-    
+
     hasNextPage = prsResult.pageInfo.hasNextPage;
     cursor = prsResult.pageInfo.endCursor;
   }

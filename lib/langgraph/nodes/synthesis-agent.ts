@@ -3,19 +3,14 @@
 // Full implementation: ATH-29
 // ============================================================
 
-import type { AtheneState, AtheneStateUpdate } from "../state";
+import type { AtheneStateType, AtheneStateUpdate } from "../state";
 
 export async function synthesisAgentNode(
-  state: AtheneState,
+  state: AtheneStateType,
 ): Promise<AtheneStateUpdate> {
-  // TODO (ATH-29): build final_answer + cited_sources from
-  // retrieved_chunks and messages; clear retrieved_chunks after use.
+  // TODO (ATH-29): build final answer from retrievedDocs + messages.
   void state;
   return {
-    final_answer: null,
-    cited_sources: [],
-    // Ephemeral chunks cleared after synthesis
-    retrieved_chunks: [],
-    run_status: "completed",
+    run_status: "complete",
   };
 }

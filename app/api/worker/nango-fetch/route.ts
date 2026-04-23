@@ -21,10 +21,27 @@ import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { releaseSlot } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
-import { searchSlack } from '@/lib/integrations/slack/searcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
 import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetcher'
-import { slackFetch } from '@/lib/integrations/slack/client'
+import { fetchCalendarChunks } from '@/lib/integrations/google/calendar-fetcher'
+import { fetchDriveChunks } from '@/lib/integrations/google/drive-fetcher'
+import { searchEmailChunks } from '@/lib/integrations/google/gmail-fetcher'
+import { fetchHubSpotCompanies } from '@/lib/integrations/hubspot/companies-fetcher'
+import { fetchHubSpotContacts } from '@/lib/integrations/hubspot/contacts-fetcher'
+import { fetchHubSpotDeals } from '@/lib/integrations/hubspot/deals-fetcher'
+import { fetchHubSpotNotes } from '@/lib/integrations/hubspot/notes-fetcher'
+import { fetchAllDatabases } from '@/lib/integrations/notion/databases-fetcher'
+import { fetchAllPages } from '@/lib/integrations/notion/pages-fetcher'
+import { fetchSalesforceAccounts } from '@/lib/integrations/salesforce/accounts-fetcher'
+import { fetchSalesforceCases } from '@/lib/integrations/salesforce/cases-fetcher'
+import { fetchSalesforceOpportunities } from '@/lib/integrations/salesforce/opportunities-fetcher'
+import { fetchSnowflakeSamples } from '@/lib/integrations/snowflake/sample-fetcher'
+import { githubIssuesFetcher } from '@/lib/integrations/github/issues-fetcher'
+import { githubPrsFetcher } from '@/lib/integrations/github/prs-fetcher'
+import { githubWikiFetcher } from '@/lib/integrations/github/wiki-fetcher'
+import { linearIssuesFetcher } from '@/lib/integrations/linear/issues-fetcher'
+import { linearCyclesFetcher } from '@/lib/integrations/linear/cycles-fetcher'
+import { linearProjectsFetcher } from '@/lib/integrations/linear/projects-fetcher'
 import { getProviderMetadata } from '@/lib/integrations/base'
 import type { FetchedChunk } from '@/lib/integrations/base'
 
@@ -42,28 +59,81 @@ type FetcherFn = (
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
   slack: [
-    // Slack: fetch channels first, then threads for high-reply messages
-    async (connectionId, orgId, options) => {
-      return fetchSlackMessages(connectionId, orgId)
-    },
+    async (connectionId, orgId) => fetchSlackMessages(connectionId, orgId),
   ],
 
   zendesk: [
-    // Zendesk: fetch tickets and articles in parallel
-    async (connectionId, orgId, options) => {
+    async (connectionId, orgId) => {
       const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
-      const subdomain = metadata.subdomain
-      
-      if (!subdomain) {
-        throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
-      }
-
+      const subdomain = metadata.subdomain as string | undefined
+      if (!subdomain) throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
       const [tickets, articles] = await Promise.all([
         fetchZendeskTickets(connectionId, orgId, subdomain),
         fetchZendeskArticles(connectionId, orgId, subdomain),
       ])
       return [...tickets, ...articles]
     },
+  ],
+
+  google: [
+    async (connectionId, orgId) => {
+      const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const timeMax = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
+      return fetchCalendarChunks(connectionId, orgId, timeMin, timeMax)
+    },
+    async (connectionId, orgId) => fetchDriveChunks(connectionId, orgId),
+    async (connectionId, orgId) => searchEmailChunks(connectionId, orgId, ''),
+  ],
+
+  hubspot: [
+    async (connectionId, orgId) => fetchHubSpotCompanies(connectionId, orgId),
+    async (connectionId, orgId) => fetchHubSpotContacts(connectionId, orgId),
+    async (connectionId, orgId) => fetchHubSpotDeals(connectionId, orgId),
+    async (connectionId, orgId) => fetchHubSpotNotes(connectionId, orgId),
+  ],
+
+  notion: [
+    async (connectionId, orgId) => fetchAllDatabases(connectionId, orgId),
+    async (connectionId, orgId) => fetchAllPages(connectionId, orgId),
+  ],
+
+  salesforce: [
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'salesforce', orgId)
+      const instanceUrl = metadata.instance_url as string | undefined
+      if (!instanceUrl) throw new Error(`Salesforce instance_url not found for connection ${connectionId}`)
+      const [accounts, cases, opportunities] = await Promise.all([
+        fetchSalesforceAccounts(connectionId, instanceUrl, orgId),
+        fetchSalesforceCases(connectionId, instanceUrl, orgId),
+        fetchSalesforceOpportunities(connectionId, instanceUrl, orgId),
+      ])
+      return [...accounts, ...cases, ...opportunities]
+    },
+  ],
+
+  snowflake: [
+    async (connectionId, orgId) => fetchSnowflakeSamples(connectionId, orgId),
+  ],
+
+  github: [
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'github', orgId)
+      const owner = metadata.owner as string | undefined
+      const repo = metadata.repo as string | undefined
+      if (!owner || !repo) throw new Error(`GitHub owner/repo not found for connection ${connectionId}`)
+      const [issues, prs, wiki] = await Promise.all([
+        githubIssuesFetcher(connectionId, orgId, owner, repo),
+        githubPrsFetcher(connectionId, orgId, owner, repo),
+        githubWikiFetcher(connectionId, orgId, owner, repo),
+      ])
+      return [...issues, ...prs, ...wiki]
+    },
+  ],
+
+  linear: [
+    async (connectionId, orgId) => linearIssuesFetcher(connectionId, orgId),
+    async (connectionId, orgId) => linearCyclesFetcher(connectionId, orgId),
+    async (connectionId, orgId) => linearProjectsFetcher(connectionId, orgId),
   ],
 }
 
@@ -72,7 +142,7 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
 interface NangoFetchJobBody {
   orgId: string
   connectionId: string
-  provider: string           // 'slack' | 'zendesk'
+  provider: string           // 'slack' | 'zendesk' | 'google' | 'hubspot' | 'notion' | 'salesforce' | 'snowflake' | 'github' | 'linear'
   sourceType: string         // same as provider, used for QStash concurrency key
   departmentId?: string | null
   since?: string             // ISO-8601, for incremental sync
@@ -122,10 +192,11 @@ export async function POST(request: Request): Promise<Response> {
       allChunks.push(...chunks)
     }
 
-    // 5. Index all fetched chunks
+    // 5. Index all fetched chunks (connectionId resolves/creates the documents row)
     const result = await indexDocuments(
       allChunks,
       orgId,
+      connectionId,
       departmentId ?? null
     )
 

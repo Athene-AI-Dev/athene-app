@@ -8,7 +8,7 @@
 // Full implementation: ATH-30
 // ============================================================
 
-import type { AtheneState, AtheneStateUpdate } from "../state";
+import type { AtheneStateType, AtheneStateUpdate } from "../state";
 
 /**
  * approval_node — receives the human decision after the interrupt.
@@ -18,7 +18,7 @@ import type { AtheneState, AtheneStateUpdate } from "../state";
  * the resumed state. This node clears the gate and proceeds.
  */
 export async function approvalNode(
-  state: AtheneState,
+  state: AtheneStateType,
 ): Promise<AtheneStateUpdate> {
   // TODO (ATH-30): check decision (approved/edited/rejected),
   // execute or discard pending_write_action accordingly,

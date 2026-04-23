@@ -71,7 +71,7 @@ export async function indexConfluenceSpace(
   connectionId: string,
   spaceKey: string,
   orgId: string,
-  deptId: string
+  deptId: string | null
 ): Promise<IndexConfluenceResult> {
   const cloudId = await getCloudId(connectionId, orgId, 'confluence')
   let start = 0
@@ -113,14 +113,14 @@ export async function indexConfluenceSpace(
           space_key: spaceKey,
           page_id: page.id,
           labels,
-          last_modified: page.version?.when ?? null,
-          author: page.version?.by?.displayName ?? null,
+          last_modified: page.version?.when ?? undefined,
+          author: page.version?.by?.displayName ?? undefined,
         },
       })
     }
 
     if (chunks.length > 0) {
-      const { indexed, errors } = await indexDocuments(chunks, orgId, deptId)
+      const { indexed, errors } = await indexDocuments(chunks, orgId, connectionId, deptId)
       totalIndexed += indexed
       totalFailed += errors
     }

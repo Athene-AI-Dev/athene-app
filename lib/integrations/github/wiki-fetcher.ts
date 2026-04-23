@@ -1,6 +1,5 @@
 import { githubRestFetch } from './client';
 import { FetchedChunk } from '../base';
-import { indexDocument } from '../indexing';
 
 export async function githubWikiFetcher(connectionId: string, orgId: string, owner: string, repo: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = [];
@@ -46,7 +45,6 @@ export async function githubWikiFetcher(connectionId: string, orgId: string, own
         };
 
         chunks.push(chunk);
-        await indexDocument(chunk, orgId);
       }
     }
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { agentGraph } from "@/lib/langgraph/graph";
 import { HumanMessage } from "@langchain/core/messages";
+import { mapRole } from "@/lib/auth/clerk";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,15 +14,14 @@ export async function POST(req: NextRequest) {
 
     const { message, threadId } = await req.json();
 
-    // Map Clerk roles to our internal RLS roles
-    const role = orgRole === "admin" ? "admin" : 
-                 orgRole === "org:bi_analyst" ? "bi_analyst" : "member";
+    // Map Clerk org role to our internal user_role (member | super_user | admin)
+    const user_role = mapRole(orgRole ?? undefined) ?? "member";
 
     const initialState = {
       messages: [new HumanMessage(message)],
       orgId,
       userId,
-      role,
+      user_role,
     };
 
     const encoder = new TextEncoder();
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
           metadata: {
             orgId,
             userId,
-            role,
+            user_role,
           },
           streamMode: "values",
         });

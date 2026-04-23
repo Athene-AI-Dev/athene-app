@@ -111,23 +111,78 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
 // ---- Main Indexing Function -------------------------------------
 
+// ---- Document record resolution ---------------------------------
+
+type VisibilityLevel = 'org_wide' | 'department' | 'bi_accessible' | 'confidential' | 'restricted'
+
+/**
+ * Upserts a row in the `documents` table for this chunk and returns its UUID.
+ * Uses UNIQUE (org_id, connection_id, external_id) to make it idempotent.
+ */
+async function upsertDocumentRecord(
+  chunk: FetchedChunk,
+  orgId: string,
+  connectionId: string,
+  departmentId: string | null,
+  visibility: VisibilityLevel,
+  ownerUserId: string | null
+): Promise<string> {
+  const { data, error } = await supabaseAdmin
+    .from('documents')
+    .upsert(
+      {
+        org_id: orgId,
+        connection_id: connectionId,
+        external_id: chunk.chunk_id,
+        title: chunk.title,
+        source_type: chunk.metadata.provider,
+        department_id: departmentId,
+        owner_user_id: ownerUserId,
+        visibility,
+        external_url: chunk.source_url,
+        metadata: chunk.metadata,
+      },
+      { onConflict: 'org_id,connection_id,external_id' }
+    )
+    .select('id')
+    .single()
+
+  if (error || !data) {
+    throw new Error(`[indexing] Failed to upsert document record: ${error?.message}`)
+  }
+  return data.id as string
+}
+
+// ---- Main Indexing Function -------------------------------------
+
 /**
  * Indexes a single FetchedChunk into the vector store.
  *
  * Flow:
- *   1. Chunk the content if it exceeds CHUNK_SIZE_CHARS
- *   2. Generate embeddings for all chunks in a batch
- *   3. Upsert each chunk + embedding into document_embeddings
+ *   1. Upsert the document metadata row (resolves/creates documents.id)
+ *   2. Chunk the content if it exceeds CHUNK_SIZE_CHARS
+ *   3. Generate embeddings for all chunks in a batch
+ *   4. Upsert each chunk + embedding into document_embeddings
  *
- * @param chunk - The fetched chunk to index
- * @param orgId - Organization ID (for RLS tagging)
- * @param departmentId - Department ID (for RLS tagging, nullable)
+ * @param chunk       - The fetched chunk to index
+ * @param orgId       - Organization ID
+ * @param connectionId - Nango connection UUID (links to connections.id)
+ * @param departmentId - Department UUID for RLS scoping (nullable)
+ * @param visibility  - Row-level visibility level
+ * @param ownerUserId - org_members.id of the document owner (nullable)
  */
 export async function indexDocument(
   chunk: FetchedChunk,
   orgId: string,
-  departmentId: string | null
+  connectionId: string,
+  departmentId: string | null,
+  visibility: VisibilityLevel = 'department',
+  ownerUserId: string | null = null
 ): Promise<void> {
+  // 0. Resolve/create the documents row
+  const documentId = await upsertDocumentRecord(
+    chunk, orgId, connectionId, departmentId, visibility, ownerUserId
+  )
   // 1. Split content into chunks
   const contentChunks = chunkContent(chunk.content)
 
@@ -136,27 +191,25 @@ export async function indexDocument(
   // 2. Generate embeddings for all chunks in a single batch
   const embeddings = await generateEmbeddings(contentChunks)
 
-  // 3. Build the records to upsert
+  // 3. Build the records to upsert — must match document_embeddings schema exactly
   const records = contentChunks.map((text, index) => ({
-    // Deterministic ID: chunk_id + chunk_index
-    // This enables idempotent upserts (re-indexing overwrites, not duplicates)
-    id: `${chunk.chunk_id}_${index}`,
     org_id: orgId,
+    document_id: documentId,
     department_id: departmentId,
+    owner_user_id: ownerUserId,
     source_type: chunk.metadata.provider,
-    title: chunk.title,
-    content_preview: text.substring(0, 500), // First 500 chars as preview
-    external_url: chunk.source_url,
+    visibility,
+    content_preview: text.substring(0, 200), // schema comment: first 200 chars
     chunk_index: index,
     embedding: embeddings[index],
     metadata: chunk.metadata,
-    updated_at: new Date().toISOString(),
   }))
 
   // 4. Upsert into Supabase via service-role (bypasses RLS)
+  // onConflict matches UNIQUE (document_id, chunk_index) constraint
   const { error } = await supabaseAdmin
     .from('document_embeddings')
-    .upsert(records, { onConflict: 'id' })
+    .upsert(records, { onConflict: 'document_id,chunk_index' })
 
   if (error) {
     console.error(
@@ -169,19 +222,22 @@ export async function indexDocument(
 
 /**
  * Indexes multiple FetchedChunks in sequence.
- * Used by the worker route after a full sync.
+ * Used by the worker route after a full provider sync.
  */
 export async function indexDocuments(
   chunks: FetchedChunk[],
   orgId: string,
-  departmentId: string | null
+  connectionId: string,
+  departmentId: string | null,
+  visibility: VisibilityLevel = 'department',
+  ownerUserId: string | null = null
 ): Promise<{ indexed: number; errors: number }> {
   let indexed = 0
   let errors = 0
 
   for (const chunk of chunks) {
     try {
-      await indexDocument(chunk, orgId, departmentId)
+      await indexDocument(chunk, orgId, connectionId, departmentId, visibility, ownerUserId)
       indexed++
     } catch (err) {
       errors++

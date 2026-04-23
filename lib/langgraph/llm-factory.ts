@@ -1,34 +1,22 @@
-import OpenAI from "openai";
+// ============================================================
+// lib/langgraph/llm-factory.ts — LLM client for agent nodes
+//
+// Exports a shared ChatOpenAI instance used by all agent nodes.
+// ChatOpenAI supports LangGraph's streamEvents natively — tokens
+// are streamed automatically when the graph is invoked via
+// graph.streamEvents() (wired in ATH-46 / SSE endpoint).
+//
+// Model: gpt-4o  (synthesis-tier, high quality)
+// Temperature: 0 for deterministic, citable answers
+//
+// TODO ATH-22: replace with resolveModelClient() for BYOK + tier-
+//              based model selection (haiku/sonnet/opus per complexity).
+// ============================================================
 
-/**
- * LLM Factory — Optimized version for current environment.
- * Uses raw OpenAI SDK to avoid dependency conflicts while maintaining 
- * the interface required by the synthesis agent.
- */
-class LLMFactory {
-  private static instance: { invoke: (messages: any[]) => Promise<{ content: string }> } | null = null;
+import { ChatOpenAI } from "@langchain/openai";
 
-  static getModel() {
-    if (!this.instance) {
-      const client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-
-      this.instance = {
-        invoke: async (messages: any[]) => {
-          const response = await client.chat.completions.create({
-            model: "gpt-4o",
-            messages: messages.map(m => ({
-              role: m.role,
-              content: m.content
-            })),
-          });
-          return { content: response.choices[0].message.content || "" };
-        }
-      };
-    }
-    return this.instance;
-  }
-}
-
-export const model = LLMFactory.getModel();
+export const model = new ChatOpenAI({
+  model: "gpt-4o",
+  temperature: 0,
+  streaming: true,
+});

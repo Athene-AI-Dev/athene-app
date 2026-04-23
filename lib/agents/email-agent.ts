@@ -1,0 +1,161 @@
+// ============================================================
+// agents/email-agent.ts — Email Agent LangGraph node (ATH-37)
+//
+// Drafts an email from the user's request + retrieved context.
+// NEVER sends — sets pending_write_action so the HITL gate
+// (ATH-43) pauses execution until the human approves.
+//
+// The LLM extracts { to, cc, subject, body } as JSON.
+// Real email addresses are resolved from retrieved_chunks
+// (CRM contacts, directory data, etc.) — never guessed.
+// ============================================================
+
+import { resolveModelClient } from "../langgraph/llm-factory";
+import { supabaseAdmin } from "../supabase/server";
+import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
+
+// ---- Prompt (inlined at build time, no fs.readFileSync) ------
+
+const SYSTEM_PROMPT = `You are the Athene AI Email Drafting Agent.
+
+Your job is to compose a professional email based on the user's request and the retrieved context.
+
+## Rules
+
+1. Return ONLY a valid JSON object — no markdown fences, no commentary.
+2. Extract the recipient's real email address from the retrieved context. If no email address is found in context, set "to" to an empty array and add "_warning": "Could not resolve recipient email from context".
+3. Never invent or guess email addresses. Every address in "to" and "cc" must come from the retrieved context or the user's explicit input.
+4. Keep the subject concise (< 80 chars).
+5. Write a professional, friendly body appropriate for a workplace setting.
+6. Preserve any specific details the user mentioned (dates, times, topics).
+
+## Output Schema
+
+{
+  "to": ["recipient@company.com"],
+  "cc": [],
+  "subject": "Clear, concise subject line",
+  "body": "Professional email body."
+}`;
+
+// ---- Helpers -------------------------------------------------
+
+/** Build the full prompt with conversation + retrieved context */
+function buildPrompt(state: AtheneState): string {
+  const history = state.messages
+    .map((m) => `${m._getType()}: ${m.content}`)
+    .join("\n");
+
+  const context = state.retrieved_chunks
+    .map((c) => c.content_preview)
+    .join("\n\n");
+
+  return [
+    SYSTEM_PROMPT,
+    "",
+    "## Conversation History",
+    history,
+    "",
+    "## Retrieved Context",
+    context || "(no context retrieved)",
+    "",
+    "Draft the email now. Return only the JSON object.",
+  ].join("\n");
+}
+
+/** Extract JSON from LLM output, handling markdown fences */
+function parseEmailDraft(raw: string): {
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+} {
+  const fallback = { to: [], cc: [], subject: "", body: "" };
+
+  let text = raw.trim();
+
+  // Strip markdown code fences if present
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      to: Array.isArray(parsed.to) ? parsed.to : [],
+      cc: Array.isArray(parsed.cc) ? parsed.cc : [],
+      subject: typeof parsed.subject === "string" ? parsed.subject : "",
+      body: typeof parsed.body === "string" ? parsed.body : "",
+    };
+  } catch {
+    console.error("[email-agent] Failed to parse LLM JSON:", text.slice(0, 200));
+    return fallback;
+  }
+}
+
+// ---- Node function -------------------------------------------
+
+export async function emailAgentNode(
+  state: AtheneState,
+): Promise<AtheneStateUpdate> {
+  const prompt = buildPrompt(state);
+
+  // Resolve LLM — email agent requires minimum "medium" tier
+  const client = await resolveModelClient(
+    supabaseAdmin,
+    state.org_id,
+    state.complexity,
+    "medium",
+  );
+
+  let rawResponse = "";
+
+  if (client.provider === "anthropic" && client.anthropic) {
+    const response = await client.anthropic.messages.create({
+      model: client.modelId,
+      max_tokens: 1024,
+      system: prompt,
+      messages: [
+        { role: "user", content: "Draft the email based on my request." },
+      ],
+    });
+    if (response.content[0].type === "text") {
+      rawResponse = response.content[0].text;
+    }
+  } else if (client.provider === "openai" && client.openai) {
+    const response = await client.openai.chat.completions.create({
+      model: client.modelId,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: "Draft the email based on my request." },
+      ],
+      response_format: { type: "json_object" },
+    });
+    rawResponse = response.choices[0].message.content || "";
+  } else if (client.provider === "google" && client.google) {
+    const model = client.google.getGenerativeModel({
+      model: client.modelId,
+    });
+    const response = await model.generateContent(
+      `${prompt}\n\nUser: Draft the email based on my request.`,
+    );
+    rawResponse = response.response.text();
+  }
+
+  const draft = parseEmailDraft(rawResponse);
+
+  // ATH-37: Set pending_write_action and pause for HITL approval.
+  // The graph's interrupt_before: ["approval_node"] will halt
+  // execution before the approval_node runs, giving the human
+  // a chance to review, edit, or reject the draft.
+  return {
+    run_status: "awaiting_approval",
+    awaiting_approval: true,
+    pending_write_action: {
+      tool: "email-send",
+      payload: draft,
+      requested_at: new Date().toISOString(),
+    },
+  };
+}

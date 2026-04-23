@@ -48,14 +48,14 @@ describe("Vector Search RLS & RBAC (Mocked)", () => {
         role: "member",
         query: "revenue insights",
       })
-    ).rejects.toThrow("Unauthorized: requires bi_analyst role");
+    ).rejects.toThrow("Unauthorized: requires super_user role");
   });
 
-  it("allows bi_analyst to see 'bi_accessible' docs", async () => {
+  it("allows super_user to see 'bi_accessible' docs", async () => {
     const results = await crossDeptVectorSearch({
       orgId: "org_alpha",
       userId: "analyst_1",
-      role: "bi_analyst",
+      role: "super_user",
       query: "global trends",
     });
 

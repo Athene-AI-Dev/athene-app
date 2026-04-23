@@ -1,0 +1,133 @@
+// ============================================================
+// agents/cross-dept-agent.ts — Cross-department retrieval agent (ATH-35)
+//
+// BI-ONLY PATH. First statement is a hard role check.
+// Uses crossDeptVectorSearchTool (ATH-33) which enforces
+// visibility='bi_accessible' at the DB level.
+//
+// Every execution writes a row to bi_access_audit regardless of
+// whether docs are found — the audit trail is unconditional.
+//
+// 🔒 Security contract:
+//   - role !== 'bi_analyst' → immediate 403-style rejection
+//   - crossDeptVectorSearch enforces a second role check inside
+//   - bi_access_audit captures: orgId, userId, query, dept, docId
+// ============================================================
+
+import { ToolNode } from '@langchain/langgraph/prebuilt'
+import { supabaseAdmin } from '@/lib/supabase/server'
+import { crossDeptVectorSearchTool } from '@/lib/langgraph/tools/registry'
+import type { AtheneStateType } from '@/lib/langgraph/state'
+
+// Module-level ToolNode singleton — never recreated per request
+const toolNode = new ToolNode([crossDeptVectorSearchTool])
+
+// ---- Agent node ---------------------------------------------
+
+export async function crossDeptAgent(
+  state: AtheneStateType,
+  config: any,
+): Promise<Partial<AtheneStateType>> {
+  const { orgId, userId, role } = state
+
+  // ⚠️ HARD ROLE CHECK — must be the first statement
+  if (role !== 'bi_analyst') {
+    return {
+      messages: [
+        {
+          role: 'assistant',
+          content:
+            'Access Denied: Cross-department analysis is restricted to BI Analysts.',
+        } as any,
+      ],
+    }
+  }
+
+  // Inject security context into tool config metadata
+  const toolConfig = {
+    ...config,
+    metadata: {
+      ...(config?.metadata ?? {}),
+      orgId,
+      userId,
+      role,
+    },
+  }
+
+  // Run cross-dept vector search via ToolNode
+  const result = await toolNode.invoke(
+    { messages: state.messages },
+    toolConfig,
+  )
+
+  // Parse retrieved docs from tool message payloads
+  const retrievedDocs: Array<{
+    chunk_id?: string
+    metadata?: { department_id?: string }
+  }> = result.messages
+    .filter((m: any) => m._getType?.() === 'tool')
+    .flatMap((m: any) => {
+      try {
+        return JSON.parse(m.content)
+      } catch {
+        return []
+      }
+    })
+
+  // Extract the user's query from the last human message
+  const lastMessage = state.messages.at(-1) as any
+  const queryText =
+    typeof lastMessage?.content === 'string'
+      ? lastMessage.content
+      : JSON.stringify(lastMessage?.content ?? '')
+
+  // Write audit rows — unconditional, even on 0 results
+  await writeBIAuditRows(orgId, userId, queryText, retrievedDocs)
+
+  return {
+    messages: result.messages,
+    retrievedDocs,
+  }
+}
+
+// ---- Audit writer -------------------------------------------
+
+/**
+ * Writes one row per retrieved document to bi_access_audit.
+ * If no docs found, writes a single row with null doc_id.
+ * Failures are logged but never bubble up — audit must not break the agent.
+ */
+async function writeBIAuditRows(
+  orgId: string,
+  userId: string,
+  query: string,
+  docs: Array<{ chunk_id?: string; metadata?: { department_id?: string } }>,
+): Promise<void> {
+  const timestamp = new Date().toISOString()
+
+  const rows =
+    docs.length > 0
+      ? docs.map((doc) => ({
+          org_id: orgId,
+          user_id: userId,
+          query,
+          dept: doc.metadata?.department_id ?? null,
+          doc_id: doc.chunk_id ?? null,
+          timestamp,
+        }))
+      : [
+          {
+            org_id: orgId,
+            user_id: userId,
+            query,
+            dept: null,
+            doc_id: null,
+            timestamp,
+          },
+        ]
+
+  const { error } = await supabaseAdmin.from('bi_access_audit').insert(rows)
+  if (error) {
+    console.error('[cross-dept-agent] bi_access_audit write failed:', error.message)
+  }
+}

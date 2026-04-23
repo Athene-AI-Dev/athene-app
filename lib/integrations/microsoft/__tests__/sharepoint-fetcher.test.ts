@@ -41,7 +41,7 @@ describe('sharepoint-fetcher', () => {
 
       vi.spyOn(graphClient, 'paginate').mockImplementation(mockPaginate)
 
-      const items = await listSharePointDocs('conn-123', 'site-123')
+      const items = await listSharePointDocs('conn-123', 'org-123', 'site-123')
 
       expect(items).toHaveLength(2)
       expect(items.map(i => i.id)).toContain('file1')
@@ -55,7 +55,7 @@ describe('sharepoint-fetcher', () => {
       vi.mocked(graphClient.graphDownload).mockResolvedValue(new ArrayBuffer(0))
       vi.mocked(mammoth.extractRawText).mockResolvedValue({ value: 'docx text' } as any)
 
-      const content = await fetchDocContent('conn-123', 'drive-123', 'item-123')
+      const content = await fetchDocContent('conn-123', 'org-123', 'drive-123', 'item-123')
       expect(content).toBe('docx text')
     })
 
@@ -64,7 +64,7 @@ describe('sharepoint-fetcher', () => {
       vi.mocked(graphClient.graphDownload).mockResolvedValue(new ArrayBuffer(0))
       vi.mocked((pdf as any).default).mockResolvedValue({ text: 'pdf text' } as any)
   
-        const content = await fetchDocContent('conn-123', 'drive-123', 'item-123')
+        const content = await fetchDocContent('conn-123', 'org-123', 'drive-123', 'item-123')
         expect(content).toBe('pdf text')
       })
 
@@ -72,7 +72,7 @@ describe('sharepoint-fetcher', () => {
       vi.mocked(graphClient.graphFetch).mockResolvedValue({ name: 'test.txt' })
       vi.mocked(graphClient.graphDownload).mockResolvedValue(new TextEncoder().encode('txt content').buffer)
 
-      const content = await fetchDocContent('conn-123', 'drive-123', 'item-123')
+      const content = await fetchDocContent('conn-123', 'org-123', 'drive-123', 'item-123')
       expect(content).toBe('txt content')
     })
   })
@@ -80,8 +80,8 @@ describe('sharepoint-fetcher', () => {
   describe('getSharePointItemPermissions', () => {
     it('should call permissions endpoint', async () => {
       vi.mocked(graphClient.graphFetch).mockResolvedValue({ value: [{ id: 'perm-1' }] })
-      const perms = await getSharePointItemPermissions('conn-123', 'drive-123', 'item-123')
-      expect(graphClient.graphFetch).toHaveBeenCalledWith('conn-123', '/drives/drive-123/items/item-123/permissions')
+      const perms = await getSharePointItemPermissions('conn-123', 'org-123', 'drive-123', 'item-123')
+      expect(graphClient.graphFetch).toHaveBeenCalledWith('conn-123', 'org-123', '/drives/drive-123/items/item-123/permissions')
       expect(perms).toHaveLength(1)
     })
   })

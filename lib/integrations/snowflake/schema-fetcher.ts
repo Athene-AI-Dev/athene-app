@@ -8,7 +8,7 @@ export interface TableSchema {
   columns: Array<{ name: string; type: string }>
 }
 
-export async function discoverSchema(connectionId: string): Promise<TableSchema[]> {
+export async function discoverSchema(connectionId: string, orgId: string): Promise<TableSchema[]> {
   const connection = await getConnection(connectionId, 'snowflake')
   const allowlist = connection.metadata?.allowlist as string[] | undefined
 
@@ -44,7 +44,7 @@ export async function discoverSchema(connectionId: string): Promise<TableSchema[
 
     try {
       // Get table info
-      const describeRes = await snowflakeFetch(connectionId, `DESCRIBE TABLE ${tableFullName}`)
+      const describeRes = await snowflakeFetch(connectionId, orgId, `DESCRIBE TABLE ${tableFullName}`)
       
       const columns = parseSnowflakeRows(describeRes).map((row: any) => ({
         name: row.name,

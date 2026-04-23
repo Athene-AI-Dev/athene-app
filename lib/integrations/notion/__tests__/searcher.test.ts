@@ -23,11 +23,11 @@ describe('notion searcher', () => {
       }]
     })
 
-    const results = await notionSearch('conn-1', 'query')
+    const results = await notionSearch('conn-1', 'org-1', 'query')
     
     expect(results).toHaveLength(1)
     expect(results[0].title).toBe('Search Result')
-    expect(client.notionFetch).toHaveBeenCalledWith('conn-1', '/search', expect.objectContaining({
+    expect(client.notionFetch).toHaveBeenCalledWith('conn-1', 'org-1', '/search', expect.objectContaining({
       query: 'query'
     }))
   })

@@ -27,7 +27,7 @@ describe('snowflake sample-fetcher', () => {
     } as any)
 
     // Mock snowflake fetch
-    vi.mocked(client.snowflakeFetch).mockResolvedValue({
+    vi.mocked(client.snowflakeFetch).mockImplementation(async (connectionId, orgId, sql) => ({
       resultSetMetaData: {
         rowType: [
           { name: 'ID' },
@@ -38,9 +38,9 @@ describe('snowflake sample-fetcher', () => {
         ['1', 'Alice'],
         ['2', 'Bob']
       ]
-    })
+    }))
 
-    const chunks = await fetchSnowflakeSamples('conn-123')
+    const chunks = await fetchSnowflakeSamples('conn-123', 'org-123')
 
     expect(chunks).toHaveLength(1)
     expect(chunks[0].title).toBe('table: TABLE1')

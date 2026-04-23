@@ -12,7 +12,7 @@ describe('microsoft searcher', () => {
   })
 
   it('should search emails and calendar', async () => {
-    vi.mocked(client.graphFetch).mockImplementation(async (connectionId, endpoint) => {
+    vi.mocked(client.graphFetch).mockImplementation(async (connectionId, orgId, endpoint) => {
       if (endpoint.includes('/messages')) {
         return {
           value: [{
@@ -35,7 +35,7 @@ describe('microsoft searcher', () => {
       return { value: [] }
     })
 
-    const results = await microsoftSearch('conn-1', 'test')
+    const results = await microsoftSearch('conn-1', 'org-1', 'test')
     
     expect(results).toHaveLength(2)
     expect(results[0].title).toContain('Email: Email Match')

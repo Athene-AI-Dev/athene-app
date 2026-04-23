@@ -1,62 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { snowflakeFetch } from '../client'
-import * as nango from '@/lib/nango/client'
+import { getProviderToken, baseFetch } from '../../base'
+import { getConnection } from '@/lib/nango/client'
+
+vi.mock('../../base', () => ({
+  getProviderToken: vi.fn(),
+  baseFetch: vi.fn(),
+}))
 
 vi.mock('@/lib/nango/client', () => ({
-  getToken: vi.fn(),
   getConnection: vi.fn(),
 }))
 
 describe('snowflake client', () => {
-  const mockFetch = vi.fn()
-  global.fetch = mockFetch
-
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(nango.getToken).mockResolvedValue('test-token')
-    vi.mocked(nango.getConnection).mockResolvedValue({
+    vi.mocked(getProviderToken).mockResolvedValue('test-token')
+    vi.mocked(getConnection).mockResolvedValue({
       metadata: { account_identifier: 'abc1234' }
     } as any)
   })
 
-  it('should include correct headers including X-Snowflake-Authorization-Token-Type', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ results: [] })
-    })
+  it('should call baseFetch with correct headers', async () => {
+    vi.mocked(baseFetch).mockResolvedValue({ results: [] })
 
-    await snowflakeFetch('conn-123', 'SELECT 1')
+    await snowflakeFetch('conn-123', 'org-123', 'SELECT 1')
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('abc1234.snowflakecomputing.com'),
+    expect(getProviderToken).toHaveBeenCalledWith('conn-123', 'snowflake', 'org-123')
+    expect(baseFetch).toHaveBeenCalledWith(
+      'https://abc1234.snowflakecomputing.com/api/v2/statements',
       expect.objectContaining({
         method: 'POST',
-        headers: {
+        headers: expect.objectContaining({
           Authorization: 'Bearer test-token',
           'X-Snowflake-Authorization-Token-Type': 'OAUTH',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ statement: 'SELECT 1', timeout: 60 })
+        }),
+        body: { statement: 'SELECT 1', timeout: 60 }
       })
     )
   })
-
-  it('should retry on 429', async () => {
-    mockFetch.mockResolvedValueOnce({
-      status: 429,
-      headers: new Map([['Retry-After', '0']])
-    })
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ success: true })
-    })
-
-    vi.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn())
-
-    const result = await snowflakeFetch('conn-123', 'SELECT 1')
-    
-    expect(mockFetch).toHaveBeenCalledTimes(2)
-    expect(result.success).toBe(true)
-  })
 })
+

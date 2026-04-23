@@ -31,11 +31,11 @@ describe('snowflake searcher', () => {
       data: [['Match 1']]
     })
 
-    const results = await snowflakeSearch('conn-1', "O'Reilly")
+    const results = await snowflakeSearch('conn-1', 'org-1', "O'Reilly")
     
     expect(results).toHaveLength(1)
     expect(results[0].content).toContain('Match 1')
     // Verify escaping (O'Reilly -> O''Reilly)
-    expect(client.snowflakeFetch).toHaveBeenCalledWith('conn-1', expect.stringContaining("LIKE '%O''Reilly%'"))
+    expect(client.snowflakeFetch).toHaveBeenCalledWith('conn-1', 'org-1', expect.stringContaining("LIKE '%O''Reilly%'"))
   })
 })

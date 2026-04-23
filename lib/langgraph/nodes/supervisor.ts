@@ -72,7 +72,6 @@ export async function supervisor(state: AtheneState) {
   if (hop_count >= MAX_HOPS) {
     return {
       active_agent: "END",
-      next_agent: "END",
       reasoning: `Max hop limit (${MAX_HOPS}) reached — terminating to prevent infinite loop.`,
       hop_count,
     };

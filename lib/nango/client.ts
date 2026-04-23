@@ -192,7 +192,7 @@ export async function listConnections(orgId: string) {
     }
 
     // 3. Fetch full connection objects from Nango only for the IDs we found in Supabase
-    const connectionPromises = mappings.map(m => 
+    const connectionPromises = (mappings || []).map((m: any) => 
       nango.getConnection(m.provider_config_key, m.connection_id).catch(() => null)
     );
 

@@ -71,6 +71,6 @@ describe("calendarAgent", () => {
     const result = await calendarAgent(state);
 
     expect(result.messages).toBeDefined();
-    expect(result.messages[0].content).toContain("I'm sorry, I couldn't quite capture the meeting details");
+    expect(result.messages[0].content).toContain("I'm sorry, I couldn't quite process that calendar request");
   });
 });

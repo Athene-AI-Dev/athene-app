@@ -31,6 +31,8 @@ export const calendarEventSchema = z.object({
   attendees: z.array(z.object({ 
     email: z.string().optional(),
     displayName: z.string().optional()
+  }).refine(data => data.email || data.displayName, {
+    message: "At least one of email or displayName must be provided"
   })).optional(),
   location: z.string().optional(),
   description: z.string().optional(),

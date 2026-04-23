@@ -1,5 +1,5 @@
 import type { AtheneState, AtheneStateUpdate } from "../state";
-import { synthesisAgentNode as implementation } from "../../agents/synthesis-agent";
+import { synthesisAgentNode as implementation } from "@/lib/agents/synthesis-agent";
 
 export async function synthesisAgentNode(
   state: AtheneState,

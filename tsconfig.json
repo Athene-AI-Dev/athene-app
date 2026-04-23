@@ -33,9 +33,6 @@
   "exclude": [
     "node_modules",
     "scratch",
-    "qstash.test.ts",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.test.tsx"
+    "qstash.test.ts"
   ]
 }

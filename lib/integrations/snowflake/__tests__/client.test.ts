@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { snowflakeFetch } from '../client'
 import { getProviderToken, baseFetch } from '../../base'
-import { getConnection } from '@/lib/nango/client'
+import { getConnection } from '../../../nango/client'
 
 vi.mock('../../base', () => ({
   getProviderToken: vi.fn(),
   baseFetch: vi.fn(),
 }))
 
-vi.mock('@/lib/nango/client', () => ({
+vi.mock('../../../nango/client', () => ({
   getConnection: vi.fn(),
 }))
 
@@ -40,4 +40,3 @@ describe('snowflake client', () => {
     )
   })
 })
-

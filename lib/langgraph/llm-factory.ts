@@ -25,7 +25,7 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Complexity } from "./state";
-import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenAI } from "@langchain/openai";
 
 // ---- Provider / tier types ----------------------------------
 
@@ -205,7 +205,9 @@ export async function resolveModelClient(
  * Fallback model export for older files that have not yet migrated 
  * to resolveModelClient(). Uses platform keys.
  */
-export const model = new ChatAnthropic({
-  modelName: "claude-3-5-sonnet-latest",
+// TODO: migrate callers to resolveModelClient(); remove this once all agents are updated.
+export const model = new ChatOpenAI({
+  modelName: "gpt-4o",
   temperature: 0,
+  streaming: true,
 });

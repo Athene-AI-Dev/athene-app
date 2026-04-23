@@ -31,9 +31,9 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 
 import { AtheneStateAnnotation, type AtheneState, type AtheneStateUpdate } from "./state";
-import { supervisorNode } from "./nodes/supervisor";
-import { retrievalAgentNode } from "./nodes/retrieval-agent";
-import { crossDeptRetrievalNode } from "./nodes/cross-dept-retrieval";
+import { supervisor as supervisorNode } from "./nodes/supervisor";
+import { retrievalAgent as retrievalAgentNode } from "./nodes/retrieval-agent";
+import { crossDeptRetrievalAgent as crossDeptRetrievalNode } from "./nodes/cross-dept-retrieval";
 import { emailAgentNode } from "../agents/email-agent";
 import { calendarAgentNode } from "./nodes/calendar-agent";
 import { reportAgentNode } from "./nodes/report-agent";

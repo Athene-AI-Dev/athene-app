@@ -1,7 +1,17 @@
+// ============================================================
+// POST /api/agent — Main agent execution endpoint
+//
+// Streams agent events back to the client via SSE.
+// ============================================================
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { agentGraph } from "@/lib/langgraph/graph";
 import { HumanMessage } from "@langchain/core/messages";
+import { buildAtheneGraph } from "@/lib/langgraph/graph";
+import { checkpointer } from "@/lib/langgraph/checkpointer";
+import type { UserRole } from "@/lib/langgraph/state";
+
+const graph = buildAtheneGraph(checkpointer);
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,15 +23,17 @@ export async function POST(req: NextRequest) {
 
     const { message, threadId } = await req.json();
 
-    // Map Clerk roles to our internal RLS roles
-    const role = orgRole === "admin" ? "admin" : 
-                 orgRole === "org:bi_analyst" ? "bi_analyst" : "member";
+    // Map Clerk org roles to canonical UserRole.
+    // super_user is granted via the access_grants table, not via Clerk role.
+    const user_role: UserRole =
+      orgRole === "org:admin" ? "admin" : "member";
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
-      role,
+      org_id: orgId,
+      user_id: userId,
+      user_role,
+      thread_id: threadId || `user-${userId}`,
     };
 
     const encoder = new TextEncoder();
@@ -31,32 +43,29 @@ export async function POST(req: NextRequest) {
     // Start execution in background
     (async () => {
       try {
-        const eventStream = await agentGraph.stream(initialState, {
+        const eventStream = await graph.stream(initialState, {
           configurable: {
-            thread_id: threadId || `user-${userId}`, // Scoped to conversation if threadId provided
-          },
-          metadata: {
-            orgId,
-            userId,
-            role,
+            thread_id: threadId || `user-${userId}`,
           },
           streamMode: "values",
         });
 
         for await (const chunk of eventStream) {
-          const lastMessage = chunk.messages?.[chunk.messages.length - 1];
+          const lastMessage =
+            chunk.messages?.[chunk.messages.length - 1];
           if (lastMessage) {
             const data = JSON.stringify({
               content: lastMessage.content,
-              docs: chunk.retrievedDocs,
-              node: chunk.next,
+              final_answer: chunk.final_answer ?? null,
+              cited_sources: chunk.cited_sources ?? [],
+              awaiting_approval: chunk.awaiting_approval ?? false,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));
           }
         }
         await writer.close();
-      } catch (err: any) {
-        console.error("Stream Error:", err);
+      } catch (err: unknown) {
+        console.error("[agent] Stream error:", err);
         await writer.abort(err);
       }
     })();
@@ -65,11 +74,13 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
       },
     });
-  } catch (error: any) {
-    console.error("Agent API Error:", error);
-    return new NextResponse(error.message || "Internal Server Error", { status: 500 });
+  } catch (error: unknown) {
+    const msg =
+      error instanceof Error ? error.message : "Internal Server Error";
+    console.error("[agent] API error:", msg);
+    return new NextResponse(msg, { status: 500 });
   }
 }

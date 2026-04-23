@@ -55,8 +55,10 @@ describe("calendarAgent", () => {
     const result = await calendarAgent(state);
 
     expect(result.awaiting_approval).toBe(true);
-    expect(result.pending_action?.type).toBe("calendar-create");
-    expect(result.pending_action?.payload.summary).toBe("Meeting with Alice");
+    // pending_write_action is the canonical field (pending_action was the old name)
+    expect((result.pending_write_action as any)?.tool).toBe("calendar-create");
+    expect((result.pending_write_action as any)?.payload?.summary).toBe("Meeting with Alice");
+    expect((result.pending_write_action as any)?.requested_at).toBeDefined();
   });
 
   it("handles errors by returning a user-friendly message", async () => {

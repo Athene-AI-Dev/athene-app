@@ -1,5 +1,8 @@
 import { ChatOpenAI } from "@langchain/openai";
 
+/** Model complexity tier — mirrors AtheneState.complexity */
+export type ModelTier = "simple" | "medium" | "complex";
+
 /**
  * LLM Factory to ensure we use singletons for model instances.
  * This prevents unnecessary overhead and potential memory leaks from creating new instances on every request.

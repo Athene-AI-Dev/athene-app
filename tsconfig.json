@@ -34,6 +34,7 @@
     "node_modules",
     "scratch",
     "lib/integrations/atlassian/__tests__/**",
-    "lib/tools/__tests__/vector-search.test.ts"
+    "lib/tools/__tests__/vector-search.test.ts",
+    "lib/agents/__tests__/**"
   ]
 }

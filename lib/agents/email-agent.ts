@@ -10,8 +10,7 @@
 // (CRM contacts, directory data, etc.) — never guessed.
 // ============================================================
 
-import { resolveModelClient } from "../langgraph/llm-factory";
-import { supabaseAdmin } from "../supabase/server";
+import { LLMFactory } from "../langgraph/llm-factory";
 import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
 
 // ---- Prompt (inlined at build time, no fs.readFileSync) ------
@@ -103,47 +102,17 @@ export async function emailAgentNode(
 ): Promise<AtheneStateUpdate> {
   const prompt = buildPrompt(state);
 
-  // Resolve LLM — email agent requires minimum "medium" tier
-  const client = await resolveModelClient(
-    supabaseAdmin,
-    state.org_id,
-    state.complexity,
-    "medium",
-  );
+  const llm = LLMFactory.getModel("medium");
 
-  let rawResponse = "";
+  const response = await llm.invoke([
+    { role: "system", content: prompt },
+    { role: "user", content: "Draft the email based on my request." },
+  ]);
 
-  if (client.provider === "anthropic" && client.anthropic) {
-    const response = await client.anthropic.messages.create({
-      model: client.modelId,
-      max_tokens: 1024,
-      system: prompt,
-      messages: [
-        { role: "user", content: "Draft the email based on my request." },
-      ],
-    });
-    if (response.content[0].type === "text") {
-      rawResponse = response.content[0].text;
-    }
-  } else if (client.provider === "openai" && client.openai) {
-    const response = await client.openai.chat.completions.create({
-      model: client.modelId,
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: "Draft the email based on my request." },
-      ],
-      response_format: { type: "json_object" },
-    });
-    rawResponse = response.choices[0].message.content || "";
-  } else if (client.provider === "google" && client.google) {
-    const model = client.google.getGenerativeModel({
-      model: client.modelId,
-    });
-    const response = await model.generateContent(
-      `${prompt}\n\nUser: Draft the email based on my request.`,
-    );
-    rawResponse = response.response.text();
-  }
+  const rawResponse =
+    typeof response.content === "string"
+      ? response.content
+      : JSON.stringify(response.content);
 
   const draft = parseEmailDraft(rawResponse);
 

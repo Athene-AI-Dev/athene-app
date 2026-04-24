@@ -46,3 +46,10 @@ class LLMFactory {
 
 export const model = LLMFactory.getModel("medium");
 export { LLMFactory };
+
+/** Convenience alias used by agent files that import getModel directly. */
+export const getModel = (tier: ModelTier = "medium") => LLMFactory.getModel(tier);
+
+/** Alias used by email-agent — returns a standard OpenAI client. */
+export const resolveModelClient = async (_ctx?: unknown, tier: ModelTier = "medium") =>
+  LLMFactory.getModel(tier);

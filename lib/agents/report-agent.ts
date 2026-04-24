@@ -2,7 +2,6 @@ import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import type { RLSContext } from "../supabase/rls-client";
 import type { MessageContentComplex } from "@langchain/core/messages";
 
 // Lightweight model for the planning step — only produces a JSON array of titles.
@@ -63,15 +62,6 @@ export async function reportAgent(
     messages,
   } = state;
 
-  // Build RLS context for scoped vector search
-  const ctx: RLSContext = {
-    org_id,
-    user_id,
-    user_role,
-    department_id: user_dept_id ?? undefined,
-    accessible_dept_ids: accessible_dept_ids ?? [],
-  };
-
   // Extract the latest query — safe against MessageContentComplex[].
   const lastMessage =
     messages && messages.length > 0 ? messages[messages.length - 1] : null;
@@ -114,9 +104,10 @@ export async function reportAgent(
   // 2. For each section, search and synthesise — in parallel for speed.
   const compiledSections = await Promise.all(
     sections.map(async (section) => {
-      // Vector search scoped to the user's RLS context
       const results = await vectorSearch({
-        ctx,
+        orgId: org_id,
+        userId: user_id,
+        user_role,
         query: `${query} - ${section}`,
         topK: 5,
       });
@@ -138,7 +129,7 @@ export async function reportAgent(
 
       const sourceBlock = sourceDocs
         .map(
-          (s) =>
+          (s: { index: number; chunk_id: string; document_id: string; content: string }) =>
             `[Source ${s.index}] chunk_id=${s.chunk_id}, document_id=${s.document_id}\n${s.content}`
         )
         .join("\n\n");

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { agentGraph } from '@/lib/langgraph/graph'
+import { buildAtheneGraph } from '@/lib/langgraph/graph'
+import { checkpointer } from '@/lib/langgraph/checkpointer'
+
+const graph = buildAtheneGraph(checkpointer)
 
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth()
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify the thread exists and belongs to this org
-  const snapshot = await agentGraph.getState({ configurable: { thread_id: threadId } })
+  const snapshot = await graph.getState({ configurable: { thread_id: threadId } })
   const state = snapshot?.values as Record<string, any> | undefined
 
   if (!state?.orgId) {
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   if (!approved) {
     // Rejected: discard the pending action and mark the run complete
-    await agentGraph.updateState(
+    await graph.updateState(
       { configurable: { thread_id: threadId } },
       { awaiting_approval: false, pending_write_action: null, run_status: 'complete' }
     )
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Approved: clear the HITL gate so approval_node can proceed
-  await agentGraph.updateState(
+  await graph.updateState(
     { configurable: { thread_id: threadId } },
     { awaiting_approval: false, run_status: 'running' }
   )
@@ -54,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   ;(async () => {
     try {
-      const eventStream = agentGraph.stream(null, {
+      const eventStream = graph.stream(null, {
         configurable: { thread_id: threadId },
         metadata: { orgId, userId },
         streamMode: 'values',

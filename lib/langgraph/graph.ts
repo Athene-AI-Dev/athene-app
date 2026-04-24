@@ -35,8 +35,8 @@ import { supervisor as supervisorNode } from "./nodes/supervisor";
 import { retrievalAgent as retrievalAgentNode } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent as crossDeptRetrievalNode } from "./nodes/cross-dept-retrieval";
 import { emailAgentNode } from "../agents/email-agent";
-import { calendarAgentNode } from "./nodes/calendar-agent";
-import { reportAgentNode } from "./nodes/report-agent";
+import { calendarAgent as calendarAgentNode } from "../agents/calendar-agent";
+import { reportAgent as reportAgentNode } from "../agents/report-agent";
 import { synthesisAgentNode } from "./nodes/synthesis-agent";
 import { approvalNode } from "./nodes/async-tool-node";
 

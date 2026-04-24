@@ -17,7 +17,7 @@ export async function fetchConfluencePages(
   let cursor: string | null = null;
 
   do {
-    const cursorParam = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+    const cursorParam: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
     const data = await atlassianFetch<{
       results: any[];
       _links?: { next?: string };

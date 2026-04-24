@@ -8,7 +8,7 @@ git clone https://github.com/Athene-AI-Dev/at hene-app.git
 cd athene-app    
 ```  
      
-### 2. Install and Initialize 
+### 2. Install and Initialize  
 Install the foundation and prepare env ironment variables:  
 ```bash 
 npm install

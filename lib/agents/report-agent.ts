@@ -105,7 +105,7 @@ export async function reportAgent(
       const results = await vectorSearch({
         orgId,
         userId,
-        user_role: role,
+        user_role: role as "member" | "super_user" | "admin",
         query: `${query} - ${section}`,
         topK: 5,
       });

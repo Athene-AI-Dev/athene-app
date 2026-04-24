@@ -9,7 +9,7 @@ cd athene-app
 ``` 
 
 ### 2. Install and Initialize
-Install the foundation and prepare environment variables: 
+Install the foundation and prepare env ironment variables: 
 ```bash 
 npm install
 cp .env.example .env

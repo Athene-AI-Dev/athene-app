@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // rls-client.ts — RLS-aware Supabase client
 //
 // The core withRLS() wrapper guarantees that every query executes

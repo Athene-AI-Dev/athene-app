@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
           streamMode: "values",
         });
 
-        for await (const chunk of eventStream) {
+        for await (const chunk of eventStream as AsyncIterable<any>) {
           const lastMessage = chunk.messages?.[chunk.messages.length - 1];
           if (lastMessage) {
             const data = JSON.stringify({

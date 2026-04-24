@@ -52,6 +52,15 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => null,
   }),
+  // Synthesis mode hints
+  task_type: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
+  is_cross_dept_query: Annotation<boolean>({
+    reducer: (_x, y) => y,
+    default: () => false,
+  }),
 });
 
 export type AtheneStateType = typeof AtheneState.State;

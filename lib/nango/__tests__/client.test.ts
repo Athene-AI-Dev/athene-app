@@ -39,7 +39,7 @@ describe('nango client error handling', () => {
   })
 
   it('should handle 401 Unauthorized as reconnection required', async () => {
-    vi.mocked(supabase.maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 401 },
       error: { code: 'invalid_credentials', message: 'Token expired' }
@@ -49,7 +49,7 @@ describe('nango client error handling', () => {
   })
 
   it('should handle 403 Forbidden as access denied', async () => {
-    vi.mocked(supabase.maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 403 }
     })
@@ -58,7 +58,7 @@ describe('nango client error handling', () => {
   })
 
   it('should handle 404 Not Found as connection missing', async () => {
-    vi.mocked(supabase.maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 404 }
     })

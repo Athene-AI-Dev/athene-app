@@ -39,7 +39,7 @@ describe('notion databases-fetcher', () => {
       return { results: [] }
     })
 
-    const chunks = await fetchAllDatabases('conn-123')
+    const chunks = await fetchAllDatabases('conn-123', 'org-123')
     
     expect(chunks).toHaveLength(1)
     expect(chunks[0].title).toBe('Database: Test DB')

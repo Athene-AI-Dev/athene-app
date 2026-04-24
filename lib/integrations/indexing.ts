@@ -220,9 +220,17 @@ export async function indexDocument(
   }
 }
 
+/** Maximum texts per OpenAI embedding API call */
+const EMBED_BATCH_SIZE = 96
+
 /**
- * Indexes multiple FetchedChunks in sequence.
- * Used by the worker route after a full provider sync.
+ * Indexes multiple FetchedChunks with batched embedding generation.
+ *
+ * Instead of one OpenAI call per document (N round-trips), this:
+ *   1. Resolves/creates all document rows in parallel
+ *   2. Splits every document's content into sub-chunks
+ *   3. Sends all sub-chunk texts to OpenAI in batches of EMBED_BATCH_SIZE
+ *   4. Upserts all embedding records in a single Supabase call
  */
 export async function indexDocuments(
   chunks: FetchedChunk[],
@@ -232,23 +240,109 @@ export async function indexDocuments(
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
 ): Promise<{ indexed: number; errors: number }> {
-  let indexed = 0
+  if (chunks.length === 0) return { indexed: 0, errors: 0 }
+
+  // ---- Phase 1: resolve document rows in parallel -----------------
+  type PreparedItem = {
+    chunk: FetchedChunk
+    documentId: string
+    subChunks: string[]
+  }
+
+  const prepared: PreparedItem[] = []
   let errors = 0
 
-  for (const chunk of chunks) {
-    try {
-      await indexDocument(chunk, orgId, connectionId, departmentId, visibility, ownerUserId)
-      indexed++
-    } catch (err) {
-      errors++
-      console.error(
-        `[indexing] Failed to index "${chunk.title}":`,
-        err instanceof Error ? err.message : String(err)
-      )
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const documentId = await upsertDocumentRecord(
+          chunk, orgId, connectionId, departmentId, visibility, ownerUserId
+        )
+        const subChunks = chunkContent(chunk.content)
+        if (subChunks.length > 0) {
+          prepared.push({ chunk, documentId, subChunks })
+        }
+      } catch (err) {
+        errors++
+        console.error(
+          `[indexing] Failed to upsert document "${chunk.title}":`,
+          err instanceof Error ? err.message : String(err)
+        )
+      }
+    })
+  )
+
+  if (prepared.length === 0) return { indexed: 0, errors }
+
+  // ---- Phase 2: collect all sub-chunk texts -----------------------
+  type RecordTemplate = {
+    org_id: string
+    document_id: string
+    department_id: string | null
+    owner_user_id: string | null
+    source_type: string
+    visibility: VisibilityLevel
+    content_preview: string
+    chunk_index: number
+    metadata: Record<string, unknown>
+  }
+
+  const allTexts: string[] = []
+  const allTemplates: RecordTemplate[] = []
+
+  for (const { chunk, documentId, subChunks } of prepared) {
+    for (let i = 0; i < subChunks.length; i++) {
+      allTexts.push(subChunks[i])
+      allTemplates.push({
+        org_id: orgId,
+        document_id: documentId,
+        department_id: departmentId,
+        owner_user_id: ownerUserId,
+        source_type: chunk.metadata.provider as string,
+        visibility,
+        content_preview: subChunks[i].substring(0, 200),
+        chunk_index: i,
+        metadata: chunk.metadata,
+      })
     }
   }
 
-  return { indexed, errors }
+  // ---- Phase 3: generate embeddings in batches --------------------
+  const allEmbeddings: number[][] = []
+  for (let i = 0; i < allTexts.length; i += EMBED_BATCH_SIZE) {
+    const batchTexts = allTexts.slice(i, i + EMBED_BATCH_SIZE)
+    try {
+      const batchEmbeddings = await generateEmbeddings(batchTexts)
+      allEmbeddings.push(...batchEmbeddings)
+    } catch (err) {
+      console.error(
+        `[indexing] Embedding batch ${i}–${i + batchTexts.length} failed:`,
+        err instanceof Error ? err.message : String(err)
+      )
+      // Fill with null placeholders so index alignment is preserved
+      allEmbeddings.push(...batchTexts.map(() => []))
+      errors += batchTexts.length
+    }
+  }
+
+  // ---- Phase 4: upsert all records in one call -------------------
+  const records = allTemplates
+    .map((tmpl, idx) => ({ ...tmpl, embedding: allEmbeddings[idx] }))
+    .filter((r) => r.embedding.length > 0)
+
+  if (records.length > 0) {
+    const { error } = await supabaseAdmin
+      .from('document_embeddings')
+      .upsert(records, { onConflict: 'document_id,chunk_index' })
+
+    if (error) {
+      console.error('[indexing] Bulk upsert error:', error.message)
+      errors += records.length
+      return { indexed: 0, errors }
+    }
+  }
+
+  return { indexed: prepared.length, errors }
 }
 
 // ---- Helpers ----------------------------------------------------

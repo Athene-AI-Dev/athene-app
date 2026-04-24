@@ -66,7 +66,7 @@ export async function crossDeptAgent(
     chunk_id?: string
     metadata?: { department_id?: string }
   }> = result.messages
-    .filter((m): m is ToolMessage => m instanceof ToolMessage)
+    .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
     .flatMap((m) => {
       try {
         return JSON.parse(m.content)

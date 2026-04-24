@@ -41,7 +41,7 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
   return {
     messages: result.messages,
     retrievedDocs: result.messages
-      .filter((m): m is ToolMessage => m instanceof ToolMessage)
+      .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
       .flatMap((m) => {
         try {
           return JSON.parse(m.content);

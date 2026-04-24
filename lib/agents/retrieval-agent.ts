@@ -1,49 +1,41 @@
-import { AtheneStateType } from "../langgraph/state";
+import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 
-/**
- * Retrieval Agent — Single-department document search.
- * Handles plain "find me info" questions by calling the vector search tool.
- */
-export async function retrievalAgent(state: AtheneStateType) {
-  const { query, user } = state;
+export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpdate> {
+  const { org_id, user_id, user_role, messages } = state;
 
-  if (!query || !user) {
-    return {
-      next_agent: "END",
-      message: "Missing query or user context",
-    };
+  const lastMessage = messages?.[messages.length - 1];
+  const query =
+    typeof lastMessage?.content === "string"
+      ? lastMessage.content
+      : JSON.stringify(lastMessage?.content ?? "");
+
+  if (!query || !org_id) {
+    return { run_status: "complete" };
   }
 
-  // Call vector search with topK: 8 as requested
   const results = await vectorSearch({
-    orgId: user.orgId,
-    userId: user.id,
-    role: user.role,
-    query: query,
+    orgId: org_id,
+    userId: user_id,
+    user_role,
+    query,
     topK: 8,
   });
 
-  // If zero results → set state.next_agent = "END" with message
   if (!results || results.length === 0) {
-    return {
-      next_agent: "END",
-      message: "No relevant docs found",
-    };
+    return { run_status: "complete" };
   }
 
-  // Store results in state.retrieval_results as specified
-  const retrieval_results = results.map((res: any) => ({
-    chunk_id: res.chunk_id,
+  const retrieved_chunks = results.map((res: any) => ({
+    id: res.chunk_id ?? res.id,
     document_id: res.document_id,
-    score: res.score,
-    preview: res.preview || "No preview available",
-    metadata: res.metadata,
+    content_preview: res.preview ?? res.content_preview ?? "",
+    chunk_index: res.chunk_index ?? 0,
+    source_type: res.source_type ?? "document",
+    external_url: res.external_url ?? null,
+    department_id: res.department_id ?? null,
+    similarity: res.score ?? res.similarity ?? 0,
   }));
 
-
-  return {
-    retrieval_results,
-    // Return partial state update — graph router sends to synthesis
-  };
+  return { retrieved_chunks };
 }

@@ -18,7 +18,7 @@
 
 import { NextResponse } from 'next/server'
 import { verifyQStashSignature } from '@/lib/qstash/verify'
-import { releaseSlot } from '@/lib/qstash/client'
+import { releaseSlot, qstash } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
@@ -200,7 +200,31 @@ export async function POST(request: Request): Promise<Response> {
       departmentId ?? null
     )
 
-    // 6. Release QStash concurrency slot
+    // 6. Enqueue graph-build job if any chunks were indexed (ATH-44)
+    //    Fire-and-forget: graph build runs asynchronously after embedding.
+    if (result.indexed > 0) {
+      const docIds = [...new Set(allChunks.map((c) => c.chunk_id))]
+      const graphBuildUrl =
+        `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
+      try {
+        await qstash.publishJSON({
+          url: graphBuildUrl,
+          body: {
+            org_id: orgId,
+            document_ids: docIds,
+            job_type: 'incremental',
+          },
+        })
+        console.log(
+          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
+        )
+      } catch (gErr) {
+        // Non-fatal: graph build will be triggered on next sync if this fails
+        console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
+      }
+    }
+
+    // 7. Release QStash concurrency slot
     await releaseSlot(orgId, sourceType || provider)
 
     return NextResponse.json({

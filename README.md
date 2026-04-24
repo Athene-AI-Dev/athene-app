@@ -7,7 +7,7 @@ Follow these straightforward steps to get the AtheneAI construction site running
 git clone https://github.com/Athene-AI-Dev/athene-app.git
 cd athene-app  
 ``` 
-
+ 
 ### 2. Install and Initialize
 Install the foundation and prepare env ironment variables: 
 ```bash 

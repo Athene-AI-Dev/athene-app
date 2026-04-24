@@ -52,18 +52,3 @@ export async function getAgentGraph(): Promise<CompiledStateGraph<any, any>> {
   return compiledGraph;
 }
 
-/**
- * @deprecated Use getAgentGraph() instead.
- * Kept for source compatibility with app/api/agent/route.ts until that file
- * is updated to call getAgentGraph().
- */
-export const agentGraph = {
-  stream: async (...args: Parameters<CompiledStateGraph<any, any>["stream"]>) => {
-    const graph = await getAgentGraph();
-    return graph.stream(...args);
-  },
-  invoke: async (...args: Parameters<CompiledStateGraph<any, any>["invoke"]>) => {
-    const graph = await getAgentGraph();
-    return graph.invoke(...args);
-  },
-};

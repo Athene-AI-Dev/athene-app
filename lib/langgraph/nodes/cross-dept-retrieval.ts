@@ -1,6 +1,7 @@
 ﻿import { crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { ToolMessage } from "@langchain/core/messages";
 
 // 🛠️ ToolNode singleton
 const toolNode = new ToolNode([crossDeptVectorSearchTool]);
@@ -40,8 +41,8 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
   return {
     messages: result.messages,
     retrievedDocs: result.messages
-      .filter((m: any) => m._getType() === "tool")
-      .flatMap((m: any) => {
+      .filter((m): m is ToolMessage => m instanceof ToolMessage)
+      .flatMap((m) => {
         try {
           return JSON.parse(m.content);
         } catch (e) {

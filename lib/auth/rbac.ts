@@ -89,14 +89,16 @@ export async function resolveUserAccess(
       }
 
       if (data) {
-        const grants = Array.isArray(data.access_grants) ? data.access_grants : [];
+        type AccessGrant = { id: string; scope_type: string; scope_id: string; expires_at: string | null };
+        const grants: AccessGrant[] = Array.isArray(data.access_grants) ? (data.access_grants as AccessGrant[]) : [];
+        const now = new Date();
         const activeGrants = grants.filter(
-          (g: any) => !g.expires_at || new Date(g.expires_at) > new Date()
+          (g) => !g.expires_at || new Date(g.expires_at) > now
         );
 
         const accessible_dept_ids = activeGrants
-          .filter((g: any) => g.scope_type === "department")
-          .map((g: any) => g.scope_id as string)
+          .filter((g) => g.scope_type === "department")
+          .map((g) => g.scope_id)
           .filter((val, idx, self) => self.indexOf(val) === idx);
 
         result = {

@@ -15,6 +15,7 @@
 // ============================================================
 
 import { ToolNode } from '@langchain/langgraph/prebuilt'
+import { ToolMessage } from '@langchain/core/messages'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { crossDeptVectorSearchTool } from '@/lib/tools/registry'
 import type { AtheneState, AtheneStateUpdate } from '@/lib/langgraph/state'
@@ -28,7 +29,7 @@ export async function crossDeptAgent(
   state: AtheneState,
   config: any,
 ): Promise<AtheneStateUpdate> {
-  const { org_id, user_id, user_role } = state
+  const { orgId: org_id, userId: user_id, role: user_role } = state
 
   // ⚠️ HARD ROLE CHECK — must be the first statement
   if (user_role !== 'super_user' && user_role !== 'admin') {
@@ -65,8 +66,8 @@ export async function crossDeptAgent(
     chunk_id?: string
     metadata?: { department_id?: string }
   }> = result.messages
-    .filter((m: any) => m._getType?.() === 'tool')
-    .flatMap((m: any) => {
+    .filter((m): m is ToolMessage => m instanceof ToolMessage)
+    .flatMap((m) => {
       try {
         return JSON.parse(m.content)
       } catch {

@@ -163,17 +163,21 @@ export async function POST(
   // We don't await the full stream here — the client polls /api/agent/status
   const resumeConfig = { configurable: { thread_id: threadId } };
 
-  // Fire-and-forget: stream the rest of the graph
+  // Fire-and-forget: stream the rest of the graph.
+  // Client polls /api/agent/status for completion — we intentionally don't block here.
   (async () => {
     try {
       const stream = await graph.stream(null, resumeConfig);
-      // Consume the stream to drive execution
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _chunk of stream) {
-        // execution proceeds
-      }
+      for await (const _chunk of stream) { /* drives execution */ }
     } catch (err) {
-      console.error("[hitl] Error resuming graph:", err);
+      console.error("[hitl] Graph resume failed after approval", {
+        threadId,
+        orgId: clerkOrgId,
+        userId: access.internal_user_id,
+        decision: body.action,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   })();
 

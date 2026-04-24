@@ -10,6 +10,7 @@
 // (CRM contacts, directory data, etc.) — never guessed.
 // ============================================================
 
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { LLMFactory } from "../langgraph/llm-factory";
 import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
 
@@ -42,7 +43,11 @@ Your job is to compose a professional email based on the user's request and the 
 /** Build the full prompt with conversation + retrieved context */
 function buildPrompt(state: AtheneState): string {
   const history = state.messages
-    .map((m) => `${m._getType()}: ${m.content}`)
+    .map((m) => {
+      const role = m instanceof HumanMessage ? "human" : m instanceof AIMessage ? "assistant" : "tool";
+      const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+      return `${role}: ${content}`;
+    })
     .join("\n");
 
   const context = state.retrieved_chunks

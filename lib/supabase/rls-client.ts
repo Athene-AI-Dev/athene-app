@@ -55,6 +55,12 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
     return null;
   }
 
+  const VALID_ROLES = ["member", "super_user", "admin"] as const;
+  if (!VALID_ROLES.includes(user_role as typeof VALID_ROLES[number])) {
+    console.warn("[rls-client] Unexpected x-current-user-role header value:", user_role);
+    return null;
+  }
+
   return {
     org_id,
     user_id,

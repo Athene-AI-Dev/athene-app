@@ -95,12 +95,14 @@ export async function getConnectionToken(
       console.error('Supabase verification error:', supabaseError)
     }
 
-    // Fallback: Verify via Nango metadata if Supabase record is missing (transitional)
     if (!mapping) {
-      const conn = await nango.getConnection(providerConfigKey, connectionId).catch(err => handleNangoError(err, 'getConnectionForVerification'))
-      if (conn.metadata?.org_id !== orgId) {
-        throw new Error('Unauthorized: Connection does not belong to this organization')
-      }
+      // Fail closed — no Supabase record means this org does not own the connection.
+      // We do not fall back to Nango metadata because metadata is user-controlled during
+      // OAuth setup and cannot be trusted as an ownership proof.
+      const notFound = new Error('Connection not found for this organization');
+      (notFound as any).status = 404;
+      (notFound as any).reason = 'NOT_FOUND';
+      throw notFound;
     }
 
     // 🔒 If verification passed, proceed to fetch token
@@ -147,12 +149,28 @@ export async function getConnectionMetadata(
 
   const nango = getNango();
 
+  // Verify ownership via Supabase (source of truth) before fetching from Nango
+  const { data: mapping, error: supabaseError } = await supabase
+    .from('nango_connections')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('connection_id', connectionId)
+    .eq('provider_config_key', providerConfigKey)
+    .maybeSingle();
+
+  if (supabaseError) {
+    console.error('Supabase verification error in getConnectionMetadata:', supabaseError);
+  }
+
+  if (!mapping) {
+    const notFound = new Error('Connection not found for this organization');
+    (notFound as any).status = 404;
+    (notFound as any).reason = 'NOT_FOUND';
+    throw notFound;
+  }
+
   try {
-    const conn = await nango.getConnection(providerConfigKey, connectionId);
-    if (conn.metadata?.org_id !== orgId) {
-      throw new Error('Unauthorized: Connection does not belong to this organization');
-    }
-    return conn;
+    return await nango.getConnection(providerConfigKey, connectionId);
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnectionMetadata');
   }
@@ -255,13 +273,12 @@ export async function deleteConnection(
 
     if (supabaseError) console.error('Supabase cleanup verification error:', supabaseError);
 
-    // 2. If it exists in Supabase, we are authorized to delete from Nango
-    // If not in Supabase, we fall back to a metadata check in Nango itself
+    // 2. Fail closed — no Supabase record means this org does not own the connection
     if (!mapping) {
-      const conn = await nango.getConnection(providerConfigKey, connectionId).catch(err => handleNangoError(err, 'verifyOwnershipBeforeDelete'));
-      if (conn.metadata?.org_id !== orgId) {
-        throw new Error('Unauthorized: Forbidden to delete another organization\'s connection');
-      }
+      const notFound = new Error('Connection not found for this organization');
+      (notFound as any).status = 404;
+      (notFound as any).reason = 'NOT_FOUND';
+      throw notFound;
     }
 
     // 3. Delete from Nango service

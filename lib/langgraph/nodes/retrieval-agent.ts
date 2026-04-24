@@ -1,6 +1,7 @@
 ﻿import { vectorSearchTool, crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { ToolMessage } from "@langchain/core/messages";
 
 // 🛠️ ToolNode singleton
 const toolNode = new ToolNode([vectorSearchTool]);
@@ -29,8 +30,8 @@ export async function retrievalAgent(state: AtheneStateType, config: any) {
     messages: result.messages,
     // Extract retrieved docs from tool output if needed for state
     retrievedDocs: result.messages
-      .filter((m: any) => m._getType() === "tool")
-      .flatMap((m: any) => {
+      .filter((m): m is ToolMessage => m instanceof ToolMessage)
+      .flatMap((m) => {
         try {
           return JSON.parse(m.content);
         } catch (e) {

@@ -11,7 +11,7 @@
 // ============================================================
 
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { LLMFactory } from "../langgraph/llm-factory";
+import { getModel } from "../langgraph/llm-factory";
 import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
 
 // ---- Prompt (inlined at build time, no fs.readFileSync) ------
@@ -107,7 +107,7 @@ export async function emailAgentNode(
 ): Promise<AtheneStateUpdate> {
   const prompt = buildPrompt(state);
 
-  const llm = LLMFactory.getModel("medium");
+  const llm = getModel("medium");
 
   const response = await llm.invoke([
     { role: "system", content: prompt },

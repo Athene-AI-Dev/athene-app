@@ -65,6 +65,25 @@ export type AtheneStateUpdate = Partial<AtheneStateType>;
 /** User roles recognized throughout the system */
 export type UserRole = "member" | "super_user" | "admin";
 
+export interface RetrievedChunk {
+  id?: string;
+  document_id: string;
+  content_preview: string;
+  chunk_index: number;
+  source_type: string;
+  external_url?: string | null;
+  department_id?: string | null;
+  similarity?: number;
+}
+
+export interface CitedSource {
+  document_id: string;
+  title: string | null;
+  external_url?: string | null;
+  chunk_index: number;
+  source_type: string;
+}
+
 /** Shape of a pending write action waiting for HITL approval */
 export interface PendingWriteAction {
   tool: string;

@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
   if (state.orgId !== orgId) {
     return new NextResponse('Forbidden', { status: 403 })
   }
+  if (state.userId !== userId) {
+    return new NextResponse('Forbidden', { status: 403 })
+  }
   if (state.run_status !== 'paused') {
     return NextResponse.json({ error: 'Thread is not paused' }, { status: 409 })
   }

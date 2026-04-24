@@ -18,7 +18,6 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import {
-  verifyThreadOwner,
   processDecision,
   logHitlDecision,
   type HitlRequest,
@@ -49,21 +48,7 @@ export async function POST(
 
   const { id: threadId } = await params;
 
-  // 3. Verify thread ownership — only the thread owner can approve
-  const thread = await verifyThreadOwner(
-    threadId,
-    access.internal_user_id,
-    clerkOrgId,
-  );
-
-  if (!thread) {
-    return NextResponse.json(
-      { error: "Thread not found or you are not the owner" },
-      { status: 403 },
-    );
-  }
-
-  // 4. Parse and validate request body
+  // 3. Parse and validate request body
   let body: HitlRequest;
   try {
     body = await request.json();
@@ -88,7 +73,9 @@ export async function POST(
     );
   }
 
-  // 5. Get the current graph state to read pending_write_action
+  // 4. Get the current graph state and verify thread ownership.
+  // We authorize from the checkpoint state because the thread routes are keyed by
+  // LangGraph thread_id; a separate threads table row is not guaranteed to exist.
   const graph = await getAgentGraph();
 
   const currentState = await graph.getState({
@@ -103,6 +90,13 @@ export async function POST(
   }
 
   const stateValues = currentState.values as Record<string, unknown>;
+  if (stateValues.orgId !== clerkOrgId || stateValues.userId !== clerkUserId) {
+    return NextResponse.json(
+      { error: "Thread not found or you are not the owner" },
+      { status: 403 },
+    );
+  }
+
   const pendingAction = stateValues.pending_write_action as {
     tool: string;
     payload: Record<string, unknown>;
@@ -116,7 +110,7 @@ export async function POST(
     );
   }
 
-  // 6. Process the decision
+  // 5. Process the decision
   let result;
   try {
     result = processDecision(body, pendingAction as any);
@@ -127,7 +121,7 @@ export async function POST(
     );
   }
 
-  // 7. Audit log the decision
+  // 6. Audit log the decision
   await logHitlDecision({
     orgId: clerkOrgId,
     threadId,
@@ -138,7 +132,7 @@ export async function POST(
     editedPayload: body.action === "edit" ? (result.payload as Record<string, unknown>) : null,
   });
 
-  // 8. Update state and resume the graph
+  // 7. Update state and resume the graph
   const stateUpdate = result.approved
     ? {
         // Keep pending_write_action with final payload for downstream execution
@@ -158,7 +152,7 @@ export async function POST(
     stateUpdate,
   );
 
-  // 9. Resume the graph (un-pause from interrupt_before)
+  // 8. Resume the graph.
   // The graph will now execute approval_node → synthesis_agent → END
   // We don't await the full stream here — the client polls /api/agent/status
   const resumeConfig = { configurable: { thread_id: threadId } };

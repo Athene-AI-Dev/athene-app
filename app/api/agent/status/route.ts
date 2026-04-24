@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
-import { verifyThreadOwner } from "@/lib/graph/interrupts";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 
 export async function GET(request: NextRequest) {
@@ -34,21 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 3. Verify thread ownership
-    const thread = await verifyThreadOwner(
-      threadId,
-      access.internal_user_id,
-      clerkOrgId
-    );
-
-    if (!thread) {
-      return NextResponse.json(
-        { error: "Thread not found or access denied" },
-        { status: 403 }
-      );
-    }
-
-    // 4. Retrieve Graph State
+    // 3. Retrieve Graph State
     const graph = await getAgentGraph();
     const currentState = await graph.getState({
       configurable: { thread_id: threadId },
@@ -63,6 +48,13 @@ export async function GET(request: NextRequest) {
     }
 
     const values = currentState.values as any;
+    if (values.orgId !== clerkOrgId || values.userId !== clerkUserId) {
+      return NextResponse.json(
+        { error: "Thread not found or access denied" },
+        { status: 403 }
+      );
+    }
+
     let status = values.run_status || "idle";
 
     // Determine if the graph has completely finished

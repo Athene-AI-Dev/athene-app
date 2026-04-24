@@ -251,21 +251,41 @@ export async function indexDocuments(
   }
 
   const prepared: PreparedItem[] = []
-  let indexed = 0
   let errors = 0
 
+  // ---- Phase 1: resolve document rows and split into sub-chunks ----
   for (const chunk of chunks) {
     try {
-      await indexDocument(chunk, orgId, connectionId, departmentId)
-      indexed++
+      const documentId = await upsertDocumentRecord(chunk, orgId, connectionId, departmentId, visibility, ownerUserId)
+      const subChunks = chunkContent(chunk.content)
+      if (subChunks.length > 0) {
+        prepared.push({ chunk, documentId, subChunks })
+      }
     } catch (err) {
       errors++
       logger.error(
         { title: chunk.title, err: err instanceof Error ? err.message : String(err) },
-        '[indexing] Failed to index chunk'
+        '[indexing] Failed to prepare chunk'
       )
     }
   }
+
+  // ---- Phase 2: flatten sub-chunk texts and build record templates -
+  const allTexts: string[] = prepared.flatMap(item => item.subChunks)
+  const allTemplates = prepared.flatMap(item =>
+    item.subChunks.map((text, index) => ({
+      org_id: orgId,
+      document_id: item.documentId,
+      department_id: departmentId,
+      owner_user_id: ownerUserId,
+      source_type: item.chunk.metadata.provider,
+      visibility,
+      content_preview: text.substring(0, 200),
+      chunk_index: index,
+      content_hash: createHash('sha256').update(text).digest('hex'),
+      metadata: item.chunk.metadata,
+    }))
+  )
 
   // ---- Phase 3: generate embeddings in batches --------------------
   const allEmbeddings: number[][] = []

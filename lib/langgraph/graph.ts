@@ -1,5 +1,5 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { AtheneState } from "./state";
+import { AtheneStateAnnotation } from "./state";
 import { supervisor } from "./nodes/supervisor";
 import { retrievalAgent } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
@@ -10,14 +10,14 @@ import { calendarAgentNode } from "./nodes/calendar-agent";
 import { approvalNode } from "./nodes/async-tool-node";
 import { checkpointer } from "./checkpointer";
 
-const workflow = new StateGraph(AtheneState)
+const workflow = new StateGraph(AtheneStateAnnotation)
   .addNode("supervisor", supervisor)
   .addNode("retrieval", retrievalAgent)
   .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
   .addNode("synthesis", synthesisAgentNode)
   .addNode("report", reportAgentNode)
-  .addNode("email_agent", emailAgentNode)
-  .addNode("calendar_agent", calendarAgentNode)
+  .addNode("email", emailAgentNode)
+  .addNode("calendar", calendarAgentNode)
   .addNode("approval_node", approvalNode);
 
 // Entry point
@@ -31,22 +31,22 @@ workflow.addEdge("cross_dept_retrieval", "supervisor");
 workflow.addEdge("report", "synthesis");
 
 // Write agents go to HITL approval gate before executing
-workflow.addEdge("email_agent", "approval_node");
-workflow.addEdge("calendar_agent", "approval_node");
+workflow.addEdge("email", "approval_node");
+workflow.addEdge("calendar", "approval_node");
 
 // Terminal nodes
 workflow.addEdge("synthesis", END);
 workflow.addEdge("approval_node", END);
 
-// Supervisor routes to a worker or terminates
-workflow.addConditionalEdges("supervisor", (state) => state.next || "synthesis", {
+// Supervisor routes to a worker or terminates via active_agent field
+workflow.addConditionalEdges("supervisor", (state) => state.active_agent || "END", {
   retrieval: "retrieval",
   cross_dept_retrieval: "cross_dept_retrieval",
   synthesis: "synthesis",
   report: "report",
-  email_agent: "email_agent",
-  calendar_agent: "calendar_agent",
-  FINISH: END,
+  email: "email",
+  calendar: "calendar",
+  END,
 });
 
 export const agentGraph = workflow.compile({

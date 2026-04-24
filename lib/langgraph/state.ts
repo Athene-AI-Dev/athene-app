@@ -61,3 +61,13 @@ export type AtheneState = AtheneStateType;
 
 /** Partial return type for node functions */
 export type AtheneStateUpdate = Partial<AtheneStateType>;
+
+/** User roles recognized throughout the system */
+export type UserRole = "member" | "super_user" | "admin";
+
+/** Shape of a pending write action waiting for HITL approval */
+export interface PendingWriteAction {
+  tool: string;
+  payload: Record<string, unknown>;
+  requested_at: string;
+}

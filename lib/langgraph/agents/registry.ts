@@ -73,13 +73,6 @@ export const AGENT_REGISTRY = {
     crossDept: true,
   },
 
-  data_index_agent: {
-    name: "Data Index Agent",
-    minTier: "simple",
-    allowedRoles: ["admin"],
-    needsApproval: false,
-    crossDept: false,
-  },
 } as const satisfies Record<string, AgentDefinition>;
 
 export type AgentName = keyof typeof AGENT_REGISTRY;

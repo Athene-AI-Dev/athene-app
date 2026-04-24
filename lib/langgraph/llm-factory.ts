@@ -19,3 +19,6 @@ class LLMFactory {
 }
 
 export const model = LLMFactory.getModel();
+
+/** LLM tier used by the agent registry to select model complexity */
+export type ModelTier = "simple" | "medium" | "complex";

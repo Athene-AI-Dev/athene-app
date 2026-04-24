@@ -7,13 +7,13 @@ const toolNode = new ToolNode([crossDeptVectorSearchTool]);
 
 /**
  * BI Specialist agent worker.
- * Specifically uses crossDeptVectorSearchTool which enforces the bi_analyst role and visibility filters.
+ * Specifically uses crossDeptVectorSearchTool which enforces the super_user role and visibility filters.
  */
 export async function crossDeptRetrievalAgent(state: AtheneStateType, config: any) {
   const { orgId, userId, role } = state;
 
-  // 🛡️ Defense-in-depth: Ensure role is actually bi_analyst
-  if (role !== "bi_analyst") {
+  // 🛡️ Defense-in-depth: Ensure role is super_user (mapped from org:bi_analyst by Clerk)
+  if (role !== "super_user") {
     return {
       messages: [
         {

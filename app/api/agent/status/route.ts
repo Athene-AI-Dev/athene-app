@@ -1,10 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { verifyThreadOwner } from "@/lib/graph/interrupts";
-import { SupabaseCheckpointer } from "@/lib/langgraph/checkpointer";
-import { buildAtheneGraph } from "@/lib/langgraph/graph";
+import { getAgentGraph } from "@/lib/langgraph/graph";
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,9 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Retrieve Graph State
-    const checkpointer = new SupabaseCheckpointer(supabaseAdmin, clerkOrgId);
-    const graph = buildAtheneGraph(checkpointer);
-
+    const graph = await getAgentGraph();
     const currentState = await graph.getState({
       configurable: { thread_id: threadId },
     });

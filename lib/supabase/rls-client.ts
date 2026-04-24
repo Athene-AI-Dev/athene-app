@@ -60,9 +60,10 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
     user_id,
     user_role: user_role as "member" | "super_user" | "admin",
     department_id,
-    accessible_dept_ids: accessible_depts_raw
-      ? JSON.parse(accessible_depts_raw)
-      : [],
+    accessible_dept_ids: (() => {
+      if (!accessible_depts_raw) return [];
+      try { return JSON.parse(accessible_depts_raw); } catch { return []; }
+    })(),
   };
 }
 

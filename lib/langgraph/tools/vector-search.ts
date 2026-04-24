@@ -22,7 +22,7 @@ export const vectorSearchTool = new DynamicStructuredTool({
     const role =
       config?.configurable?.role ?? config?.metadata?.role ?? "member";
 
-    const results = await vectorSearch({ orgId, userId, role, query, topK });
+    const results = await vectorSearch({ orgId, userId, user_role: role, query, topK });
     return JSON.stringify({ tool: "vectorSearch", query, results });
   },
 });
@@ -30,7 +30,7 @@ export const vectorSearchTool = new DynamicStructuredTool({
 export const crossDeptVectorSearchTool = new DynamicStructuredTool({
   name: "crossDeptVectorSearch",
   description:
-    "Cross-department vector search restricted to bi_analyst role. Returns bi_accessible documents only.",
+    "Cross-department vector search restricted to super_user (BI Analyst) role. Returns bi_accessible documents only.",
   schema: z.object({
     query: z.string().describe("The search query"),
     topK: z
@@ -50,7 +50,7 @@ export const crossDeptVectorSearchTool = new DynamicStructuredTool({
     const results = await crossDeptVectorSearch({
       orgId,
       userId,
-      role,
+      user_role: role,
       query,
       topK,
     });

@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { HumanMessage } from "@langchain/core/messages";
-import { buildAtheneGraph } from "@/lib/langgraph/graph";
-import { checkpointer } from "@/lib/langgraph/checkpointer";
+import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
-
-const graph = buildAtheneGraph(checkpointer);
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,16 +14,16 @@ export async function POST(req: NextRequest) {
 
     const { message, threadId } = await req.json();
 
-    const user_role = mapRole(orgRole ?? undefined) ?? "member";
+    const role = mapRole(orgRole ?? undefined) ?? "member";
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      org_id: orgId,
-      user_id: userId,
-      user_role,
-      thread_id: threadId || `user-${userId}`,
+      orgId,
+      userId,
+      role,
     };
 
+    const graph = await getAgentGraph();
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -48,7 +45,7 @@ export async function POST(req: NextRequest) {
               final_answer: chunk.final_answer ?? null,
               cited_sources: chunk.cited_sources ?? [],
               awaiting_approval: chunk.awaiting_approval ?? false,
-              active_agent: chunk.active_agent ?? null,
+              active_agent: chunk.next ?? null,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));
           }

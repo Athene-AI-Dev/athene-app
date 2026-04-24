@@ -30,9 +30,14 @@ export async function supervisor(state: AtheneStateType) {
     ...state.messages,
   ]);
 
-  const route = response.tool_calls?.[0]?.args as { next: string };
-  
+  const VALID_ROUTES = ["retrieval", "cross_dept_retrieval", "FINISH"] as const;
+  const rawNext = (response.tool_calls?.[0]?.args as { next?: string } | undefined)?.next;
+
+  if (!rawNext || !VALID_ROUTES.includes(rawNext as typeof VALID_ROUTES[number])) {
+    console.warn("[supervisor] LLM returned invalid route:", rawNext, "— defaulting to FINISH");
+  }
+
   return {
-    next: route?.next || "FINISH",
+    next: VALID_ROUTES.includes(rawNext as typeof VALID_ROUTES[number]) ? rawNext : "FINISH",
   };
 }

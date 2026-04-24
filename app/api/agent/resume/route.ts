@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { buildAtheneGraph } from '@/lib/langgraph/graph'
-import { checkpointer } from '@/lib/langgraph/checkpointer'
-
-const graph = buildAtheneGraph(checkpointer)
 import { HumanMessage } from '@langchain/core/messages'
+import { getAgentGraph } from '@/lib/langgraph/graph'
 
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth()
@@ -22,6 +19,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'threadId is required' }, { status: 400 })
   }
 
+  const graph = await getAgentGraph()
+
   // Verify the thread exists and belongs to this org
   const snapshot = await graph.getState({ configurable: { thread_id: threadId } })
   const state = snapshot?.values as Record<string, any> | undefined
@@ -29,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!state?.orgId) {
     return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
   }
-  if (state.org_id !== orgId) {
+  if (state.orgId !== orgId) {
     return new NextResponse('Forbidden', { status: 403 })
   }
   if (state.run_status !== 'paused') {
@@ -55,13 +54,12 @@ export async function POST(req: NextRequest) {
 
   ;(async () => {
     try {
-      const eventStream = graph.stream(null, {
+      const eventStream = await graph.stream(null, {
         configurable: { thread_id: threadId },
-        metadata: { orgId, userId },
         streamMode: 'values',
       })
 
-      for await (const chunk of await eventStream) {
+      for await (const chunk of eventStream) {
         const lastMessage = chunk.messages?.[chunk.messages.length - 1]
         if (lastMessage) {
           const data = JSON.stringify({ content: lastMessage.content, run_status: chunk.run_status })

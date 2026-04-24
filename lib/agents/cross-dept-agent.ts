@@ -69,7 +69,7 @@ export async function crossDeptAgent(
     .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
     .flatMap((m: ToolMessage) => {
       try {
-        return JSON.parse(m.content)
+        return JSON.parse(m.content as string)
       } catch {
         return []
       }

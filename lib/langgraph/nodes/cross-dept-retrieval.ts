@@ -44,7 +44,7 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
       .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
       .flatMap((m: ToolMessage) => {
         try {
-          return JSON.parse(m.content);
+          return JSON.parse(m.content as string);
         } catch (e) {
           console.error("Error parsing tool output:", e);
           return [];

@@ -17,7 +17,7 @@ cp .env.example .env
 
 ### 3. Core Dependencies
 These packages provide the backbone for Auth, Database, and AI orchestration:
-```bash
+```bash 
 # Core
 npm install @clerk/nextjs @supabase/supabase-js @langchain/langgraph @langchain/core
 # Integrations

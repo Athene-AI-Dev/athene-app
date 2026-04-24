@@ -54,11 +54,9 @@ export async function reportAgent(
   _config: unknown
 ): Promise<AtheneStateUpdate> {
   const {
-    org_id,
-    user_id,
-    user_role,
-    user_dept_id,
-    accessible_dept_ids,
+    orgId,
+    userId,
+    role,
     messages,
   } = state;
 
@@ -105,9 +103,9 @@ export async function reportAgent(
   const compiledSections = await Promise.all(
     sections.map(async (section) => {
       const results = await vectorSearch({
-        orgId: org_id,
-        userId: user_id,
-        user_role,
+        orgId,
+        userId,
+        user_role: role,
         query: `${query} - ${section}`,
         topK: 5,
       });

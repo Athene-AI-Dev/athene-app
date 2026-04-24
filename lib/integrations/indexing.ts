@@ -251,6 +251,7 @@ export async function indexDocuments(
   }
 
   const prepared: PreparedItem[] = []
+  let indexed = 0
   let errors = 0
 
   for (const chunk of chunks) {

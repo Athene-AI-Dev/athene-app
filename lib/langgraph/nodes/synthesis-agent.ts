@@ -1,16 +1,8 @@
-// ============================================================
-// nodes/synthesis-agent.ts — Synthesis Agent node (stub)
-// Full implementation: ATH-29
-// ============================================================
-
-import type { AtheneStateType, AtheneStateUpdate } from "../state";
+import type { AtheneState, AtheneStateUpdate } from "../state";
+import { synthesisAgentNode as implementation } from "@/lib/agents/synthesis-agent";
 
 export async function synthesisAgentNode(
-  state: AtheneStateType,
+  state: AtheneState,
 ): Promise<AtheneStateUpdate> {
-  // TODO (ATH-29): build final answer from retrievedDocs + messages.
-  void state;
-  return {
-    run_status: "complete",
-  };
+  return implementation(state);
 }

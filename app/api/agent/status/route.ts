@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Prevent cross-org state access
-  if (state.orgId !== orgId) {
+  if (state.org_id !== orgId) {
     return new NextResponse('Forbidden', { status: 403 })
   }
 

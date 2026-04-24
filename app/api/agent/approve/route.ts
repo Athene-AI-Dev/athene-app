@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   if (!state?.orgId) {
     return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
   }
-  if (state.orgId !== orgId) {
+  if (state.org_id !== orgId) {
     return new NextResponse('Forbidden', { status: 403 })
   }
   if (!state.awaiting_approval) {

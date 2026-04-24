@@ -2,35 +2,28 @@ import { crossDeptVectorSearchTool } from "../tools/registry";
 import { AtheneStateType } from "../state";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 
-// 🛠️ ToolNode singleton
 const toolNode = new ToolNode([crossDeptVectorSearchTool]);
 
-/**
- * BI Specialist agent worker.
- * Specifically uses crossDeptVectorSearchTool which enforces the bi_analyst role and visibility filters.
- */
 export async function crossDeptRetrievalAgent(state: AtheneStateType, config: any) {
-  const { orgId, userId, user_role } = state;
+  const { org_id, user_id, user_role } = state;
 
-  // Defense-in-depth: cross-dept search requires super_user role
-  if (user_role !== "super_user") {
+  if (user_role !== "super_user" && user_role !== "admin") {
     return {
       messages: [
         {
           role: "assistant",
-          content: "Access Denied: Cross-department search is restricted to BI Analysts.",
+          content: "Access Denied: Cross-department search is restricted to super_user and admin roles.",
         },
       ],
     };
   }
 
-  // Inject security context into tool config metadata
   const toolConfig = {
     ...config,
     metadata: {
       ...config.metadata,
-      orgId,
-      userId,
+      orgId: org_id,
+      userId: user_id,
       user_role,
     },
   };
@@ -39,13 +32,12 @@ export async function crossDeptRetrievalAgent(state: AtheneStateType, config: an
 
   return {
     messages: result.messages,
-    retrievedDocs: result.messages
+    retrieved_chunks: result.messages
       .filter((m: any) => m._getType() === "tool")
       .flatMap((m: any) => {
         try {
           return JSON.parse(m.content);
-        } catch (e) {
-          console.error("Error parsing tool output:", e);
+        } catch {
           return [];
         }
       }),

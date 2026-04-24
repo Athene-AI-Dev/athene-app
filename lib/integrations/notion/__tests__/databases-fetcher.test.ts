@@ -12,7 +12,7 @@ describe('notion databases-fetcher', () => {
   })
 
   it('should fetch databases and pages within them', async () => {
-    vi.mocked(client.notionFetch).mockImplementation(async (connectionId, path) => {
+    vi.mocked(client.notionFetch).mockImplementation(async (connectionId, orgId, path) => {
       if (path === '/search') {
         return {
           results: [{

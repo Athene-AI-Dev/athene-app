@@ -19,9 +19,10 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
+      org_id: orgId,
+      user_id: userId,
       user_role,
+      thread_id: threadId || `user-${userId}`,
     };
 
     const encoder = new TextEncoder();
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
           if (lastMessage) {
             const data = JSON.stringify({
               content: lastMessage.content,
-              docs: chunk.retrievedDocs,
-              node: chunk.next,
+              docs: chunk.retrieved_chunks,
+              node: chunk.active_agent,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));
           }

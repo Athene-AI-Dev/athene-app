@@ -5,14 +5,15 @@ import * as xlsx from 'xlsx'
 
 export async function listSharePointDocs(connectionId: string, orgId: string, siteId: string, itemId: string = 'root') {
   const items: any[] = []
-  const endpoint = itemId === 'root'
-    ? `/sites/${siteId}/drive/root/children`
+  const endpoint = itemId === 'root' 
+    ? `/sites/${siteId}/drive/root/children` 
     : `/sites/${siteId}/drive/items/${itemId}/children`
-
+    
   for await (const item of paginate(connectionId, orgId, endpoint)) {
     if (item.file) {
       items.push(item)
     } else if (item.folder) {
+      // Recurse to find all files in subfolders
       const children = await listSharePointDocs(connectionId, orgId, siteId, item.id)
       items.push(...children)
     }
@@ -24,7 +25,7 @@ export async function fetchDocContent(connectionId: string, orgId: string, drive
   // 1. Get item metadata to determine file type
   const item = await graphFetch(connectionId, orgId, `/drives/${driveId}/items/${itemId}`)
   const fileName = item.name.toLowerCase()
-
+  
   // 2. Download content
   const arrayBuffer = await graphDownload(connectionId, orgId, `/drives/${driveId}/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)

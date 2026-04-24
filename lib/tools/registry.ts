@@ -67,7 +67,7 @@ const TOOL_META: Record<ToolName, ToolMeta> = {
 
 // ---- DynamicStructuredTool instances ----------------------------
 
-const vectorSearchTool = new DynamicStructuredTool({
+export const vectorSearchTool = new DynamicStructuredTool({
   name: 'vectorSearch',
   description: TOOL_META.vectorSearch.description,
   schema: z.object({
@@ -97,7 +97,7 @@ const vectorSearchTool = new DynamicStructuredTool({
   },
 })
 
-const crossDeptVectorSearchTool = new DynamicStructuredTool({
+export const crossDeptVectorSearchTool = new DynamicStructuredTool({
   name: 'crossDeptVectorSearch',
   description: TOOL_META.crossDeptVectorSearch.description,
   schema: z.object({
@@ -261,3 +261,4 @@ export function getToolNamesForRole(role: UserRole): ToolName[] {
     TOOL_META[name].allowedRoles.includes(role),
   )
 }
+

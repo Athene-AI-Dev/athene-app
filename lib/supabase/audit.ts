@@ -1,1 +1,36 @@
-﻿浩潰瑲笠猠灵扡獡卥牥敶⁲⁽牦浯✠⼮敳癲牥ധഊ攊灸牯⁴祴数䄠摵瑩潌䕧瑮祲㴠笠਍†牯彧摩›瑳楲杮਍†摡業彮獵牥楟㩤猠牴湩൧ 愠瑣潩㩮猠牴湩൧ 琠牡敧彴獵牥楟㽤›瑳楲杮਍†敤慴汩㽳›湡൹紊਍਍⨯പ ‪牗瑩獥愠⁮湥牴⁹潴琠敨愠浤湩慟瑣潩獮愠摵瑩氠杯മ ‪獕獥琠敨猠牥楶散爭汯⁥汣敩瑮戠捥畡敳愠摵瑩氠杯楧杮椠⁳湡愠浤湩獩牴瑡癩⁥慴歳਍⨠琠慨⁴桳畯摬猠捵散摥爠来牡汤獥⁳景琠敨椠楮楴瑡湩⁧獵牥猧删卌瀠牥業獳潩獮ഠ ‪琨潨杵⁨楶楳楢楬祴漠⁦桴⁥潬⁧獩删卌爭獥牴捩整⥤മ ⼪਍硥潰瑲愠祳据映湵瑣潩⁮牷瑩䅥摵瑩潌⡧湥牴㩹䄠摵瑩潌䕧瑮祲 ൻ 挠湯瑳笠攠牲牯素㴠愠慷瑩猠灵扡獡卥牥敶൲ †⸠牦浯✨摡業彮捡楴湯❳ഩ †⸠湩敳瑲嬨ൻ ††漠杲楟㩤攠瑮祲漮杲楟Ɽ਍†††摡業彮獵牥楟㩤攠瑮祲愮浤湩畟敳彲摩ബ ††愠瑣潩㩮攠瑮祲愮瑣潩Ɱ਍†††慴杲瑥畟敳彲摩›湥牴⹹慴杲瑥畟敳彲摩ബ ††搠瑥楡獬›湥牴⹹敤慴汩⁳籼笠ൽ †素⥝਍਍†晩⠠牥潲⥲笠਍††潣獮汯⹥牥潲⡲䔧牲牯眠楲楴杮愠摵瑩氠杯✺‬牥潲⥲਍††⼯圠⁥潤❮⁴桴潲⁷敨敲琠⁯癡楯⁤慦汩湩⁧桴⁥慭湩愠瑣潩⁮晩愠摵瑩映楡獬ബ †⼠ 畢⁴湩愠瀠潲畤瑣潩⁮灡Ɒ礠畯洠杩瑨眠湡⁴潭敲爠扯獵⁴牥潲⁲慨摮楬杮മ 素਍ൽഊ⼊⨪਍⨠匠数楣楦慣汬⁹潦⁲捡散獳朠慲瑮⁳畡楤⹴਍⨠യ攊灸牯⁴獡湹⁣畦据楴湯眠楲整片湡䅴捣獥䅳摵瑩攨瑮祲›ൻ 漠杲楟㩤猠牴湩൧ 甠敳彲摩›瑳楲杮਍†牧湡彴摩㨿猠牴湩൧ 猠潣数畟敳㩤猠牴湩൧ 搠捯浵湥彴摩㩳猠牴湩孧൝ 焠敵祲桟獡㽨›瑳楲杮਍⥽笠਍†潣獮⁴⁻牥潲⁲⁽‽睡楡⁴畳慰慢敳敓癲牥਍††昮潲⡭朧慲瑮慟捣獥彳畡楤❴ഩ †⸠湩敳瑲嬨湥牴嵹ഩഊ 椠⁦攨牲牯 ൻ †挠湯潳敬攮牲牯✨牅潲⁲牷瑩湩⁧牧湡⁴捡散獳愠摵瑩✺‬牥潲⥲਍†ൽ紊਍
+import { supabaseAdmin } from "./server";
+
+export type AuditLogEntry = {
+  org_id: string;
+  admin_user_id: string;
+  action: string;
+  target_user_id?: string;
+  details?: any;
+};
+
+export async function writeAuditLog(entry: AuditLogEntry) {
+  const { error } = await supabaseAdmin
+    .from("admin_actions")
+    .insert([entry]);
+
+  if (error) {
+    console.error("[audit] writeAuditLog failed:", error.message);
+  }
+}
+
+export async function writeGrantAccessAudit(entry: {
+  org_id: string;
+  user_id: string;
+  grant_id?: string;
+  scope_used: string;
+  document_ids: string[];
+  query_hash?: string;
+}) {
+  const { error } = await supabaseAdmin
+    .from("grant_access_audit")
+    .insert([entry]);
+
+  if (error) {
+    console.error("[audit] writeGrantAccessAudit failed:", error.message);
+  }
+}

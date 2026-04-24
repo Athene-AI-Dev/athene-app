@@ -16,8 +16,8 @@
 
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { crossDeptVectorSearchTool } from '@/lib/langgraph/tools/registry'
-import type { AtheneStateType } from '@/lib/langgraph/state'
+import { crossDeptVectorSearchTool } from '@/lib/tools/registry'
+import type { AtheneState, AtheneStateUpdate } from '@/lib/langgraph/state'
 
 // Module-level ToolNode singleton — never recreated per request
 const toolNode = new ToolNode([crossDeptVectorSearchTool])
@@ -25,13 +25,13 @@ const toolNode = new ToolNode([crossDeptVectorSearchTool])
 // ---- Agent node ---------------------------------------------
 
 export async function crossDeptAgent(
-  state: AtheneStateType,
+  state: AtheneState,
   config: any,
-): Promise<Partial<AtheneStateType>> {
-  const { orgId, userId, role } = state
+): Promise<AtheneStateUpdate> {
+  const { org_id, user_id, user_role } = state
 
   // ⚠️ HARD ROLE CHECK — must be the first statement
-  if (role !== 'bi_analyst') {
+  if (user_role !== 'super_user' && user_role !== 'admin') {
     return {
       messages: [
         {
@@ -48,9 +48,9 @@ export async function crossDeptAgent(
     ...config,
     metadata: {
       ...(config?.metadata ?? {}),
-      orgId,
-      userId,
-      role,
+      orgId: org_id,
+      userId: user_id,
+      user_role,
     },
   }
 
@@ -82,11 +82,10 @@ export async function crossDeptAgent(
       : JSON.stringify(lastMessage?.content ?? '')
 
   // Write audit rows — unconditional, even on 0 results
-  await writeBIAuditRows(orgId, userId, queryText, retrievedDocs)
+  await writeBIAuditRows(org_id, user_id, queryText, retrievedDocs)
 
   return {
     messages: result.messages,
-    retrievedDocs,
   }
 }
 

@@ -11,7 +11,7 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
       : JSON.stringify(lastMessage?.content ?? "");
 
   if (!query || !org_id) {
-    return { run_status: "complete" };
+    return { run_status: "completed" };
   }
 
   const results = await vectorSearch({
@@ -23,7 +23,7 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
   });
 
   if (!results || results.length === 0) {
-    return { run_status: "complete" };
+    return { run_status: "completed" };
   }
 
   const retrieved_chunks = results.map((res: any) => ({

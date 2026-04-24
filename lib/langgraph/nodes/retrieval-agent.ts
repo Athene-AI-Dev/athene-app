@@ -31,7 +31,7 @@ export async function retrievalAgent(state: AtheneStateType, config: any) {
     // Extract retrieved docs from tool output if needed for state
     retrievedDocs: result.messages
       .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
-      .flatMap((m) => {
+      .flatMap((m: ToolMessage) => {
         try {
           return JSON.parse(m.content);
         } catch (e) {

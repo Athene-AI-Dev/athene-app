@@ -1,7 +1,7 @@
  # AtheneAI Setup Guide 
 
 Follow these straightforward steps to get the AtheneAI construction site running on your local machine.
-  
+   
 ### 1. Pull the code
 ```bash 
 git clone https://github.com/Athene-AI-Dev/at hene-app.git 

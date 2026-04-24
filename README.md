@@ -1,6 +1,6 @@
  # AtheneAI Setup Guide 
 
-Follow these straightforward steps to get the AtheneAI construction site running on your local machine.
+Follow these straightforward steps to get the AtheneAI construction site running on your local machine. 
    
 ### 1. Pull the code
 ```bash 

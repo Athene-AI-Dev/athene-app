@@ -59,7 +59,7 @@ export async function indexJiraProject(
   connectionId: string,
   projectKey: string,
   orgId: string,
-  deptId: string
+  deptId: string | null
 ): Promise<IndexJiraResult> {
   const cloudId = await getCloudId(connectionId, orgId, 'jira')
   let startAt = 0
@@ -119,7 +119,7 @@ export async function indexJiraProject(
     })
 
     // Pass the batch to the shared indexing pipeline
-    const { indexed, errors } = await indexDocuments(chunks, orgId, deptId)
+    const { indexed, errors } = await indexDocuments(chunks, orgId, connectionId, deptId)
     totalIndexed += indexed
     totalFailed += errors
 

@@ -10,11 +10,7 @@ export type SearchResult = {
 
 /**
  * Performs a vector similarity search within the RLS-protected context.
- *
- * Uses withRLS() so that:
- *   1. Postgres session vars are set via set_app_context()
- *   2. Super_user grants are injected via set_session_grants()
- *   3. match_documents() RPC runs with full RLS enforcement
+ * Uses withRLS() so Postgres session vars are set and grants are injected.
  */
 export async function similaritySearch(
   context: RLSContext,
@@ -30,7 +26,7 @@ export async function similaritySearch(
     });
 
     if (error) {
-      console.error("Error in similaritySearch:", error);
+      console.error("[vector] similaritySearch error:", error);
       throw error;
     }
 

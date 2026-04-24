@@ -1,6 +1,5 @@
 import { linearFetch } from './client';
 import { FetchedChunk } from '../base';
-import { indexDocument } from '../indexing';
 
 const CYCLES_QUERY = `
   query GetCycles($cursor: String) {
@@ -55,9 +54,8 @@ export async function linearCyclesFetcher(connectionId: string, orgId: string): 
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk, orgId);
     }
-    
+
     hasNextPage = cyclesResult.pageInfo.hasNextPage;
     cursor = cyclesResult.pageInfo.endCursor;
   }

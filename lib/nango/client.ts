@@ -112,16 +112,15 @@ export async function getConnectionToken(
 }
 
 /**
- * Convenience wrapper for getToken to match Graph integration requirements.
- * Note: This bypasses the orgId check if not provided, but uses the internal Nango method.
+ * Verified token fetch — always validates org ownership before returning a token.
+ * Drop-in for any caller that previously used the unguarded variant.
  */
-export async function getToken(connectionId: string, providerConfigKey: string): Promise<string> {
-    const nango = getNango();
-    try {
-        return await (nango as any).getConnectionToken(providerConfigKey, connectionId);
-    } catch (error: unknown) {
-        return handleNangoError(error, 'getToken');
-    }
+export async function getToken(
+  connectionId: string,
+  providerConfigKey: string,
+  orgId: string
+): Promise<string> {
+  return getConnectionToken(connectionId, providerConfigKey, orgId);
 }
 
 export async function getConnection(connectionId: string, providerConfigKey: string) {

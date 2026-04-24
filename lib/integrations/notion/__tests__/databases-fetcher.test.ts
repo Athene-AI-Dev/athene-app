@@ -12,7 +12,7 @@ describe('notion databases-fetcher', () => {
   })
 
   it('should fetch databases and pages within them', async () => {
-    vi.mocked(client.notionFetch).mockImplementation(async (connectionId, path) => {
+    vi.mocked(client.notionFetch).mockImplementation(async (connectionId, orgId, path) => {
       if (path === '/search') {
         return {
           results: [{
@@ -39,7 +39,7 @@ describe('notion databases-fetcher', () => {
       return { results: [] }
     })
 
-    const chunks = await fetchAllDatabases('conn-123')
+    const chunks = await fetchAllDatabases('conn-123', 'org-123')
     
     expect(chunks).toHaveLength(1)
     expect(chunks[0].title).toBe('Database: Test DB')

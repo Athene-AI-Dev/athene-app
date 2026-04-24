@@ -25,6 +25,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
+
 import {
   extractEntitiesAndRelations,
   maxVisibility,
@@ -38,6 +39,13 @@ beforeEach(() => {
   mockCallCount = 0;
   process.env.ANTHROPIC_API_KEY = "test-key";
 });
+
+const ctx = {
+  org_id: "org-1",
+  user_id: "user-1",
+  user_role: "admin" as const,
+  department_id: "dept-1",
+};
 
 const baseChunk = (overrides: Partial<ExtractorChunk> = {}): ExtractorChunk => ({
   text: "Project Helios uses AWS EKS for orchestration.",

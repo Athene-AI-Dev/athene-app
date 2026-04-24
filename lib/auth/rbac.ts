@@ -69,33 +69,40 @@ export async function resolveUserAccess(
 
   // 1. Try Supabase
   try {
-    const { data, error } = await supabaseAdmin
-      .from("org_members")
-      .select("id, dept_id, role, bi_access_grants(granted_dept_ids, id, is_active, expires_at)")
-      .eq("user_id", userId)
-      .eq("org_id", orgId);
+    // Resolve internal org UUID from Clerk org ID
+    const { data: orgData } = await supabaseAdmin
+      .from("organizations")
+      .select("id")
+      .eq("clerk_org_id", orgId)
+      .single();
 
-    if (error) {
-      if (!error.message.includes("fetch failed")) {
+    if (orgData) {
+      const { data, error } = await supabaseAdmin
+        .from("org_members")
+        .select("id, department_id, role, access_grants(id, scope_type, scope_id, expires_at)")
+        .eq("clerk_user_id", userId)
+        .eq("org_id", orgData.id)
+        .single();
+
+      if (error && !error.message.includes("fetch failed") && error.code !== "PGRST116") {
         console.warn(`RBAC Supabase query failed: ${error.message}`);
       }
-    } else {
-      const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
 
-      if (row) {
-        const grants = Array.isArray(row.bi_access_grants) ? row.bi_access_grants : [];
+      if (data) {
+        const grants = Array.isArray(data.access_grants) ? data.access_grants : [];
         const activeGrants = grants.filter(
-          (g: any) => g?.is_active && (!g.expires_at || new Date(g.expires_at) > new Date())
+          (g: any) => !g.expires_at || new Date(g.expires_at) > new Date()
         );
 
         const accessible_dept_ids = activeGrants
-          .flatMap((g: any) => normalizeDeptIds(g.granted_dept_ids))
-          .filter((val, idx, self) => val && self.indexOf(val) === idx);
+          .filter((g: any) => g.scope_type === "department")
+          .map((g: any) => g.scope_id as string)
+          .filter((val, idx, self) => self.indexOf(val) === idx);
 
         result = {
-          internal_user_id: row.id,
-          role: row.role,
-          dept_id: row.dept_id,
+          internal_user_id: data.id,
+          role: data.role,
+          dept_id: data.department_id,
           accessible_dept_ids: accessible_dept_ids.length ? accessible_dept_ids : null,
           bi_grant_id: activeGrants[0]?.id ?? null,
         };

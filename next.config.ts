@@ -8,11 +8,12 @@ const nextConfig: NextConfig = {
   },
   headers: async () => [
     {
-      source: "/:path*",
+      // Only cache truly static assets; dashboard/API routes must not be shared across users
+      source: "/_next/static/:path*",
       headers: [
         {
           key: "Cache-Control",
-          value: "public, max-age=3600, s-maxage=3600",
+          value: "public, max-age=31536000, immutable",
         },
       ],
     },

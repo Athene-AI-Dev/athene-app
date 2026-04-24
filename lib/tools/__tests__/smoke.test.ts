@@ -1,46 +1,30 @@
 import { describe, it, expect, vi } from "vitest";
 import { vectorSearch, crossDeptVectorSearch } from "../vector-search";
 
-// 🎭 Mocking the database and embedder
 vi.mock("../../ai/embedder", () => ({
   embed: vi.fn(async () => Array(1536).fill(0.1)),
 }));
 
 vi.mock("../../supabase/rls-client", () => ({
-  withRLS: vi.fn(async (orgId, userId, role, fn) => {
-    // Mock the transaction client
-    const mockTx = {
-      query: vi.fn(async (sql) => {
-        // Handle standard search
-        if (sql.includes("SELECT") && !sql.includes("bi_accessible")) {
+  withRLS: vi.fn(async (_context: any, callback: any) => {
+    const mockSupabase = {
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === "vector_search") {
           return {
-            rows: [
-              {
-                chunk_id: "chk_std_1",
-                document_id: "doc_std_1",
-                metadata: { category: "general" },
-                score: 0.9,
-              },
-            ],
+            data: [{ chunk_id: "chk_std_1", document_id: "doc_std_1", metadata: { category: "general" }, score: 0.9 }],
+            error: null,
           };
         }
-        // Handle cross-dept search
-        if (sql.includes("bi_accessible")) {
+        if (fn === "vector_search_cross_dept") {
           return {
-            rows: [
-              {
-                chunk_id: "chk_bi_1",
-                document_id: "doc_bi_1",
-                metadata: { category: "revenue" },
-                score: 0.99,
-              },
-            ],
+            data: [{ chunk_id: "chk_bi_1", document_id: "doc_bi_1", metadata: { category: "revenue" }, score: 0.99 }],
+            error: null,
           };
         }
-        return { rows: [] };
+        return { data: [], error: null };
       }),
     };
-    return fn(mockTx);
+    return callback(mockSupabase);
   }),
 }));
 
@@ -49,7 +33,7 @@ describe("Vector Search Access Control", () => {
     const results = await vectorSearch({
       orgId: "org1",
       userId: "user1",
-      role: "member",
+      user_role: "member",
       query: "pricing strategy",
     });
 
@@ -58,36 +42,30 @@ describe("Vector Search Access Control", () => {
     expect(first).toHaveProperty("document_id");
     expect(first).toHaveProperty("metadata");
     expect(first).toHaveProperty("score");
-
-    // ❌ SECURITY CHECK: Ensure full content is NOT leaked
-    expect(first.content).toBeUndefined();
-    console.log("Leak check passed: 'content' field is absent.");
+    expect((first as any).content).toBeUndefined();
   });
 
-  it("restricts cross-department search to bi_analyst role", async () => {
-    // ✅ Expected: Should throw error for "member" role
+  it("restricts cross-department search to super_user role", async () => {
     await expect(
       crossDeptVectorSearch({
         orgId: "org1",
         userId: "user1",
-        role: "member",
+        user_role: "member",
         query: "revenue",
       })
-    ).rejects.toThrow("Unauthorized: requires bi_analyst role");
+    ).rejects.toThrow("cross-department search requires super_user role");
   });
 
-  it("allows bi_analyst to retrieve cross-department data", async () => {
-    // ✅ Expected: Should return results for "bi_analyst" role
+  it("allows super_user to retrieve cross-department data", async () => {
     const results = await crossDeptVectorSearch({
       orgId: "org1",
       userId: "analyst1",
-      role: "bi_analyst",
+      user_role: "super_user",
       query: "market revenue",
     });
 
     expect(results).toBeDefined();
     expect(results.length).toBeGreaterThan(0);
-    // Verified that it uses the visibility=bi_accessible filter in the query via mocks
     expect(results[0].chunk_id).toBe("chk_bi_1");
   });
 });

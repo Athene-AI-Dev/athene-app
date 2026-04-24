@@ -40,7 +40,7 @@ export async function runSalesforceIndexPipeline(
 
   const allChunks: FetchedChunk[] = [...accounts, ...opportunities, ...cases]
 
-  const { indexed, errors } = await indexDocuments(allChunks, orgId, deptId)
+  const { indexed, errors } = await indexDocuments(allChunks, orgId, connectionId, deptId)
 
   return { indexed, skipped: 0, failed: errors }
 }

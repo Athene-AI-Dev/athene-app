@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { snowflakeFetch } from '../client'
 import * as nango from '@/lib/nango/client'
 
+vi.mock('@/lib/integrations/base', async () => {
+  const actual = await vi.importActual('@/lib/integrations/base')
+  return {
+    ...actual,
+    getProviderToken: vi.fn().mockResolvedValue('test-token'),
+  }
+})
+
 vi.mock('@/lib/nango/client', () => ({
   getToken: vi.fn(),
   getConnection: vi.fn(),
@@ -13,7 +21,6 @@ describe('snowflake client', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(nango.getToken).mockResolvedValue('test-token')
     vi.mocked(nango.getConnection).mockResolvedValue({
       metadata: { account_identifier: 'abc1234' }
     } as any)
@@ -25,18 +32,16 @@ describe('snowflake client', () => {
       json: async () => ({ results: [] })
     })
 
-    await snowflakeFetch('conn-123', 'SELECT 1')
+    await snowflakeFetch('conn-123', 'org-123', 'SELECT 1')
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('abc1234.snowflakecomputing.com'),
       expect.objectContaining({
         method: 'POST',
-        headers: {
+        headers: expect.objectContaining({
           Authorization: 'Bearer test-token',
           'X-Snowflake-Authorization-Token-Type': 'OAUTH',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        }),
         body: JSON.stringify({ statement: 'SELECT 1', timeout: 60 })
       })
     )
@@ -54,8 +59,8 @@ describe('snowflake client', () => {
 
     vi.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn())
 
-    const result = await snowflakeFetch('conn-123', 'SELECT 1')
-    
+    const result = await snowflakeFetch('conn-123', 'org-123', 'SELECT 1')
+
     expect(mockFetch).toHaveBeenCalledTimes(2)
     expect(result.success).toBe(true)
   })

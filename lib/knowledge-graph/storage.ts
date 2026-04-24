@@ -33,9 +33,8 @@ export async function upsertNodes(
   ctx: RLSContext,
   nodes: KGNode[]
 ): Promise<Map<string, string>> {
-  if (nodes.length === 0) return new Map();
-
   return withRLS(ctx, async (supabase) => {
+    if (nodes.length === 0) return new Map();
     // 1. Fetch any existing rows for the incoming (label, entity_type) pairs
     const labels = Array.from(new Set(nodes.map((n) => n.label)));
     const { data: existingRows, error: fetchErr } = await supabase
@@ -142,9 +141,8 @@ export async function upsertEdges(
   edges: KGEdge[],
   nodeIdMap: Map<string, string>
 ): Promise<void> {
-  if (edges.length === 0) return;
-
   await withRLS(ctx, async (supabase) => {
+    if (edges.length === 0) return;
     // Resolve label→id. Skip edges whose endpoints weren't upserted.
     type Resolved = {
       org_id: string;
@@ -255,9 +253,8 @@ export async function deleteByDocument(
   ctx: RLSContext,
   documentId: string
 ): Promise<void> {
-  if (!documentId) throw new Error("documentId is required");
-
   await withRLS(ctx, async (supabase) => {
+    if (!documentId) throw new Error("documentId is required");
     // 1. Load nodes that reference this doc
     const { data: nodes, error: fetchErr } = await supabase
       .from("kg_nodes")

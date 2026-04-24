@@ -41,7 +41,7 @@ export async function runHubSpotIndexPipeline(
 
   const allChunks: FetchedChunk[] = [...contacts, ...companies, ...deals, ...notes]
 
-  const { indexed, errors } = await indexDocuments(allChunks, orgId, deptId)
+  const { indexed, errors } = await indexDocuments(allChunks, orgId, connectionId, deptId)
 
   return { indexed, skipped: 0, failed: errors }
 }

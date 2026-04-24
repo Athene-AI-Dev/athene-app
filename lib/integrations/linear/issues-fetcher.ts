@@ -1,6 +1,5 @@
 import { linearFetch } from './client';
 import { FetchedChunk } from '../base';
-import { indexDocument } from '../indexing';
 
 const ISSUES_QUERY = `
   query GetIssues($cursor: String) {
@@ -57,9 +56,8 @@ export async function linearIssuesFetcher(connectionId: string, orgId: string): 
       };
       
       chunks.push(chunk);
-      await indexDocument(chunk, orgId);
     }
-    
+
     hasNextPage = issuesResult.pageInfo.hasNextPage;
     cursor = issuesResult.pageInfo.endCursor;
   }

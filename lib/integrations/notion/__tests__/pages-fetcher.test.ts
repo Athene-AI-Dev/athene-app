@@ -39,11 +39,11 @@ describe('notion pages-fetcher', () => {
       return { results: [], has_more: false }
     })
 
-    const chunks = await fetchAllPages('conn-123')
-    
+    const chunks = await fetchAllPages('conn-123', 'org-123')
+
     expect(chunks).toHaveLength(1)
     expect(chunks[0].title).toBe('Test Page')
     expect(chunks[0].content).toContain('Hello World')
-    expect(client.notionFetch).toHaveBeenCalledWith('conn-123', '/search', expect.any(Object))
+    expect(client.notionFetch).toHaveBeenCalledWith('conn-123', 'org-123', '/search', expect.any(Object))
   })
 })

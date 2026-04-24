@@ -1,4 +1,4 @@
-import { StateGraph, START, END, CompiledStateGraph } from "@langchain/langgraph";
+import { StateGraph, START, END } from "@langchain/langgraph";
 import { AtheneState } from "./state";
 import { supervisor } from "./nodes/supervisor";
 import { retrievalAgent } from "./nodes/retrieval-agent";
@@ -7,14 +7,10 @@ import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
 // Cached compiled graph — lazily initialized on first call to getAgentGraph()
-let compiledGraph: CompiledStateGraph<any, any> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let compiledGraph: any = null;
 
-/**
- * Returns the lazily-compiled agent graph.
- * Compiles on first call; subsequent calls return the cached instance.
- * Must be called inside an async context (e.g. a route handler).
- */
-export async function getAgentGraph(): Promise<CompiledStateGraph<any, any>> {
+export async function getAgentGraph(): Promise<any> {
   if (compiledGraph) return compiledGraph;
 
   const checkpointer = await getCheckpointer();

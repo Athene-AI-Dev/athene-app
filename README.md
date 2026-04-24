@@ -15,7 +15,7 @@ npm install
 cp .env.example .env
 ```
 
-### 3. Core Dependencies
+### 3. Core Dependencies 
 These packages provide the backbone for Auth, Database, and AI orchestration:
 ```bash 
 # Core

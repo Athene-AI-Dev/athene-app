@@ -4,7 +4,7 @@ Follow these straightforward steps to get the AtheneAI construction site running
   
 ### 1. Pull the code
 ```bash
-git clone https://github.com/Athene-AI-Dev/athene-app.git
+git clone https://github.com/Athene-AI-Dev/at hene-app.git
 cd athene-app   
 ``` 
  

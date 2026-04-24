@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server'
 import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { releaseSlot } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
+import { logger } from '@/lib/logger'
 import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
 import { searchSlack } from '@/lib/integrations/slack/searcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
@@ -27,6 +28,9 @@ import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetche
 import { slackFetch } from '@/lib/integrations/slack/client'
 import { getProviderMetadata } from '@/lib/integrations/base'
 import type { FetchedChunk } from '@/lib/integrations/base'
+import { microsoftFetcher } from '@/lib/integrations/microsoft/index'
+import { fetchJiraIssues } from '@/lib/integrations/atlassian/jira-fetcher'
+import { fetchConfluencePages } from '@/lib/integrations/atlassian/confluence-fetcher'
 
 // ---- Provider Fetcher Map ---------------------------------------
 
@@ -53,7 +57,7 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
     async (connectionId, orgId, options) => {
       const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
       const subdomain = metadata.subdomain
-      
+
       if (!subdomain) {
         throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
       }
@@ -65,6 +69,12 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
       return [...tickets, ...articles]
     },
   ],
+
+  'microsoft-graph': [microsoftFetcher],
+
+  jira: [fetchJiraIssues],
+
+  confluence: [fetchConfluencePages],
 }
 
 // ---- Request body type ------------------------------------------
@@ -140,9 +150,9 @@ export async function POST(request: Request): Promise<Response> {
       errors: result.errors,
     })
   } catch (err) {
-    console.error(
-      `[nango-fetch] Worker error for provider=${provider} org=${orgId}:`,
-      err instanceof Error ? err.message : String(err)
+    logger.error(
+      { provider, orgId, err: err instanceof Error ? err.message : String(err) },
+      '[nango-fetch] Worker error'
     )
 
     // Still release the slot even on error to prevent deadlock

@@ -1,3 +1,6 @@
+// TODO: This is a scaffold route. Before shipping, replace the simulated work below
+// with real logic. Also ensure verifyQStashSignature in lib/qstash/verify.ts
+// validates the `Upstash-Signature` header using @upstash/qstash's Receiver.
 import { NextResponse } from 'next/server';
 import { verifyQStashSignature } from '@/lib/qstash/verify';
 import { releaseSlot } from '@/lib/qstash/client';

@@ -12,9 +12,11 @@
 // is written to the database.
 // ============================================================
 
+import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { baseFetch } from './base'
 import type { FetchedChunk } from './base'
+import { logger } from '@/lib/logger'
 
 // ---- Constants --------------------------------------------------
 
@@ -149,6 +151,8 @@ export async function indexDocument(
     external_url: chunk.source_url,
     chunk_index: index,
     embedding: embeddings[index],
+    // SHA-256 hash of the content — used to skip re-embedding unchanged chunks
+    content_hash: createHash('sha256').update(text).digest('hex'),
     metadata: chunk.metadata,
     updated_at: new Date().toISOString(),
   }))
@@ -159,10 +163,7 @@ export async function indexDocument(
     .upsert(records, { onConflict: 'id' })
 
   if (error) {
-    console.error(
-      `[indexing] Error upserting chunks for "${chunk.title}":`,
-      error.message
-    )
+    logger.error({ title: chunk.title, err: error.message }, '[indexing] Error upserting chunks')
     throw error
   }
 }
@@ -185,9 +186,9 @@ export async function indexDocuments(
       indexed++
     } catch (err) {
       errors++
-      console.error(
-        `[indexing] Failed to index "${chunk.title}":`,
-        err instanceof Error ? err.message : String(err)
+      logger.error(
+        { title: chunk.title, err: err instanceof Error ? err.message : String(err) },
+        '[indexing] Failed to index chunk'
       )
     }
   }

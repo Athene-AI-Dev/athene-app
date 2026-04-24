@@ -5,7 +5,7 @@ Follow these straightforward steps to get the AtheneAI construction site running
 ### 1. Pull the code
 ```bash
 git clone https://github.com/Athene-AI-Dev/athene-app.git
-cd athene-app 
+cd athene-app  
 ```
 
 ### 2. Install and Initialize

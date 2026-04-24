@@ -255,7 +255,7 @@ export async function indexDocuments(
 
   for (const chunk of chunks) {
     try {
-      await indexDocument(chunk, orgId, departmentId)
+      await indexDocument(chunk, orgId, connectionId, departmentId)
       indexed++
     } catch (err) {
       errors++

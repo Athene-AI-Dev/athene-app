@@ -2,7 +2,7 @@ import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 
 export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpdate> {
-  const { org_id, user_id, user_role, messages } = state;
+  const { orgId, userId, role, messages } = state;
 
   const lastMessage = messages?.[messages.length - 1];
   const query =
@@ -10,14 +10,14 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
       ? lastMessage.content
       : JSON.stringify(lastMessage?.content ?? "");
 
-  if (!query || !org_id) {
+  if (!query || !orgId) {
     return { run_status: "completed" };
   }
 
   const results = await vectorSearch({
-    orgId: org_id,
-    userId: user_id,
-    user_role,
+    orgId,
+    userId,
+    user_role: role as "member" | "super_user" | "admin",
     query,
     topK: 8,
   });

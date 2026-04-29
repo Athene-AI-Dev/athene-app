@@ -7,15 +7,12 @@ import {
   MessageSquare,
   BookOpen,
   BarChart3,
-  Settings,
   Users,
   Key,
   Zap,
   Database,
-  LogOut,
   ChevronDown,
-  Shield,
-  FileSearch,
+  ShieldCheck,
   Workflow,
   ClipboardList,
 } from "lucide-react";
@@ -44,52 +41,28 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
     {
       href: "/chat",
       label: "Chat",
-      icon: <MessageSquare className="h-4 w-4" />,
+      icon: <MessageSquare className="h-5 w-5" />,
     },
     {
       href: "/briefing",
       label: "Briefing",
-      icon: <BookOpen className="h-4 w-4" />,
+      icon: <BookOpen className="h-5 w-5" />,
     },
     {
       href: "/insights",
       label: "Insights",
-      icon: <BarChart3 className="h-4 w-4" />,
+      icon: <BarChart3 className="h-5 w-5" />,
       requiresRole: ["super_user", "admin"],
     },
   ];
 
   const adminLinks: NavLink[] = [
-    {
-      href: "/admin/users",
-      label: "Users",
-      icon: <Users className="h-4 w-4" />,
-    },
-    {
-      href: "/admin/integrations",
-      label: "Integrations",
-      icon: <Zap className="h-4 w-4" />,
-    },
-    {
-      href: "/admin/keys",
-      label: "Keys",
-      icon: <Key className="h-4 w-4" />,
-    },
-    {
-      href: "/admin/grants",
-      label: "Grants",
-      icon: <Database className="h-4 w-4" />,
-    },
-    {
-      href: "/admin/audit",
-      label: "Audit",
-      icon: <ClipboardList className="h-4 w-4" />,
-    },
-    {
-      href: "/admin/automations",
-      label: "Automations",
-      icon: <Workflow className="h-4 w-4" />,
-    },
+    { href: "/admin/users", label: "Users", icon: <Users className="h-5 w-5" /> },
+    { href: "/admin/integrations", label: "Integrations", icon: <Zap className="h-5 w-5" /> },
+    { href: "/admin/keys", label: "Keys", icon: <Key className="h-5 w-5" /> },
+    { href: "/admin/grants", label: "BI Grants", icon: <Database className="h-5 w-5" /> },
+    { href: "/admin/audit", label: "Audit", icon: <ClipboardList className="h-5 w-5" /> },
+    { href: "/admin/automations", label: "Automations", icon: <Workflow className="h-5 w-5" /> },
   ];
 
   const isActive = (href: string) => pathname === href;
@@ -98,51 +71,41 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
   );
 
   return (
-    <aside className={cn("w-64 border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] flex flex-col h-screen", className)}>
-      {/* Logo Section with Purple Glow */}
-      <div className="px-6 py-8 border-b border-[var(--sidebar-border)] overflow-visible flex items-center justify-center bg-gradient-to-b from-[var(--sidebar-bg)] to-[var(--background)] dark:from-purple-950/30 dark:to-transparent">
-        <Link
-          href="/chat"
-          className="flex items-center justify-center group relative"
-        >
-          {/* Purple glow effect */}
-          <div className="absolute -inset-2 bg-gradient-to-r from-purple-500/20 to-violet-500/20 dark:from-purple-400/30 dark:to-violet-500/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl" />
-
-          <div className="relative flex-shrink-0">
-            <Image
-              src="/logo.webp"
-              alt="Athene"
-              width={120}
-              height={120}
-              className="w-32 h-auto"
-              priority
-            />
-          </div>
+    <aside className={cn("w-64 border-r border-slate-200 bg-white flex flex-col h-screen z-10", className)}>
+      {/* Logo Section */}
+      <div className="h-16 flex items-center px-6 border-b border-slate-100 shrink-0">
+        <Link href="/chat" className="flex items-center">
+          <Image
+            src="/athene-logo.png"
+            alt="Athene AI"
+            width={120}
+            height={32}
+            className="object-contain"
+            priority
+          />
         </Link>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
+      <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
         {/* Main Links */}
         {mainLinks.map((link) => {
-          if (link.requiresRole && !link.requiresRole.includes(role)) {
-            return null;
-          }
-
+          if (link.requiresRole && !link.requiresRole.includes(role)) return null;
           const active = isActive(link.href);
-
           return (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium transition-all duration-200",
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                 active
-                  ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-lg shadow-purple-500/20 dark:shadow-purple-400/25"
-                  : "text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/20"
+                  ? "bg-blue-50 text-blue-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               )}
             >
-              <div className="flex-shrink-0">{link.icon}</div>
+              <div className={cn("flex-shrink-0", active ? "text-blue-700" : "text-slate-400")}>
+                {link.icon}
+              </div>
               <span className="truncate">{link.label}</span>
             </Link>
           );
@@ -150,30 +113,30 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
 
         {/* Admin Section */}
         {role === "admin" && (
-          <div className="pt-2 mt-6 border-t border-[var(--sidebar-border)]">
+          <div className="pt-2 mt-6 border-t border-slate-100">
             <button
               onClick={() => setAdminOpen(!adminOpen)}
               className={cn(
-                "w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-base font-medium transition-all duration-200",
+                "w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors mt-2",
                 isAdminActive || adminOpen
-                  ? "text-[var(--accent)] bg-[var(--nav-hover)] dark:bg-purple-950/30"
-                  : "text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/20"
+                  ? "text-blue-700 bg-slate-50"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
               )}
             >
               <span className="flex items-center gap-3">
-                <Shield className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Admin</span>
+                <ShieldCheck className={cn("h-5 w-5 flex-shrink-0", (isAdminActive || adminOpen) ? "text-blue-700" : "text-slate-400")} />
+                <span className="truncate">Admin Controls</span>
               </span>
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 flex-shrink-0 transition-transform duration-200",
+                  "h-4 w-4 flex-shrink-0 transition-transform duration-200 text-slate-400",
                   adminOpen && "rotate-180"
                 )}
               />
             </button>
 
             {adminOpen && (
-              <div className="ml-2 mt-2 space-y-1 border-l border-[var(--sidebar-border)] pl-2">
+              <div className="ml-2 mt-1 space-y-1 border-l border-slate-200 pl-2 py-1">
                 {adminLinks.map((link) => {
                   const active = isActive(link.href);
                   return (
@@ -181,13 +144,15 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
                       key={link.href}
                       href={link.href}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
                         active
-                          ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-lg shadow-purple-500/20 dark:shadow-purple-400/25"
-                          : "text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/20"
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                       )}
                     >
-                      {link.icon}
+                      <div className={cn("flex-shrink-0", active ? "text-blue-700" : "text-slate-400")}>
+                        {link.icon}
+                      </div>
                       <span className="truncate">{link.label}</span>
                     </Link>
                   );
@@ -198,24 +163,13 @@ const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) 
         )}
       </nav>
 
-      {/* Footer Section - User Avatar */}
-      <div className="px-4 py-4 border-t border-[var(--sidebar-border)] bg-gradient-to-t from-[var(--sidebar-bg)] to-transparent dark:from-purple-950/10">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/20 transition-colors duration-200">
-          <UserButton
-            appearance={{
-              elements: {
-                userButtonBox: "h-8 w-8",
-                userButtonTrigger: "rounded-full",
-              },
-            }}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-[var(--sidebar-text)] truncate">
-              Account
-            </p>
-            <p className="text-xs text-[var(--sidebar-text-secondary)] truncate">
-              Settings
-            </p>
+      {/* Footer Section */}
+      <div className="p-4 border-t border-slate-100 shrink-0">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors">
+          <UserButton />
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-medium text-slate-900 leading-none truncate">Account</span>
+            <span className="text-xs text-slate-500 mt-1 leading-none truncate">Manage profile</span>
           </div>
         </div>
       </div>

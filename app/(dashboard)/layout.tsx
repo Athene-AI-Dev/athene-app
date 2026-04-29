@@ -24,18 +24,18 @@ export default async function DashboardLayout({
   const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+    <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
       {/* Sidebar */}
-      <Sidebar role={userAccess.role} className="hidden lg:flex" />
+      <Sidebar role={userAccess.role} className="hidden md:flex" />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col h-full relative overflow-hidden">
         {/* Header */}
         <Header role={userAccess.role} />
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[var(--background)] via-[var(--background)] to-purple-950/5 dark:to-purple-950/20">
-          <div className="container mx-auto max-w-7xl px-8 py-8">{children}</div>
+        {/* Scrollable Page Content */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
     </div>

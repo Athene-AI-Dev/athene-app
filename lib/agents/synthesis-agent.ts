@@ -1,7 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import type { MessageContentComplex } from "@langchain/core/messages";
 import type { AtheneState, AtheneStateUpdate, CitedSource, RetrievedChunk } from "../langgraph/state";
-import { model } from "../langgraph/llm-factory";
+import { getModel } from "../langgraph/llm-factory";
 
 const SYNTHESIS_PROMPT = `You are an AI assistant synthesizing retrieved information into a clear, cited answer.
 
@@ -41,7 +41,7 @@ export async function synthesisAgentNode(
     .replace("{{MODE}}", mode)
     .replace("{{CONTEXT}}", context);
 
-  const response = await model.invoke([
+  const response = await getModel("complex").invoke([
     new SystemMessage(systemPrompt),
     ...messages,
   ]);

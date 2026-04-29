@@ -1,6 +1,6 @@
-﻿import { AtheneStateType } from "../state";
+import { AtheneStateType } from "../state";
 import { z } from "zod";
-import { model } from "../llm-factory";
+import { getModel } from "../llm-factory";
 
 const supervisorPrompt = `You are a supervisor tasked with managing a conversation between the following workers: {workers}. 
 Given the following user request, respond with the worker to act next. Each worker has a specialized role:
@@ -23,7 +23,7 @@ export async function supervisor(state: AtheneStateType) {
     }),
   };
 
-  const response = await model.bindTools([tool], {
+  const response = await getModel("medium").bindTools([tool], {
     tool_choice: "route",
   }).invoke([
     { role: "system", content: supervisorPrompt.replace("{workers}", workers.join(", ")) },

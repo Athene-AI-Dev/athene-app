@@ -89,13 +89,14 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // 4. Enqueue graph-build for the document set
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  
   if (!appUrl) {
     console.error('[index-delta] NEXT_PUBLIC_APP_URL not set. Skipping graph-build enqueue.')
   } else {
+    const graphBuildUrl = `${appUrl}/api/worker/graph-build`
+
     try {
       await qstash.publishJSON({
-        url: `${appUrl}/api/worker/graph-build`,
+        url: graphBuildUrl,
         body: {
           org_id,
           document_ids,

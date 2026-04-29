@@ -173,9 +173,10 @@ export async function POST(request: Request): Promise<Response> {
       if (!appUrl) {
         console.error('[nango-fetch] NEXT_PUBLIC_APP_URL not set. Skipping graph-build enqueue.')
       } else {
+        const graphBuildUrl = `${appUrl}/api/worker/graph-build`
         try {
           await qstash.publishJSON({
-            url: `${appUrl}/api/worker/graph-build`,
+            url: graphBuildUrl,
             body: {
               org_id: orgId,
               document_ids: docIds,

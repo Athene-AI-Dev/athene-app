@@ -1,4 +1,9 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import pg from "pg";
+
+// Supabase free tier exposes 15 direct connections total.
+// Cap the pool to leave headroom for other services and concurrent requests.
+const POOL_MAX = parseInt(process.env.DB_POOL_MAX ?? "5", 10);
 
 let checkpointerInstance: PostgresSaver | null = null;
 
@@ -19,7 +24,8 @@ export async function getCheckpointer(): Promise<PostgresSaver> {
     );
   }
 
-  const saver = PostgresSaver.fromConnString(connectionString);
+  const pool = new pg.Pool({ connectionString, max: POOL_MAX });
+  const saver = new PostgresSaver(pool);
   await saver.setup();
   checkpointerInstance = saver;
   return saver;

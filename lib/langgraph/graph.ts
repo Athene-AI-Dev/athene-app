@@ -1,5 +1,5 @@
 import { StateGraph, START, END, CompiledStateGraph } from "@langchain/langgraph";
-import { AtheneState, AtheneStateType } from "./state";
+import { AtheneState, AtheneStateType, AtheneStateUpdate } from "./state";
 import { supervisor } from "./nodes/supervisor";
 import { retrievalAgent } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
@@ -11,9 +11,9 @@ import { approvalNode } from "./nodes/async-tool-node";
 import { getCheckpointer } from "./checkpointer";
 
 // Cached compiled graph — lazily initialized on first call to getAgentGraph()
-let compiledGraph: CompiledStateGraph<AtheneStateType, any, any> | null = null;
+let compiledGraph: CompiledStateGraph<AtheneStateType, AtheneStateUpdate, string> | null = null;
 
-export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateType, any, any>> {
+export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateType, AtheneStateUpdate, string>> {
   if (compiledGraph) return compiledGraph;
 
   const checkpointer = await getCheckpointer();
@@ -62,8 +62,9 @@ export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateTyp
     }
   );
 
-  // After synthesis, go to the approval gate
+  // After synthesis, go to the approval gate; after approval, end the run
   workflow.addEdge("synthesis", "approval_gate");
+  workflow.addEdge("approval_gate", END);
 
   compiledGraph = workflow.compile({
     checkpointer,

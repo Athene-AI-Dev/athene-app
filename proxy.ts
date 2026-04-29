@@ -15,8 +15,16 @@ export default clerkMiddleware(async (auth, request) => {
   // 1. Enforce Authentication for non-public routes
   const { userId, orgId, orgRole } = await auth.protect();
 
+<<<<<<< HEAD
   // 2. Resolve RBAC context
   const access = await resolveUserAccess(userId, orgId ?? "");
+=======
+  // 2. Resolve RBAC if we have a user and org context
+  // Only inject headers if we are in an org context
+  if (userId && orgId) {
+    try {
+      const access = await resolveUserAccess(userId, orgId);
+>>>>>>> 04b1e38 (ATH-26)
 
   const requestHeaders = new Headers(request.headers);
 

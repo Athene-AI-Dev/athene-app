@@ -7,16 +7,7 @@
 
 import { redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { mapRole } from "./clerk";
-import { logger } from "@/lib/logger";
-
-=======
->>>>>>> e2fbcf5 (`)
-=======
-import { mapRole } from "./clerk";
->>>>>>> b71db21 (Revert "`")
 
 export type UserRole = "admin" | "super_user" | "member" | null;
 
@@ -40,12 +31,10 @@ function makeCacheKey(userId: string, orgId: string) {
 
 /**
  * Resolves user access levels.
- * @param clerkRole Optional pre-resolved role from Clerk (e.g. from auth() in middleware)
  */
 export async function resolveUserAccess(
   userId: string,
-  orgId: string,
-  clerkRole?: string | null
+  orgId: string
 ): Promise<UserAccess> {
   const cacheKey = makeCacheKey(userId, orgId);
 
@@ -109,33 +98,6 @@ export async function resolveUserAccess(
     logger.error({ userId, orgId, err: (dbError as Error).message }, "[rbac] Supabase resolution fatal error");
   }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-  // 2. Fallback to Clerk role ONLY if a user record was found but lacked a role
-  // ATH-23: If no record found at all, we return null to enforce deny-by-default.
-  if (!result || !result.role) {
-    if (result?.internal_user_id) {
-      // User exists in org but role is missing? Map from Clerk.
-      const mappedRole = mapRole(clerkRole || undefined);
-      result = { ...result!, role: mappedRole };
-    } else {
-      // No internal user record -> no access.
-      logger.warn({ userId, orgId }, "[RBAC] No org_members row");
-      result = {
-        internal_user_id: null,
-        role: null,
-        dept_id: null,
-        accessible_dept_ids: null,
-        bi_grant_id: null,
-      };
-    }
-
-  }
-
-=======
-  // 2. Defaults
-=======
   // 2. Fallback to Clerk role
   if (!result || !result.role) {
     const mappedRole = mapRole(clerkRole || undefined);
@@ -150,7 +112,6 @@ export async function resolveUserAccess(
   }
 
   // 3. Defaults
->>>>>>> b71db21 (Revert "`")
   if (!result) {
     result = {
       internal_user_id: null,
@@ -160,7 +121,6 @@ export async function resolveUserAccess(
       bi_grant_id: null,
     };
   }
->>>>>>> e2fbcf5 (`)
 
   // 4. Cache
   try {

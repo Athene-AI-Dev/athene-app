@@ -18,6 +18,8 @@ import { extractEntitiesAndRelations } from './extractor'
 import { upsertNodes, upsertEdges, deleteByDocument } from './storage'
 import { detectCommunities } from './community'
 import type { RLSContext } from '@/lib/supabase/rls-client'
+import { logger } from '@/lib/logger'
+
 
 // ---- Types --------------------------------------------------
 
@@ -29,7 +31,9 @@ export interface BuildResult {
   totalNodes: number
   totalEdges: number
   errors: string[]
+  remainingDocs: string[] // ATH-60: for recursive re-enqueuing
 }
+
 
 // ---- Core builder -------------------------------------------
 
@@ -53,7 +57,9 @@ export async function buildGraphForDocuments(
     totalNodes: 0,
     totalEdges: 0,
     errors: [],
+    remainingDocs: [],
   }
+
 
   // ── Resolve the full list of docs to process ──────────────
   let docIds = documentIds
@@ -64,8 +70,16 @@ export async function buildGraphForDocuments(
       .select('id')
       .eq('org_id', orgId)
 
-    if (error) throw new Error(`[builder] Failed to list documents: ${error.message}`)
     docIds = (allDocs ?? []).map((d: { id: string }) => d.id)
+  }
+
+  // ATH-60 safety: limit document count per job to prevent timeout (Serverless limit)
+  // We process 20 docs and re-enqueue the rest.
+  const BATCH_SIZE = 20
+  if (docIds.length > BATCH_SIZE) {
+    result.remainingDocs = docIds.slice(BATCH_SIZE)
+    docIds = docIds.slice(0, BATCH_SIZE)
+    logger.info({ orgId, currentBatch: docIds.length, remaining: result.remainingDocs.length }, "[builder] Large batch detected; splitting for recursive processing")
   }
 
   if (docIds.length === 0) return result
@@ -78,22 +92,25 @@ export async function buildGraphForDocuments(
       else result.skippedDocs++
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[builder] Error processing doc ${docId}:`, msg)
+      logger.error({ orgId, docId, err: msg }, "[builder] Error processing document")
       result.errors.push(`${docId}: ${msg}`)
     }
   }
 
   // ── Community detection pass ──────────────────────────────
-  // After all docs processed, assign community IDs to connected nodes.
-  if (result.processedDocs > 0) {
+  // After all docs processed in the current batch, assign community IDs.
+  // NOTE: We only run this if no more docs are remaining to process for the whole job.
+  if (result.processedDocs > 0 && result.remainingDocs.length === 0) {
     try {
       await detectCommunities(orgId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[builder] Community detection failed:', msg)
+      logger.error({ orgId, err: msg }, "[builder] Community detection failed")
+      // We don't block the extraction result, but we log the error for ATH-61
       result.errors.push(`community: ${msg}`)
     }
   }
+
 
   return result
 }
@@ -122,54 +139,64 @@ async function processDocument(
     return false // skipped
   }
 
-  // 3. Load all chunks from document_embeddings (content is in RAM, not stored)
-  const { data: chunks, error: chunkErr } = await supabaseAdmin
-    .from('document_embeddings')
-    .select('chunk_id, metadata, chunk_index')
-    .eq('document_id', docId)
-    .eq('org_id', orgId)
-    .order('chunk_index', { ascending: true })
+  // 3. Process chunks in batches to avoid memory overflow (ATH-60)
+  const CHUNK_BATCH_SIZE = 50
+  let offset = 0
+  let hasMoreChunks = true
 
-  if (chunkErr) throw new Error(`Failed to load chunks: ${chunkErr.message}`)
-  if (!chunks || chunks.length === 0) return false
+  while (hasMoreChunks) {
+    const { data: chunks, error: chunkErr } = await supabaseAdmin
+      .from('document_embeddings')
+      .select('chunk_id, metadata, chunk_index')
+      .eq('document_id', docId)
+      .eq('org_id', orgId)
+      .order('chunk_index', { ascending: true })
+      .range(offset, offset + CHUNK_BATCH_SIZE - 1)
 
-  // 4. Build RLS context for storage writes
-  // Graph builder runs as a background service — uses service-role context
-  const ctx: RLSContext = {
-    org_id: orgId,
-    user_id: 'system',
-    user_role: 'admin',
+    if (chunkErr) throw new Error(`Failed to load chunks: ${chunkErr.message}`)
+    if (!chunks || chunks.length === 0) {
+      hasMoreChunks = false
+      continue
+    }
+
+    // 4. Build RLS context for storage writes
+    const ctx: RLSContext = {
+      org_id: orgId,
+      user_id: 'system',
+      user_role: 'admin',
+    }
+
+    // 5. Delete existing graph contributions (only on the FIRST batch)
+    if (offset === 0) {
+      await deleteByDocument(ctx, docId)
+    }
+
+    // 6. Run entity/relation extraction
+    const extractorChunks = chunks.map((c: any) => ({
+      text: c.metadata?.text_preview ?? '',
+      chunk_index: c.chunk_index ?? 0,
+      org_id: orgId,
+      document_id: docId,
+      department_id: doc.dept_id ?? undefined,
+      visibility: (doc.visibility ?? 'department') as 'public' | 'department' | 'private',
+    }))
+
+    const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
+
+    if (nodes.length > 0 || edges.length > 0) {
+      // 7. Upsert nodes and edges into the graph
+      const nodeIdMap = await upsertNodes(ctx, nodes)
+      await upsertEdges(ctx, edges, nodeIdMap)
+
+      result.totalNodes += nodes.length
+      result.totalEdges += edges.length
+    }
+
+    offset += CHUNK_BATCH_SIZE
+    if (chunks.length < CHUNK_BATCH_SIZE) {
+      hasMoreChunks = false
+    }
   }
-
-  // 5. Delete existing graph contributions from this document
-  //    (stale nodes/edges removed before re-extraction)
-  await deleteByDocument(ctx, docId)
-
-  // 6. Run entity/relation extraction
-  //    extractor.ts expects chunks with { text, chunk_index, org_id, document_id, department_id, visibility }
-  const extractorChunks = (chunks ?? []).map((c: any) => ({
-    text: c.metadata?.text_preview ?? '', // extractor uses text; chunks store a preview in metadata
-    chunk_index: c.chunk_index ?? 0,
-    org_id: orgId,
-    document_id: docId,
-    department_id: doc.dept_id ?? undefined,
-    visibility: (doc.visibility ?? 'department') as 'public' | 'department' | 'private',
-  }))
-
-  const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
-
-  if (nodes.length === 0 && edges.length === 0) {
-    // Still update the hash so we skip next time
-    await markExtracted(orgId, docId, doc.content_hash)
-    return true
-  }
-
-  // 7. Upsert nodes and edges into the graph
-  const nodeIdMap = await upsertNodes(ctx, nodes)
-  await upsertEdges(ctx, edges, nodeIdMap)
-
-  result.totalNodes += nodes.length
-  result.totalEdges += edges.length
 
   // 8. Mark document as extracted with the current content_hash
   await markExtracted(orgId, docId, doc.content_hash)

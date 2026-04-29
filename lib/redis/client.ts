@@ -75,3 +75,29 @@ export async function incrWithExpire(
     return null;
   }
 }
+
+/**
+ * High-level rate limiter using an incrementing counter.
+ *
+ * @param key - The unique identifier for the rate limit (e.g., user ID + endpoint)
+ * @param limit - Maximum number of allowed requests in the window
+ * @param windowSec - The duration of the rate limit window in seconds
+ * @returns Object indicating if the request is allowed and how many remain
+ */
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowSec: number
+): Promise<{ allowed: boolean; remaining: number }> {
+  const count = await incrWithExpire(key, windowSec);
+
+  if (count === null) {
+    // Fail-open: If Redis is down, allow the request to prevent hard downtime
+    return { allowed: true, remaining: limit };
+  }
+
+  return {
+    allowed: count <= limit,
+    remaining: Math.max(0, limit - count),
+  };
+}

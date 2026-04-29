@@ -19,51 +19,35 @@ export interface UserAccess {
   bi_grant_id: string | null;
 }
 
-const RBAC_CACHE_TTL_SECONDS = 60;
+const RBAC_CACHE_TTL_SECONDS = 300;
+
 const USER_ACCESS_CACHE_PREFIX = "user_access";
 
 function makeCacheKey(userId: string, orgId: string) {
   return `${USER_ACCESS_CACHE_PREFIX}:${userId}:${orgId}`;
 }
 
-function normalizeDeptIds(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
 
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((item): item is string => typeof item === "string");
-      }
-    } catch {
-      return value.split(",").map((part) => part.trim()).filter(Boolean);
-    }
-  }
-
-  return [];
-}
 
 /**
  * Resolves user access levels.
- * @param clerkRole Optional pre-resolved role from Clerk (e.g. from auth() in middleware)
  */
 export async function resolveUserAccess(
   userId: string,
-  orgId: string,
-  clerkRole?: string | null
+  orgId: string
 ): Promise<UserAccess> {
   const cacheKey = makeCacheKey(userId, orgId);
 
   try {
     const cached = await redis.get(cacheKey);
     if (typeof cached === "string") {
+      logger.info({ userId, orgId }, "[rbac] Cache hit");
       return JSON.parse(cached) as UserAccess;
     }
   } catch (error) {
-    // Cache miss or failure is fine
+    logger.error({ userId, orgId, err: (error as Error).message }, "[rbac] Cache fetch failed");
   }
+
 
   let result: UserAccess | null = null;
 
@@ -111,7 +95,7 @@ export async function resolveUserAccess(
       }
     }
   } catch (dbError) {
-    // Non-fatal
+    logger.error({ userId, orgId, err: (dbError as Error).message }, "[rbac] Supabase resolution fatal error");
   }
 
   // 2. Fallback to Clerk role
@@ -142,8 +126,24 @@ export async function resolveUserAccess(
   try {
     await redis.set(cacheKey, JSON.stringify(result), { ex: RBAC_CACHE_TTL_SECONDS });
   } catch (err) {
-    // Non-fatal
+    logger.error({ userId, orgId, err: (err as Error).message }, "[rbac] Cache write failed");
   }
 
+  logger.info({ userId, orgId, role: result.role }, "[rbac] Resolution complete");
   return result;
 }
+
+/**
+ * Manually invalidates the RBAC cache for a specific user/org pair.
+ * Used by admin endpoints when roles or department assignments change.
+ */
+export async function invalidateRBACCache(userId: string, orgId: string): Promise<void> {
+  try {
+    await redis.del(makeCacheKey(userId, orgId));
+    logger.info({ userId, orgId }, "[rbac] Cache invalidated");
+  } catch (err) {
+    logger.error({ userId, orgId, err: (err as Error).message }, "[rbac] Cache invalidation failed");
+  }
+}
+
+

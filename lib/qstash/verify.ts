@@ -1,8 +1,15 @@
 import { Receiver } from '@upstash/qstash';
 
+const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
+const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+
+if (!currentSigningKey || !nextSigningKey) {
+  throw new Error("Missing QSTASH_CURRENT_SIGNING_KEY or QSTASH_NEXT_SIGNING_KEY");
+}
+
 export const receiver = new Receiver({
-  currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY || '',
-  nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY || '',
+  currentSigningKey,
+  nextSigningKey,
 });
 
 /**
@@ -23,6 +30,7 @@ export async function verifyQStashSignature(req: Request): Promise<boolean> {
     const isValid = await receiver.verify({
       signature,
       body,
+      url: req.url,
     });
 
     return isValid;

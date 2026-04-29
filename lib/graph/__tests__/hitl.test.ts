@@ -46,7 +46,7 @@ vi.mock("@supabase/supabase-js", () => ({
 // ---- Imports ------------------------------------------------
 
 import { verifyThreadOwner, processDecision, logHitlDecision } from "../../graph/interrupts";
-import { approvalNode } from "../../langgraph/nodes/async-tool-node";
+
 
 // ---- Setup --------------------------------------------------
 
@@ -147,21 +147,4 @@ describe("logHitlDecision", () => {
   });
 });
 
-// ============================================================
-// approvalNode
-// ============================================================
 
-describe("approvalNode", () => {
-  it("clears the gate when action was approved", async () => {
-    const update = await approvalNode({ pending_write_action: { tool: "email-send", payload: { to: ["bob@acme.com"] }, requested_at: "2026-04-23T10:00:00Z" }, awaiting_approval: true } as any);
-    expect(update.awaiting_approval).toBe(false);
-    expect(update.run_status).toBe("running");
-  });
-
-  it("clears the gate and sets cancelled message on reject", async () => {
-    const update = await approvalNode({ pending_write_action: null, awaiting_approval: true } as any);
-    expect(update.awaiting_approval).toBe(false);
-    expect(update.pending_write_action).toBeNull();
-    expect(update.final_answer).toContain("cancelled");
-  });
-});

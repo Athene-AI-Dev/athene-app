@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getConnectionToken } from '../client'
-import { supabase } from '../../supabase/server'
+import { supabaseAdmin } from '../../supabase/server'
 
 const mockInstance = {
   getToken: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('@nangohq/node', () => {
 })
 
 vi.mock('../../supabase/server', () => ({
-  supabase: {
+  supabaseAdmin: {
     from: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
@@ -35,12 +35,10 @@ describe('nango client error handling', () => {
     process.env.NANGO_SECRET_KEY = 'test-key'
     vi.clearAllMocks()
     nangoMock = mockInstance
-    // Setup default mock implementation for getConnectionToken (it's aliased in the client)
-    nangoMock.getConnectionToken = nangoMock.getToken;
   })
 
   it('should handle 401 Unauthorized as reconnection required', async () => {
-    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabaseAdmin as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 401 },
       error: { code: 'invalid_credentials', message: 'Token expired' }
@@ -50,7 +48,7 @@ describe('nango client error handling', () => {
   })
 
   it('should handle 403 Forbidden as access denied', async () => {
-    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabaseAdmin as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 403 }
     })
@@ -59,7 +57,7 @@ describe('nango client error handling', () => {
   })
 
   it('should handle 404 Not Found as connection missing', async () => {
-    vi.mocked((supabase as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
+    vi.mocked((supabaseAdmin as any).maybeSingle).mockResolvedValue({ data: { id: 'm1' }, error: null } as any)
     vi.mocked(nangoMock.getToken).mockRejectedValue({
       response: { status: 404 }
     })

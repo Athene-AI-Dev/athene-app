@@ -5,7 +5,7 @@ export type AuditLogEntry = {
   admin_user_id: string;
   action: string;
   target_user_id?: string;
-  details?: any;
+  details?: Record<string, unknown>;
 };
 
 export async function writeAuditLog(entry: AuditLogEntry) {

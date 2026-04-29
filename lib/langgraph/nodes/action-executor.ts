@@ -12,6 +12,8 @@ import type { EmailDraft } from "@/lib/integrations/microsoft/outlook-fetcher";
 import { createEvent } from "@/lib/integrations/microsoft/calendar-fetcher";
 import type { EventDraft } from "@/lib/integrations/microsoft/calendar-fetcher";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
+
 
 type PendingWriteAction = {
   tool: string;
@@ -126,7 +128,10 @@ export async function actionExecutorNode(
   const action = state.pending_write_action as PendingWriteAction | null;
 
   if (!action) {
-    return { run_status: "running" };
+    return { 
+      run_status: "running",
+      awaiting_approval: false,
+    };
   }
 
   try {
@@ -158,14 +163,18 @@ export async function actionExecutorNode(
       action_result: result,
       action_error: null,
       pending_write_action: null,
+      awaiting_approval: false,
       run_status: "running",
     };
   } catch (err) {
+    logger.error({ err, tool: action.tool, orgId: state.orgId }, "[action-executor] Execution failed");
     return {
       action_result: null,
       action_error: err instanceof Error ? err.message : String(err),
       pending_write_action: null,
+      awaiting_approval: false,
       run_status: "running",
     };
   }
 }
+

@@ -1,5 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 export default async function Home() {
   const { userId } = await auth();
@@ -10,27 +13,47 @@ export default async function Home() {
   }
 
   return (
-    <div className="flex flex-col flex-1 items-center justify-center min-h-screen bg-gradient-to-b from-[var(--background)] via-[var(--background)] to-[var(--nav-hover)]">
-      <main className="flex flex-col items-center justify-center gap-8 text-center">
-        <div className="space-y-4">
-          <div className="inline-flex items-center gap-3 mb-6">
-            <div className="relative">
-              <div className="absolute -inset-1 bg-gradient-to-r from-purple-500/20 to-violet-500/20 rounded-lg blur-xl" />
-              <div className="relative">
-                <h1 className="text-6xl font-bold bg-gradient-to-r from-[var(--accent)] to-[var(--accent-secondary)] bg-clip-text text-transparent">
-                  Athene
-                </h1>
-              </div>
-            </div>
-          </div>
-          <p className="text-2xl text-[var(--sidebar-text-secondary)]">
-            Intelligent assistant for your organization
-          </p>
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-md bg-white shadow-xl shadow-slate-200/50 border border-slate-200 rounded-2xl p-8 sm:p-10 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+        
+        <div className="mb-8 flex flex-col items-center">
+            <Image
+                src="/athene-logo.png"
+                alt="Athene AI"
+                width={180}
+                height={54}
+                className="object-contain"
+                priority
+            />
         </div>
-        <p className="text-base text-[var(--sidebar-text-secondary)]">
-          Please sign in to continue.
+        
+        <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight mb-3">
+            Welcome to Athene
+        </h1>
+        <p className="text-sm sm:text-base text-slate-500 mb-10 leading-relaxed">
+            The intelligent assistant for orchestrating your organization's data, agents, and workflows.
         </p>
-      </main>
+        
+        <div className="flex flex-col gap-3">
+          <Link 
+              href="/sign-in"
+              className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 h-11 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors shadow-sm"
+          >
+              Sign In to Continue
+              <ArrowRight className="w-4 h-4" />
+          </Link>
+          
+          <div className="mt-4">
+            <p className="text-sm text-slate-500">
+              Don't have an account?{" "}
+              <Link href="/sign-up" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                Sign up
+              </Link>
+            </p>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useTheme } from "next-themes";
 import { useEffect, useState, memo } from "react";
 import { OrganizationSwitcher } from "@clerk/nextjs";
 import { Menu } from "lucide-react";

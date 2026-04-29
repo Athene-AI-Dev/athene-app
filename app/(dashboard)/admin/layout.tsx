@@ -29,15 +29,15 @@ export default async function AdminLayout({
           <ShieldAlert className="h-16 w-16 text-red-500 relative" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             Access Denied
           </h1>
-          <p className="text-[var(--sidebar-text-secondary)] max-w-md mx-auto">
+          <p className="text-slate-500 max-w-md mx-auto">
             You do not have the necessary permissions to access the administration area. Please contact your organization administrator if you believe this is an error.
           </p>
         </div>
         {/* Redirect to /chat if not admin (via button click) */}
-        <Button asChild variant="outline" className="mt-4 border-purple-500/20 hover:bg-purple-500/5">
+        <Button asChild variant="outline" className="mt-4 border-slate-200 hover:bg-slate-50 text-slate-600">
           <Link href="/chat">Return to Chat</Link>
         </Button>
       </div>

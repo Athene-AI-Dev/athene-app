@@ -1,9 +1,9 @@
 import { Nango } from '@nangohq/node'
-import { supabase } from '../supabase/server'
+import { supabaseAdmin } from '../supabase/server'
 
 let nangoInstance: Nango | null = null;
 
-function getNango() {
+export function getNango() {
   if (!nangoInstance) {
     const nangoSecretKey = process.env.NANGO_SECRET_KEY;
     if (!nangoSecretKey) {
@@ -16,11 +16,6 @@ function getNango() {
     nangoInstance = new Nango({
       secretKey: nangoSecretKey || 'placeholder-key'
     });
-
-    // ⚡ Alias getToken to getConnectionToken to match specification/Founder requirement
-    if (!(nangoInstance as any).getConnectionToken) {
-      (nangoInstance as any).getConnectionToken = (nangoInstance as any).getToken.bind(nangoInstance);
-    }
   }
   return nangoInstance;
 }
@@ -83,7 +78,7 @@ export async function getConnectionToken(
 
   try {
     // 🛡️ Verify connection ownership in Supabase
-    const { data: mapping, error: supabaseError } = await supabase
+    const { data: mapping, error: supabaseError } = await supabaseAdmin
       .from('nango_connections')
       .select('id')
       .eq('org_id', orgId)
@@ -106,7 +101,7 @@ export async function getConnectionToken(
     }
 
     // 🔒 If verification passed, proceed to fetch token
-    return await (nango as any).getConnectionToken(providerConfigKey, connectionId)
+    return await nango.getToken(providerConfigKey, connectionId)
 
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnectionToken');
@@ -150,7 +145,7 @@ export async function getConnectionMetadata(
   const nango = getNango();
 
   // Verify ownership via Supabase (source of truth) before fetching from Nango
-  const { data: mapping, error: supabaseError } = await supabase
+  const { data: mapping, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
     .select('id')
     .eq('org_id', orgId)
@@ -188,7 +183,7 @@ export async function listConnections(orgId: string) {
   const nango = getNango();
 
   // 1. Fetch authorized connection mappings from Supabase (Source of Truth)
-  const { data: mappings, error: supabaseError } = await supabase
+  const { data: mappings, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
     .select('connection_id, provider_config_key')
     .eq('org_id', orgId)
@@ -198,18 +193,13 @@ export async function listConnections(orgId: string) {
   }
 
   try {
-    // 2. Fallback: If no Supabase mappings found, attempt limited metadata search
+    // 2. No Nango fallback -- if no Supabase row exists, connection doesn't exist
     if (!mappings || mappings.length === 0) {
-      const { connections } = await nango.listConnections(undefined, undefined, {
-        endUserOrganizationId: orgId
-      } as any);
-
-      // Final security check: ensure metadata matches if we fell back
-      return connections.filter((conn: any) => conn.metadata?.org_id === orgId);
+      return [];
     }
 
     // 3. Fetch full connection objects from Nango only for the IDs we found in Supabase
-    const connectionPromises = (mappings || []).map((m: any) => 
+    const connectionPromises = mappings.map((m: any) => 
       nango.getConnection(m.provider_config_key, m.connection_id).catch(() => null)
     );
 
@@ -231,7 +221,7 @@ export async function saveConnectionMapping(
   providerConfigKey: string
 ) {
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('nango_connections')
       .upsert({
         org_id: orgId,
@@ -263,7 +253,7 @@ export async function deleteConnection(
 
   try {
     // 1. Verify ownership in Supabase first
-    const { data: mapping, error: supabaseError } = await supabase
+    const { data: mapping, error: supabaseError } = await supabaseAdmin
       .from('nango_connections')
       .select('id')
       .eq('org_id', orgId)
@@ -285,7 +275,7 @@ export async function deleteConnection(
     await nango.deleteConnection(providerConfigKey, connectionId);
 
     // 4. Clean up Supabase mapping
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('nango_connections')
       .delete()
       .eq('org_id', orgId)

@@ -21,6 +21,7 @@ import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { releaseSlot, qstash } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { logger } from '@/lib/logger'
+import { redis } from '@/lib/redis/client'
 import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
 import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetcher'
@@ -110,6 +111,16 @@ export async function POST(request: Request): Promise<Response> {
     return new Response('Invalid QStash signature', { status: 401 })
   }
 
+  // Idempotency check using QStash job ID
+  const jobId = request.headers.get('upstash-message-id')
+  if (jobId) {
+    const isNew = await redis.set(`processed_job:${jobId}`, '1', { nx: true, ex: 86400 * 7 })
+    if (!isNew) {
+      console.log(`[nango-fetch] Skipping duplicate job=${jobId}`)
+      return NextResponse.json({ status: 'already_processed', jobId })
+    }
+  }
+
   let body: NangoFetchJobBody
 
   try {
@@ -157,23 +168,27 @@ export async function POST(request: Request): Promise<Response> {
     //    Fire-and-forget: graph build runs asynchronously after embedding.
     if (result.indexed > 0) {
       const docIds = [...new Set(allChunks.map((c) => c.chunk_id))]
-      const graphBuildUrl =
-        `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
-      try {
-        await qstash.publishJSON({
-          url: graphBuildUrl,
-          body: {
-            org_id: orgId,
-            document_ids: docIds,
-            job_type: 'incremental',
-          },
-        })
-        console.log(
-          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
-        )
-      } catch (gErr) {
-        // Non-fatal: graph build will be triggered on next sync if this fails
-        console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      
+      if (!appUrl) {
+        console.error('[nango-fetch] NEXT_PUBLIC_APP_URL not set. Skipping graph-build enqueue.')
+      } else {
+        try {
+          await qstash.publishJSON({
+            url: `${appUrl}/api/worker/graph-build`,
+            body: {
+              org_id: orgId,
+              document_ids: docIds,
+              job_type: 'incremental',
+            },
+          })
+          console.log(
+            `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
+          )
+        } catch (gErr) {
+          // Non-fatal: graph build will be triggered on next sync if this fails
+          console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
+        }
       }
     }
 

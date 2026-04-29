@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server'
 import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { qstash } from '@/lib/qstash/client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { redis } from '@/lib/redis/client'
 
 // ---- Payload type -------------------------------------------
 
@@ -39,6 +40,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       { error: 'Invalid QStash signature' },
       { status: 401 },
     )
+  }
+
+  // Idempotency check using QStash job ID
+  const jobId = request.headers.get('upstash-message-id')
+  if (jobId) {
+    const isNew = await redis.set(`processed_job:${jobId}`, '1', { nx: true, ex: 86400 * 7 })
+    if (!isNew) {
+      console.log(`[index-delta] Skipping duplicate job=${jobId}`)
+      return NextResponse.json({ status: 'already_processed', jobId })
+    }
   }
 
   // 2. Parse payload
@@ -77,30 +88,33 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // 4. Enqueue graph-build for the document set
-  const graphBuildUrl =
-    `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  
+  if (!appUrl) {
+    console.error('[index-delta] NEXT_PUBLIC_APP_URL not set. Skipping graph-build enqueue.')
+  } else {
+    try {
+      await qstash.publishJSON({
+        url: `${appUrl}/api/worker/graph-build`,
+        body: {
+          org_id,
+          document_ids,
+          job_type: 'incremental',
+        },
+      })
 
-  try {
-    await qstash.publishJSON({
-      url: graphBuildUrl,
-      body: {
-        org_id,
-        document_ids,
-        job_type: 'incremental',
-      },
-    })
+      console.log(
+        `[index-delta] Enqueued graph-build for org=${org_id}, docs=${document_ids.length}`,
+      )
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[index-delta] Failed to enqueue graph-build:', message)
 
-    console.log(
-      `[index-delta] Enqueued graph-build for org=${org_id}, docs=${document_ids.length}`,
-    )
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('[index-delta] Failed to enqueue graph-build:', message)
-
-    return NextResponse.json(
-      { error: `Failed to enqueue graph-build: ${message}` },
-      { status: 500 },
-    )
+      return NextResponse.json(
+        { error: `Failed to enqueue graph-build: ${message}` },
+        { status: 500 },
+      )
+    }
   }
 
   return NextResponse.json({

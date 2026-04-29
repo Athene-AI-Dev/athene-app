@@ -3,18 +3,18 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import {
-  MessageSquare,
-  BookOpen,
-  BarChart3,
-  Users,
-  Key,
-  Zap,
-  Database,
-  ChevronDown,
-  ShieldCheck,
-  Workflow,
-  ClipboardList,
+import { 
+  MessageSquare, 
+  BookOpen, 
+  BarChart3, 
+  Users, 
+  Key, 
+  Zap, 
+  Database, 
+  ChevronDown, 
+  ShieldCheck, 
+  Workflow, 
+  ClipboardList 
 } from "lucide-react";
 import { useState, memo } from "react";
 import { UserButton } from "@clerk/nextjs";

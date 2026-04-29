@@ -5,7 +5,7 @@ import { OrganizationSwitcher } from "@clerk/nextjs";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Sidebar } from "@/components/sidebar";
+import { Sidebar } from "@/components/app-sidebar";
 import { usePathname } from "next/navigation";
 import type { UserRole } from "@/lib/auth/rbac";
 

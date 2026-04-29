@@ -83,7 +83,7 @@ export default function GrantsPage() {
                             <select
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                                 value={resourceType}
-                                onChange={(e) => setResourceType(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setResourceType(e.target.value)}
                             >
                                 <option value="document">Document</option>
                                 <option value="folder">Folder</option>
@@ -97,7 +97,7 @@ export default function GrantsPage() {
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                                 placeholder="Enter UUID of document or folder"
                                 value={resourceId}
-                                onChange={(e) => setResourceId(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setResourceId(e.target.value)}
                             />
                         </div>
                         <button

@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/sidebar";
+import { Sidebar } from "@/components/app-sidebar";
 import { Header } from "@/components/header";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 

@@ -24,14 +24,19 @@ export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateTyp
     // Worker nodes
     .addNode("retrieval", retrievalAgent)
     .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
+<<<<<<< HEAD
+    // Write-action executor (requires prior approval)
+    .addNode("action_executor", actionExecutorNode)
+    .addNode("synthesis", synthesisAgentNode)
+    .addNode("approval_gate", approvalNode);
+=======
     // Email and Calendar agents (propose actions)
     .addNode("email_agent", emailAgentNode)
     .addNode("calendar_agent", calendarAgentNode)
     // Write-action executors (paused by interrupt_before for HITL approval)
     .addNode("email_send", actionExecutorNode)
-    .addNode("calendar_create", actionExecutorNode)
-    .addNode("synthesis", synthesisAgentNode)
-    .addNode("approval_gate", approvalNode);
+    .addNode("calendar_create", actionExecutorNode);
+>>>>>>> e4468dfbf5c9fbe7df5c7f6aacdac14f08dd7d09
 
   // Edges
   workflow.addEdge(START, "supervisor");
@@ -56,8 +61,8 @@ export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateTyp
     {
       retrieval: "retrieval",
       cross_dept_retrieval: "cross_dept_retrieval",
-      email_agent: "email_agent",
-      calendar_agent: "calendar_agent",
+<<<<<<< HEAD
+      action_executor: "action_executor",
       FINISH: "synthesis",
     }
   );
@@ -67,9 +72,21 @@ export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateTyp
 
   compiledGraph = workflow.compile({
     checkpointer,
-    interruptBefore: ['approval_gate', 'email_send', 'calendar_create'],
+    interruptBefore: ['approval_gate'],
   });
   
+=======
+      email_agent: "email_agent",
+      calendar_agent: "calendar_agent",
+      FINISH: END,
+    }
+  );
+
+  compiledGraph = workflow.compile({ 
+    checkpointer,
+    interruptBefore: ["email_send", "calendar_create"],
+  });
+>>>>>>> e4468dfbf5c9fbe7df5c7f6aacdac14f08dd7d09
   return compiledGraph;
 }
 

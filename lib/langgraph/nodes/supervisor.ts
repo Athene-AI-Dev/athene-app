@@ -1,7 +1,12 @@
 import { AtheneStateType } from "../state";
 import { z } from "zod";
+<<<<<<< HEAD
 import { getModel } from "../llm-factory";
+=======
+import { model } from "../llm-factory";
 import { logger } from "@/lib/logger";
+
+>>>>>>> e4468dfbf5c9fbe7df5c7f6aacdac14f08dd7d09
 
 const supervisorPrompt = `You are a supervisor tasked with managing a conversation between the following workers: {workers}. 
 Given the following user request, respond with the worker to act next. Each worker has a specialized role:

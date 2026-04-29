@@ -10,13 +10,13 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, orgRole } = await auth();
+  const { userId, orgId } = await auth();
 
   // Not signed in → send to sign-in. Not in an org → send to chat.
   if (!userId) redirect("/sign-in");
   if (!orgId) redirect("/chat");
 
-  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
+  const userAccess = await resolveUserAccess(userId, orgId);
 
   // Step 4: Role-guard admin pages
   // Check resolveUserAccess().role === 'admin'

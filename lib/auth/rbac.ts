@@ -7,9 +7,12 @@
 
 import { redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
+<<<<<<< HEAD
 import { mapRole } from "./clerk";
 import { logger } from "@/lib/logger";
 
+=======
+>>>>>>> e2fbcf5 (`)
 
 export type UserRole = "admin" | "super_user" | "member" | null;
 
@@ -33,12 +36,10 @@ function makeCacheKey(userId: string, orgId: string) {
 
 /**
  * Resolves user access levels.
- * @param clerkRole Optional pre-resolved role from Clerk (e.g. from auth() in middleware)
  */
 export async function resolveUserAccess(
   userId: string,
-  orgId: string,
-  clerkRole?: string | null
+  orgId: string
 ): Promise<UserAccess> {
   const cacheKey = makeCacheKey(userId, orgId);
 
@@ -102,6 +103,7 @@ export async function resolveUserAccess(
     logger.error({ userId, orgId, err: (dbError as Error).message }, "[rbac] Supabase resolution fatal error");
   }
 
+<<<<<<< HEAD
 
   // 2. Fallback to Clerk role ONLY if a user record was found but lacked a role
   // ATH-23: If no record found at all, we return null to enforce deny-by-default.
@@ -124,6 +126,18 @@ export async function resolveUserAccess(
 
   }
 
+=======
+  // 2. Defaults
+  if (!result) {
+    result = {
+      internal_user_id: null,
+      role: null,
+      dept_id: null,
+      accessible_dept_ids: null,
+      bi_grant_id: null,
+    };
+  }
+>>>>>>> e2fbcf5 (`)
 
   // 4. Cache
   try {

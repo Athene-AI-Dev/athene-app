@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -37,6 +38,7 @@ export default function RootLayout({
         <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
           <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
             {children}
+            <Toaster richColors position="top-right" />
           </ThemeProvider>
         </body>
       </html>

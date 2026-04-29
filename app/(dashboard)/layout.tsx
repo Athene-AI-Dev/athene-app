@@ -9,7 +9,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
 
   // Protect dashboard routes
   if (!userId) {
@@ -21,7 +21,7 @@ export default async function DashboardLayout({
     redirect("/sign-in");
   }
 
-  const userAccess = await resolveUserAccess(userId, orgId);
+  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">

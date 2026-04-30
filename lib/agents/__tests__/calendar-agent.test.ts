@@ -32,6 +32,9 @@ describe("calendarAgent", () => {
 
   it("extracts meeting details from natural language", async () => {
     const mockDraft = {
+// Added action_type: "create" so the tool assertion expects "calendar-create" correctly.
+// Without it, draft.action_type was undefined, producing "calendar-undefined".
+      action_type: "create",
       summary: "Meeting with Alice",
       start: {
         dateTime: "2024-04-24T14:00:00Z",
@@ -61,7 +64,7 @@ describe("calendarAgent", () => {
     expect((result.pending_write_action as any)?.requested_at).toBeDefined();
   });
 
-  it("handles errors by returning a user-friendly message", async () => {
+ it("handles errors by returning a user-friendly message", async () => {
     // 4. Use the hoisted mockInvoke to simulate failure
     mocks.mockInvoke.mockRejectedValue(new Error("LLM Error"));
 
@@ -73,6 +76,34 @@ describe("calendarAgent", () => {
     const result = await calendarAgent(state);
 
     expect(result.messages).toBeDefined();
-    expect(result.messages[0].content).toContain("I'm sorry, I couldn't quite process that calendar request");
+    
+    expect(result.messages?.[0].content).toContain("I'm sorry, I couldn't quite process that calendar request");
   });
+
+// New test covering the is_search / search_range path.
+// Previously there was zero coverage for find-a-slot requests,
+// meaning a regression in that branch would go undetected.
+
+  it("handles search/find-a-slot requests", async () => {
+    mocks.mockInvoke.mockResolvedValue({
+      summary: "Find a slot for team sync",
+      is_search: true,
+      search_range: {
+        startAfter: "2024-04-29T09:00:00Z",
+        endBefore:  "2024-04-29T18:00:00Z",
+      },
+    });
+
+    const state: any = {
+      messages: [new HumanMessage("find a slot next Monday morning")],
+      timezone: "UTC",
+    };
+
+    const result = await calendarAgent(state);
+
+    expect(result.awaiting_approval).toBe(true);
+    expect((result.pending_write_action as any)?.payload?.is_search).toBe(true);
+    expect((result.pending_write_action as any)?.payload?.search_range).toBeDefined();
+  });
+
 });

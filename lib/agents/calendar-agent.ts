@@ -7,8 +7,7 @@
 // Design notes:
 //   • Prompt is inlined as a template literal — fs.readFileSync
 //     crashes in Next.js Edge / serverless environments.
-//   • Timezone defaults to UTC; the AI extracts any explicit
-//     timezone from the user's message.
+//   • Timezone read from state if available, defaults to UTC.
 //   • Returns pending_write_action (canonical field) instead of
 //     the legacy pending_action field.
 // ============================================================
@@ -104,7 +103,7 @@ You are a Strategic Calendar Assistant. Your mission is to translate complex, hu
 - **Missing Emails**: Use 'displayName' for people like "Alex" or "Priya". Do NOT hallucinate emails.
 - **Recurrence**: If the user says "Weekly", "Every Monday", or "Monthly", populate the 'recurrence' field with a descriptive pattern (e.g., "WEEKLY;BYDAY=MO").
 - **Location**: If "virtual" or "online" is mentioned, set the location to "Video Call / Remote".
-
+- **Multi-action (cancel + book)**: Set 'action_type' to 'create' for the new event and include the cancellation note in 'description'.
 # Output Rules
 - You MUST produce a valid JSON object.
 - If you are missing critical information (like the date), ask the user for it politely.
@@ -123,18 +122,19 @@ export async function calendarAgent(
   state: AtheneStateType
 ): Promise<AtheneStateUpdate> {
   const now = new Date();
-  // Timezone not in canonical state — default to UTC.
-  // The AI will still parse any explicit timezone in the user's message.
-  const timezone = "UTC";
+
+// Read timezone from state if available; fall back to UTC.
+// Prevents the prompt from always receiving "UTC" regardless of the user's actual timezone.
+   const timezone = (state as any).timezone ?? "UTC";
 
   const dateContext = `Current System Time: ${now.toISOString()}
-User Local Time: ${now.toUTCString()}
+User Local Time: ${now.toLocaleString("en-US", { timeZone: timezone })}
 User Timezone: ${timezone}`;
 
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace(
     "{dateContext}",
     dateContext
-  ).replace("{timezone}", timezone);
+    ).replaceAll("{timezone}", timezone);
 
   const draftModel = getModel().withStructuredOutput(calendarEventSchema, {
     name: "draft_calendar_event",
@@ -149,14 +149,15 @@ User Timezone: ${timezone}`;
     return {
       awaiting_approval: true,
       pending_write_action: {
-        tool: "calendar-create",
+        tool: `calendar-${draft.action_type}`,
         payload: draft as Record<string, unknown>,
-        requested_at: now.toISOString(),
+        requested_at: now.toISOString(),     
       },
     };
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error("[calendarAgent] Error:", msg);
+  } 
+  catch (error: unknown) {
+  
+    console.error("[calendarAgent] Error:", error);
 
     return {
       messages: [

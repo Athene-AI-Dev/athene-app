@@ -6,7 +6,8 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const isTest = process.env.NODE_ENV === 'test';
 
 if (!supabaseUrl || !supabaseServiceRoleKey) {
-  if (isTest) {
+  // Warn in both test and development — only throw in production
+  if (isTest || process.env.NODE_ENV === 'development') {
     console.warn("Supabase env vars missing; using placeholders for testing");
   } else {
     throw new Error(

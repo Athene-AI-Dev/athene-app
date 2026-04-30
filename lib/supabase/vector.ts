@@ -18,6 +18,11 @@ export async function similaritySearch(
   matchThreshold: number = 0.5,
   matchCount: number = 10
 ): Promise<SearchResult[]> {
+  // Guard against empty embedding — would cause a silent bad RPC call
+  if (!queryEmbedding || queryEmbedding.length === 0) {
+    throw new Error("[vector] queryEmbedding must be a non-empty array");
+  }
+
   return withRLS(context, async (supabase) => {
     const { data, error } = await supabase.rpc("match_documents", {
       query_embedding: queryEmbedding,
@@ -26,7 +31,8 @@ export async function similaritySearch(
     });
 
     if (error) {
-      console.error("[vector] similaritySearch error:", error);
+      // Log message separately for cleaner output, then rethrow for caller to handle
+      console.error("[vector] similaritySearch RPC failed:", error.message);
       throw error;
     }
 

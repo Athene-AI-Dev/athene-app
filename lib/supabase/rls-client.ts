@@ -20,10 +20,15 @@ const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Match server.ts pattern — warn in test/dev, throw only in production
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Missing Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
-  );
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    console.warn("Supabase env vars missing; using placeholders for testing");
+  } else {
+    throw new Error(
+      "Missing Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+    );
+  }
 }
 
 // ---- Types --------------------------------------------------
@@ -136,7 +141,9 @@ export async function withRLS<T>(
         .eq("org_id", context.org_id);
 
       if (error) {
-        console.error("Failed to fetch super_user grants:", error.message);
+        // Log and continue — empty grants means super_user gets no extra access
+        // but the request is not blocked entirely
+        console.error("Failed to fetch super_user grants, proceeding with empty grants:", error.message);
       }
       if (data) {
         grants = data as Grant[];
@@ -156,11 +163,10 @@ export async function withRLS<T>(
   });
 
   if (ctxError) {
-    console.error("set_app_context RPC failed:", ctxError.message);
-    // Headers are still set, so PostgREST path may still work.
-    // Don't throw — let the query attempt proceed.
+    // RPC failed but headers are still set via PostgREST path (belt-and-suspenders)
+    // Not throwing — query may still work via header-based context
+    console.warn("[rls-client] set_app_context RPC failed, falling back to headers only:", ctxError.message);
   }
-
   // ---- 4. Inject session_grants for super_users --------------
   if (grants.length > 0) {
     const { error: grantsError } = await supabase.rpc("set_session_grants", {

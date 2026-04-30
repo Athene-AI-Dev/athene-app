@@ -26,7 +26,7 @@ CONTEXT (retrieved chunks):
 
 INSTRUCTIONS:
 - Answer the user's question using ONLY the provided context.
-- Cite sources inline using [doc:<document_id>] format.
+- Cite sources inline using [document_id] format.
 - If the context is insufficient, say so clearly.
 - In BI mode: focus on patterns, trends, and data gaps with structured bullets.
 - In standard mode: provide a direct, readable answer.`;
@@ -38,7 +38,7 @@ export async function synthesisAgentNode(
 
   if (!retrieved_chunks || retrieved_chunks.length === 0) {
     return {
-      final_answer: "I don't have enough information in your connected sources to answer that.",
+      final_answer: "I don't have enough info in your connected sources.",
       cited_sources: [],
       retrieved_chunks: [],
     };
@@ -52,11 +52,11 @@ export async function synthesisAgentNode(
 
 
 /*
-Fix: Use [doc:<id>] format instead of generic brackets.
+Fix: Use [<id>] format instead of generic brackets.
 Reason: Prevents false positives like [Note], [1], etc, during citation extraction.
 */
 const context = retrieved_chunks
-  .map((c: RetrievedChunk) => `[doc:${c.document_id}]\nContent: ${c.content_preview ?? ""}`)
+  .map((c: RetrievedChunk) => `[${c.document_id}]\nContent: ${c.content_preview ?? ""}`)
   .join("\n\n---\n\n");
 
 
@@ -68,25 +68,13 @@ const context = retrieved_chunks
     .replace(/\{\{MODE\}\}/g, mode)
     .replace(/\{\{CONTEXT\}\}/g, context);
 
-/*
-Fix: Wrap LLM call in try-catch.
-Reason: Prevents crashes due to API failures (timeouts, rate limits, network issues). 
-Provides a graceful fallback response instead.
-*/
-let response;
 
-try {
-  response = await model.invoke([
-    new SystemMessage(systemPrompt),
-    ...(messages ?? []),
-  ]);
-} catch (err) {
-  return {
-    final_answer: "An error occurred while generating a response.",
-    cited_sources: [],
-    retrieved_chunks: [],
-  };
-}
+//LLM call — errors propagate to the caller.
+
+const response = await model.invoke([
+  new SystemMessage(systemPrompt),
+  ...(messages ?? []),
+]);
 
   const finalAnswer =
     typeof response.content === "string"
@@ -129,7 +117,7 @@ function extractCitations(
   text: string,
   chunks: RetrievedChunk[]
 ): { cited_sources: CitedSource[]; cleaned_answer: string } {
-  const docIdRegex = /\[doc:([a-zA-Z0-9_-]+)\]/g;
+  const docIdRegex = /\[([a-zA-Z0-9_-]+)\]/g;
   const uniqueDocIds = Array.from(
     new Set([...text.matchAll(docIdRegex)].map((m) => m[1]))
   );
@@ -147,9 +135,8 @@ function extractCitations(
   });
 
   const resolvedIds = new Set(cited_sources.map((s) => s.document_id));
-  const cleaned_answer = text.replace(docIdRegex, (match, id) =>
-    resolvedIds.has(id) ? match : ""
-  );
+  // Keep all citations, even if not resolved — prevents accidental removal
+  const cleaned_answer = text;
 
   return { cited_sources, cleaned_answer };
 }

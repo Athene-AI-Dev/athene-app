@@ -90,7 +90,7 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
     key: 'gmail',
     displayName: 'Gmail',
     description: 'Sync and search emails and threads',
-    icon: '/integrations/gmail.svg', // Assuming this exists or using generic
+    icon: '/integrations/gmail.svg',
     category: 'communication',
     nangoIntegrationId: 'google-mail',
     resources: ['messages', 'threads'],
@@ -105,7 +105,7 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
     key: 'google_calendar',
     displayName: 'Google Calendar',
     description: 'Sync and search calendar events',
-    icon: '/integrations/gcalendar.svg', // Assuming this exists
+    icon: '/integrations/gcalendar.svg',
     category: 'productivity',
     nangoIntegrationId: 'google-calendar',
     resources: ['events'],

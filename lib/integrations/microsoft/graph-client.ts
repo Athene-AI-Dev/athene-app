@@ -9,7 +9,7 @@ export async function graphFetch(connectionId: string, orgId: string, endpoint: 
       ...options.headers,
       Authorization: `Bearer ${token}`
     },
-    body: options.body ? JSON.parse(options.body) : undefined
+    body: options.body
   })
 }
 

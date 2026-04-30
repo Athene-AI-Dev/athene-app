@@ -33,7 +33,7 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 vi.mock("../../langgraph/llm-factory", () => ({
-  resolveModelClient: vi.fn(),
+  getModel: vi.fn(),
 }));
 
 // ---- Now safe to import ------------------------------------
@@ -81,17 +81,11 @@ function makeMockState(overrides: Record<string, any> = {}) {
 }
 
 function mockAnthropicResponse(jsonText: string) {
-  vi.mocked(llmFactory.resolveModelClient).mockResolvedValue({
-    provider: "anthropic",
-    modelId: "claude-sonnet-4-6",
-    anthropic: {
-      messages: {
-        create: vi.fn().mockResolvedValue({
-          content: [{ type: "text", text: jsonText }],
-        }),
-      },
-    } as any,
-  });
+  (llmFactory as any).getModel.mockReturnValue({
+  invoke: vi.fn().mockResolvedValue({
+    content: jsonText,
+  }),
+});
 }
 
 // ---- Tests --------------------------------------------------
@@ -175,19 +169,21 @@ describe("emailAgentNode (ATH-37)", () => {
 
   it("passes retrieved CRM context to the LLM prompt", async () => {
     let capturedPrompt = "";
-    vi.mocked(llmFactory.resolveModelClient).mockResolvedValue({
-      provider: "anthropic",
-      modelId: "claude-sonnet-4-6",
-      anthropic: {
-        messages: {
-          create: vi.fn().mockImplementation(async (params: any) => {
-            capturedPrompt = params.system;
-            return { content: [{ type: "text", text: JSON.stringify({ to: ["bob.smith@acmecorp.com"], cc: [], subject: "Test", body: "body" }) }] };
-          }),
-        },
-      } as any,
-    });
+    (llmFactory as any).getModel.mockReturnValue({
+  invoke: vi.fn().mockImplementation(async (params: any) => {
+    // capture prompt passed to LLM
+    capturedPrompt = params?.[0]?.content ?? "";
 
+    return {
+      content: JSON.stringify({
+        to: ["bob.smith@acmecorp.com"],
+        cc: [],
+        subject: "Test",
+        body: "body",
+      }),
+    };
+  }),
+});
     await emailAgentNode(makeMockState() as any);
     expect(capturedPrompt).toContain("bob.smith@acmecorp.com");
     expect(capturedPrompt).toContain("Acme Corp");

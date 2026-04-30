@@ -42,15 +42,19 @@ Your job is to compose a professional email based on the user's request and the 
 
 /** Build the full prompt with conversation + retrieved context */
 function buildPrompt(state: AtheneState): string {
-  const history = state.messages
+  // Guard against undefined messages — partial state hydration can omit this field
+  const history = (state.messages ?? [])
     .map((m) => {
-      const role = m instanceof HumanMessage ? "human" : m instanceof AIMessage ? "assistant" : "tool";
+      // instanceof breaks when @langchain/core/messages is mocked — _getType() works on both real and mock objects
+      const rawType = typeof (m as any)._getType === "function" ? (m as any)._getType() : "unknown";
+      const role = rawType === "human" ? "human" : rawType === "ai" ? "assistant" : "tool";
       const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
       return `${role}: ${content}`;
     })
     .join("\n");
 
-  const context = state.retrieved_chunks
+  // Guard against undefined retrieved_chunks — same reason as messages above
+  const context = (state.retrieved_chunks ?? [])
     .map((c) => c.content_preview)
     .join("\n\n");
 

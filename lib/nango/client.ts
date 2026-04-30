@@ -93,7 +93,7 @@ export async function getConnectionToken(
       .maybeSingle()
 
     if (supabaseError) {
-      console.error('Supabase verification error:', supabaseError)
+      throw new Error(`Supabase verification failed: ${supabaseError.message}`);
     }
 
     if (!mapping) {
@@ -128,6 +128,7 @@ export async function getToken(
   return getConnectionToken(connectionId, providerConfigKey, orgId);
 }
 
+<<<<<<< Updated upstream
 export async function getConnection(connectionId: string, providerConfigKey: string) {
     const nango = getNango();
     try {
@@ -137,6 +138,44 @@ export async function getConnection(connectionId: string, providerConfigKey: str
     } catch (error: unknown) {
         return handleNangoError(error, 'getConnection');
     }
+=======
+export async function getConnection(
+  connectionId: string,
+  providerConfigKey: string,
+  orgId: string
+) {
+  if (!orgId) {
+    throw new Error('orgId is required to fetch connection');
+  }
+
+  const nango = getNango();
+
+  // Verify ownership in Supabase first
+  const { data: mapping, error: supabaseError } = await supabase
+    .from('nango_connections')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('connection_id', connectionId)
+    .eq('provider_config_key', providerConfigKey)
+    .maybeSingle();
+
+  if (supabaseError) {
+    throw new Error(`Supabase verification failed: ${supabaseError.message}`);
+  }
+
+  if (!mapping) {
+    const notFound = new Error('Connection not found for this organization');
+    (notFound as any).status = 404;
+    (notFound as any).reason = 'NOT_FOUND';
+    throw notFound;
+  }
+
+  try {
+    return await nango.getConnection(providerConfigKey, connectionId);
+  } catch (error: unknown) {
+    return handleNangoError(error, 'getConnection');
+  }
+>>>>>>> Stashed changes
 }
 
 /**
@@ -164,7 +203,7 @@ export async function getConnectionMetadata(
     .maybeSingle();
 
   if (supabaseError) {
-    console.error('Supabase verification error in getConnectionMetadata:', supabaseError);
+    throw new Error(`Supabase verification failed: ${supabaseError.message}`);
   }
 
   if (!mapping) {
@@ -201,18 +240,13 @@ export async function listConnections(orgId: string) {
     .eq('org_id', orgId)
 
   if (supabaseError) {
-    console.error('Supabase error in listConnections:', supabaseError)
+    throw new Error(`Supabase error in listConnections: ${supabaseError.message}`);
   }
 
   try {
-    // 2. Fallback: If no Supabase mappings found, attempt limited metadata search
+    // If no Supabase mappings found, return empty (Supabase is source of truth)
     if (!mappings || mappings.length === 0) {
-      const { connections } = await nango.listConnections(undefined, undefined, {
-        endUserOrganizationId: orgId
-      } as any);
-
-      // Final security check: ensure metadata matches if we fell back
-      return connections.filter((conn: any) => conn.metadata?.org_id === orgId);
+      return [];
     }
 
     // 3. Fetch full connection objects from Nango only for the IDs we found in Supabase
@@ -222,7 +256,7 @@ export async function listConnections(orgId: string) {
       return nango.getConnection(nangoKey, m.connection_id).catch(() => null)
     });
 
-    const connections = (await Promise.all(connectionPromises)).filter(c => c !== null);
+    const connections = (await Promise.all(connectionPromises)).filter((c: any) => c !== null);
 
     return connections;
   } catch (error: unknown) {
@@ -280,7 +314,7 @@ export async function deleteConnection(
       .eq('provider_config_key', providerConfigKey)
       .maybeSingle()
 
-    if (supabaseError) console.error('Supabase cleanup verification error:', supabaseError);
+    if (supabaseError) throw new Error(`Supabase verification failed: ${supabaseError.message}`);
 
     // 2. Fail closed — no Supabase record means this org does not own the connection
     if (!mapping) {

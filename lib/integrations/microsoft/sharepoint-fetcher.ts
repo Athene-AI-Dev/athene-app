@@ -1,5 +1,9 @@
 import { paginate, graphDownload, graphFetch } from './graph-client'
+<<<<<<< Updated upstream
 import { parseDocument } from './document-parser'
+=======
+import { parseMicrosoftDoc } from './utils/parser'
+>>>>>>> Stashed changes
 
 export async function listSharePointDocs(connectionId: string, orgId: string, siteId: string, itemId: string = 'root') {
   const items: any[] = []
@@ -28,7 +32,11 @@ export async function fetchDocContent(connectionId: string, orgId: string, drive
   const arrayBuffer = await graphDownload(connectionId, orgId, `/drives/${driveId}/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
+<<<<<<< Updated upstream
   return parseDocument(fileName, buffer)
+=======
+  return parseMicrosoftDoc(buffer, fileName)
+>>>>>>> Stashed changes
 }
 
 /**

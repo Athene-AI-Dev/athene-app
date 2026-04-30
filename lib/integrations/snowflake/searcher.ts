@@ -1,11 +1,12 @@
 import { snowflakeFetch } from './client'
 import { parseSnowflakeRows } from './schema-fetcher'
-import { getConnection } from '@/lib/nango/client'
+import { getConnectionMetadata } from '@/lib/nango/client'
 import { FetchedChunk } from '../base'
 
 export async function snowflakeSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
-  const connection = await getConnection(connectionId, 'snowflake')
-  const allowlist = connection.metadata?.allowlist as string[] | undefined
+  // Fix: use verified getConnectionMetadata to enforce org ownership before reading any metadata
+  const connection = await getConnectionMetadata(connectionId, 'snowflake', orgId)
+  const allowlist = connection.allowlist as string[] | undefined
 
   if (!allowlist || allowlist.length === 0) {
     return []
@@ -27,9 +28,11 @@ export async function snowflakeSearch(connectionId: string, orgId: string, query
 
       if (stringCols.length === 0) continue
 
-      const escapedQuery = query.replace(/'/g, "''")
-      const whereClause = stringCols.map(col => `${col} LIKE '%${escapedQuery}%'`).join(' OR ')
-      const response = await snowflakeFetch(connectionId, orgId, `SELECT * FROM ${tableFullName} WHERE ${whereClause} LIMIT 10`)
+      // Fix: parameterized LIKE queries — user input is never interpolated into SQL.
+      // Snowflake SQL API accepts a `binds` array; each '?' placeholder is bound server-side.
+      const binds: string[] = stringCols.map(() => `%${query}%`)
+      const whereClause = stringCols.map((col: string) => `${col} LIKE ?`).join(' OR ')
+      const response = await snowflakeFetch(connectionId, orgId, `SELECT * FROM ${tableFullName} WHERE ${whereClause} LIMIT 10`, binds)
       const rows = parseSnowflakeRows(response)
       
       for (let i = 0; i < rows.length; i++) {

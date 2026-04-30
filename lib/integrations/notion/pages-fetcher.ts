@@ -42,7 +42,15 @@ export async function fetchAllPages(connectionId: string, orgId: string): Promis
   return chunks
 }
 
-async function fetchPageContent(connectionId: string, orgId: string, blockId: string): Promise<string> {
+async function fetchPageContent(
+  connectionId: string,
+  orgId: string,
+  blockId: string,
+  depth: number = 0
+): Promise<string> {
+  // Guard against pathological nesting (e.g. infinite toggle loops)
+  if (depth > 10) return ''
+
   let content = ''
   let hasMore = true
   let startCursor: string | undefined = undefined
@@ -52,7 +60,7 @@ async function fetchPageContent(connectionId: string, orgId: string, blockId: st
     const response = await notionFetch(connectionId, orgId, url)
     
     for (const block of response.results) {
-      content += await blockToText(connectionId, orgId, block)
+      content += await blockToText(connectionId, orgId, block, depth)
     }
 
     hasMore = response.has_more
@@ -62,7 +70,12 @@ async function fetchPageContent(connectionId: string, orgId: string, blockId: st
   return content
 }
 
-async function blockToText(connectionId: string, orgId: string, block: any): Promise<string> {
+async function blockToText(
+  connectionId: string,
+  orgId: string,
+  block: any,
+  depth: number
+): Promise<string> {
   let text = ''
   const type = block.type
   const blockData = block[type]
@@ -70,7 +83,7 @@ async function blockToText(connectionId: string, orgId: string, block: any): Pro
   if (!blockData || !blockData.rich_text) {
     // Handle blocks with children that don't have rich_text directly (like toggle, column_list)
     if (block.has_children) {
-      return await fetchPageContent(connectionId, orgId, block.id)
+      return await fetchPageContent(connectionId, orgId, block.id, depth + 1)
     }
     return ''
   }
@@ -110,7 +123,7 @@ async function blockToText(connectionId: string, orgId: string, block: any): Pro
   }
 
   if (block.has_children) {
-    text += await fetchPageContent(connectionId, orgId, block.id)
+    text += await fetchPageContent(connectionId, orgId, block.id, depth + 1)
   }
 
   return text

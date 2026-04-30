@@ -1,7 +1,7 @@
 import { getConnection } from '@/lib/nango/client'
 import { baseFetch, getProviderToken } from '../base'
 
-export async function snowflakeFetch(connectionId: string, orgId: string, sql: string): Promise<any> {
+export async function snowflakeFetch(connectionId: string, orgId: string, sql: string, binds?: string[]): Promise<any> {
   const token = await getProviderToken(connectionId, 'snowflake', orgId)
   const connection = await getConnection(connectionId, 'snowflake')
   
@@ -19,7 +19,8 @@ export async function snowflakeFetch(connectionId: string, orgId: string, sql: s
     },
     body: {
       statement: sql,
-      timeout: 60
+      timeout: 60,
+      ...(binds && binds.length > 0 ? { binds } : {})
     }
   })
 }

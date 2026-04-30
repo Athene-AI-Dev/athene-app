@@ -1,5 +1,6 @@
 import { Nango } from '@nangohq/node'
 import { supabase } from '../supabase/server'
+import { getProvider } from '../integrations/providers'
 
 let nangoInstance: Nango | null = null;
 
@@ -106,7 +107,9 @@ export async function getConnectionToken(
     }
 
     // 🔒 If verification passed, proceed to fetch token
-    return await (nango as any).getConnectionToken(providerConfigKey, connectionId)
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    return await (nango as any).getConnectionToken(nangoKey, connectionId)
 
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnectionToken');
@@ -128,7 +131,9 @@ export async function getToken(
 export async function getConnection(connectionId: string, providerConfigKey: string) {
     const nango = getNango();
     try {
-        return await nango.getConnection(providerConfigKey, connectionId);
+        const config = getProvider(providerConfigKey as any)
+        const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+        return await nango.getConnection(nangoKey, connectionId);
     } catch (error: unknown) {
         return handleNangoError(error, 'getConnection');
     }
@@ -170,7 +175,9 @@ export async function getConnectionMetadata(
   }
 
   try {
-    return await nango.getConnection(providerConfigKey, connectionId);
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    return await nango.getConnection(nangoKey, connectionId);
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnectionMetadata');
   }
@@ -209,9 +216,11 @@ export async function listConnections(orgId: string) {
     }
 
     // 3. Fetch full connection objects from Nango only for the IDs we found in Supabase
-    const connectionPromises = (mappings || []).map((m: any) => 
-      nango.getConnection(m.provider_config_key, m.connection_id).catch(() => null)
-    );
+    const connectionPromises = (mappings || []).map((m: any) => {
+      const config = getProvider(m.provider_config_key as any)
+      const nangoKey = config?.nangoIntegrationId ?? m.provider_config_key
+      return nango.getConnection(nangoKey, m.connection_id).catch(() => null)
+    });
 
     const connections = (await Promise.all(connectionPromises)).filter(c => c !== null);
 
@@ -282,7 +291,9 @@ export async function deleteConnection(
     }
 
     // 3. Delete from Nango service
-    await nango.deleteConnection(providerConfigKey, connectionId);
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    await nango.deleteConnection(nangoKey, connectionId);
 
     // 4. Clean up Supabase mapping
     const { error: deleteError } = await supabase

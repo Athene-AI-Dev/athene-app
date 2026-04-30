@@ -155,8 +155,7 @@ export async function POST(request: Request): Promise<Response> {
 
     // 6. Enqueue graph-build job if any chunks were indexed (ATH-44)
     //    Fire-and-forget: graph build runs asynchronously after embedding.
-    if (result.indexed > 0) {
-      const docIds = [...new Set(allChunks.map((c) => c.chunk_id))]
+    if (result.indexed > 0 && result.documentIds.length > 0) {
       const graphBuildUrl =
         `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
       try {
@@ -164,12 +163,12 @@ export async function POST(request: Request): Promise<Response> {
           url: graphBuildUrl,
           body: {
             org_id: orgId,
-            document_ids: docIds,
+            document_ids: result.documentIds,
             job_type: 'incremental',
           },
         })
         console.log(
-          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
+          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${result.documentIds.length}`,
         )
       } catch (gErr) {
         // Non-fatal: graph build will be triggered on next sync if this fails

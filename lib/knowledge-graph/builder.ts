@@ -108,7 +108,7 @@ async function processDocument(
   // 1. Load the document metadata for content_hash dedup check
   const { data: doc, error: docErr } = await supabaseAdmin
     .from('documents')
-    .select('id, content_hash, last_extracted_hash, dept_id, visibility')
+    .select('id, org_id, connection_id, external_id, source_type, content_hash, last_extracted_hash, dept_id, visibility')
     .eq('id', docId)
     .eq('org_id', orgId)
     .single()
@@ -125,7 +125,7 @@ async function processDocument(
   // 3. Load all chunks from document_embeddings (content is in RAM, not stored)
   const { data: chunks, error: chunkErr } = await supabaseAdmin
     .from('document_embeddings')
-    .select('chunk_id, metadata, chunk_index')
+    .select('chunk_id, chunk_index')
     .eq('document_id', docId)
     .eq('org_id', orgId)
     .order('chunk_index', { ascending: true })
@@ -133,23 +133,40 @@ async function processDocument(
   if (chunkErr) throw new Error(`Failed to load chunks: ${chunkErr.message}`)
   if (!chunks || chunks.length === 0) return false
 
-  // 4. Build RLS context for storage writes
-  // Graph builder runs as a background service — uses service-role context
+  // 4. Rule #2 Fix: Re-fetch full content from source for extraction
+  // Since we don't store text, we must hydrate from the provider.
+  const { liveDocFetch } = await import('@/lib/langgraph/tools/live-doc-fetch')
+  const fetchedChunks = await liveDocFetch(
+    doc.source_type,
+    doc.connection_id,
+    doc.org_id,
+    { limit: 1000 } // Safety limit
+  )
+
+  // Find the specific content for this document
+  const fullContent = fetchedChunks.find(c => c.chunk_id === doc.external_id)?.content
+  if (!fullContent) {
+    throw new Error(`Failed to re-fetch content from ${doc.source_type} for ${docId}`)
+  }
+
+  // 5. Build RLS context for storage writes
   const ctx: RLSContext = {
     org_id: orgId,
     user_id: 'system',
     user_role: 'admin',
   }
 
-  // 5. Delete existing graph contributions from this document
-  //    (stale nodes/edges removed before re-extraction)
+  // 6. Delete existing graph contributions from this document
   await deleteByDocument(ctx, docId)
 
-  // 6. Run entity/relation extraction
-  //    extractor.ts expects chunks with { text, chunk_index, org_id, document_id, department_id, visibility }
-  const extractorChunks = (chunks ?? []).map((c: any) => ({
-    text: c.metadata?.text_preview ?? '', // extractor uses text; chunks store a preview in metadata
-    chunk_index: c.chunk_index ?? 0,
+  // 7. Run entity/relation extraction
+  // We use the full content and the same chunker as indexing to ensure index alignment
+  const { chunk: chunkText } = await import('@/lib/langgraph/tools/chunker')
+  const rawChunks = chunkText(fullContent)
+
+  const extractorChunks = rawChunks.map((c) => ({
+    text: c.text,
+    chunk_index: c.chunk_index,
     org_id: orgId,
     document_id: docId,
     department_id: doc.dept_id ?? undefined,
@@ -159,19 +176,18 @@ async function processDocument(
   const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
 
   if (nodes.length === 0 && edges.length === 0) {
-    // Still update the hash so we skip next time
     await markExtracted(orgId, docId, doc.content_hash)
     return true
   }
 
-  // 7. Upsert nodes and edges into the graph
+  // 8. Upsert nodes and edges into the graph
   const nodeIdMap = await upsertNodes(ctx, nodes)
   await upsertEdges(ctx, edges, nodeIdMap)
 
   result.totalNodes += nodes.length
   result.totalEdges += edges.length
 
-  // 8. Mark document as extracted with the current content_hash
+  // 9. Mark document as extracted
   await markExtracted(orgId, docId, doc.content_hash)
 
   return true
@@ -180,17 +196,17 @@ async function processDocument(
 // ---- Hash stamp ---------------------------------------------
 
 async function markExtracted(
-  orgId: string,
-  docId: string,
-  contentHash: string | null,
+  org_id: string,
+  doc_id: string,
+  content_hash: string | null,
 ): Promise<void> {
   const { error } = await supabaseAdmin
     .from('documents')
-    .update({ last_extracted_hash: contentHash })
-    .eq('id', docId)
-    .eq('org_id', orgId)
+    .update({ last_extracted_hash: content_hash })
+    .eq('id', doc_id)
+    .eq('org_id', org_id)
 
   if (error) {
-    console.error(`[builder] Failed to mark extracted for ${docId}:`, error.message)
+    throw new Error(`Failed to mark extracted: ${error.message}`)
   }
 }

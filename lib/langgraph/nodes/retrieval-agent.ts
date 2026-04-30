@@ -1,43 +1,57 @@
-﻿import { vectorSearchTool, crossDeptVectorSearchTool } from "../tools/registry";
-import { AtheneStateType } from "../state";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
-import { ToolMessage } from "@langchain/core/messages";
-
-// 🛠️ ToolNode singleton
-const toolNode = new ToolNode([vectorSearchTool]);
+import type { AtheneStateType, AtheneStateUpdate } from "../state";
+import { vectorSearch } from "../../tools/vector-search";
 
 /**
- * Standard retrieval agent worker.
- * Uses the orgId, userId, and role from the state to call RLS-protected tools.
+ * Live retrieval agent node — wired into the LangGraph workflow.
+ *
+ * Reads security context (orgId, userId, role) from graph state,
+ * calls the RLS-protected vectorSearch directly, and writes
+ * `retrieved_chunks` back to state for the synthesis agent.
+ *
+ * Output contract: { retrieved_chunks } | { run_status: "completed" }
  */
-export async function retrievalAgent(state: AtheneStateType, config: any) {
-  const { orgId, userId, role } = state;
-  
-  // Inject security context into tool config metadata
-  const toolConfig = {
-    ...config,
-    metadata: {
-      ...config.metadata,
-      orgId,
-      userId,
-      role,
-    },
-  };
+export async function retrievalAgent(
+  state: AtheneStateType
+): Promise<AtheneStateUpdate> {
+  const { orgId, userId, role, messages } = state;
 
-  const result = await toolNode.invoke({ messages: state.messages }, toolConfig);
+  // Extract query text from the last human message
+  const lastMessage = messages?.[messages.length - 1];
+  if (!lastMessage || !orgId) {
+    return { run_status: "completed" };
+  }
 
-  return {
-    messages: result.messages,
-    // Extract retrieved docs from tool output if needed for state
-    retrievedDocs: result.messages
-      .filter((m: any): m is ToolMessage => m instanceof ToolMessage)
-      .flatMap((m: ToolMessage) => {
-        try {
-          return JSON.parse(m.content as string);
-        } catch (e) {
-          console.error("Error parsing tool output:", e);
-          return [];
-        }
-      }),
-  };
+  const query =
+    typeof lastMessage.content === "string"
+      ? lastMessage.content
+      : JSON.stringify(lastMessage.content ?? "");
+
+  if (!query) {
+    return { run_status: "completed" };
+  }
+
+  const results = await vectorSearch({
+    orgId,
+    userId,
+    user_role: role as "member" | "super_user" | "admin",
+    query,
+    topK: 8,
+  });
+
+  if (!results || results.length === 0) {
+    return { run_status: "completed" };
+  }
+
+  const retrieved_chunks = results.map((res: any) => ({
+    id: res.chunk_id ?? res.id,
+    document_id: res.document_id,
+    content_preview: res.preview ?? res.content_preview ?? "",
+    chunk_index: res.chunk_index ?? 0,
+    source_type: res.source_type ?? "document",
+    external_url: res.external_url ?? null,
+    department_id: res.department_id ?? null,
+    similarity: res.score ?? res.similarity ?? 0,
+  }));
+
+  return { retrieved_chunks };
 }

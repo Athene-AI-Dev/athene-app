@@ -5,15 +5,20 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
   const { orgId, userId, role, messages } = state;
 
   const lastMessage = messages?.[messages.length - 1];
-  const query =
-    typeof lastMessage?.content === "string"
-      ? lastMessage.content
-      : JSON.stringify(lastMessage?.content ?? "");
+  // Fallback to "" first so null/undefined content never becomes the string "null" via JSON.stringify
+const rawContent = lastMessage?.content ?? "";
+const query =
+  typeof rawContent === "string"
+    ? rawContent
+    : JSON.stringify(rawContent);
 
-  if (!query || !orgId) {
+    
+// Use .trim() to also catch whitespace-only strings that would produce useless search results
+if (!query.trim() || !orgId) {
     return { run_status: "completed" };
   }
 
+  // Perform vector search scoped to org, user and role with top 8 results
   const results = await vectorSearch({
     orgId,
     userId,
@@ -22,6 +27,7 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
     topK: 8,
   });
 
+  // Nothing retrieved, mark agent as done so downstream nodes are not left waiting
   if (!results || results.length === 0) {
     return { run_status: "completed" };
   }
@@ -37,5 +43,6 @@ export async function retrievalAgent(state: AtheneState): Promise<AtheneStateUpd
     similarity: res.score ?? res.similarity ?? 0,
   }));
 
-  return { retrieved_chunks };
+// Return chunks alongside run_status so downstream nodes receive a completion signal
+return { retrieved_chunks, run_status: "completed" };
 }

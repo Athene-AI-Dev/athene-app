@@ -9,7 +9,7 @@
 // ============================================================
 
 import Anthropic from "@anthropic-ai/sdk";
-import type {
+import {
   EntityType,
   ExtractionResult,
   ExtractorChunk,
@@ -18,6 +18,12 @@ import type {
   KGProvenance,
   Visibility,
 } from "./types";
+import {
+  strongerProvenance,
+  unionStrings,
+  maxVisibility,
+  nodeKey as makeNodeKey,
+} from "./utils";
 
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 2048;
@@ -230,7 +236,7 @@ async function extractFromChunk(chunk: ExtractorChunk): Promise<ExtractionResult
     const entityType = normEntityType(e.entity_type);
     if (!label || !entityType) continue;
 
-    const key = `${label}::${entityType}`;
+    const key = makeNodeKey(label, entityType);
     if (seenNodes.has(key)) continue;
     seenNodes.add(key);
 
@@ -325,7 +331,7 @@ export async function extractEntitiesAndRelations(
   const nodeMap = new Map<string, KGNode>();
   for (const res of chunkResults) {
     for (const n of res.nodes) {
-      const key = `${n.org_id}::${n.label}::${n.entity_type}`;
+      const key = `${n.org_id}::${makeNodeKey(n.label, n.entity_type)}`;
       const existing = nodeMap.get(key);
       if (!existing) {
         nodeMap.set(key, {
@@ -369,33 +375,4 @@ export async function extractEntitiesAndRelations(
     nodes: Array.from(nodeMap.values()),
     edges: Array.from(edgeMap.values()),
   };
-}
-
-// ---- Small pure helpers (exported for tests) ------------------
-
-export function unionStrings(a: string[], b: string[]): string[] {
-  const set = new Set<string>();
-  for (const s of a) if (s) set.add(s);
-  for (const s of b) if (s) set.add(s);
-  return Array.from(set);
-}
-
-const VISIBILITY_RANK: Record<Visibility, number> = {
-  private: 0,
-  department: 1,
-  public: 2,
-};
-
-export function maxVisibility(a: Visibility, b: Visibility): Visibility {
-  return VISIBILITY_RANK[a] >= VISIBILITY_RANK[b] ? a : b;
-}
-
-const PROVENANCE_RANK: Record<KGProvenance, number> = {
-  AMBIGUOUS: 0,
-  INFERRED: 1,
-  EXTRACTED: 2,
-};
-
-export function strongerProvenance(a: KGProvenance, b: KGProvenance): KGProvenance {
-  return PROVENANCE_RANK[a] >= PROVENANCE_RANK[b] ? a : b;
 }

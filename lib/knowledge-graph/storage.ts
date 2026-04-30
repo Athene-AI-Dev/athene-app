@@ -15,7 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 import type { KGEdge, KGNode, KGProvenance } from "./types";
-import { strongerProvenance, unionStrings } from "./extractor";
+import { strongerProvenance, unionStrings, nodeKey, edgeKey } from "./utils";
 
 // ---- Node upsert ----------------------------------------------
 
@@ -88,7 +88,11 @@ export async function upsertNodes(
 
     // 3. Apply updates one-by-one (Supabase has no bulk-different-rows API)
     for (const { id, patch } of toUpdate) {
-      const { error } = await supabase.from("kg_nodes").update(patch).eq("id", id);
+      const { error } = await supabase
+        .from("kg_nodes")
+        .update(patch)
+        .eq("id", id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes update failed: ${error.message}`);
     }
 
@@ -188,7 +192,7 @@ export async function upsertEdges(
 
     const { data: existing, error: fetchErr } = await supabase
       .from("kg_edges")
-      .select("id, source_node, target_node, relation, provenance, confidence")
+      .select("id, source_node, target_node, relation, provenance, confidence, metadata")
       .eq("org_id", ctx.org_id)
       .in("source_node", sourceIds)
       .in("target_node", targetIds);
@@ -211,11 +215,14 @@ export async function upsertEdges(
       }
       const newProvenance = strongerProvenance(match.provenance, r.provenance);
       const newConfidence = Math.max(match.confidence, r.confidence);
-      if (newProvenance !== match.provenance || newConfidence !== match.confidence) {
+      const newMetadata = { ...((match.metadata as any) ?? {}), ...r.metadata };
+      
+      if (newProvenance !== match.provenance || newConfidence !== match.confidence || JSON.stringify(newMetadata) !== JSON.stringify(match.metadata)) {
         toUpdate.push({
           id: match.id,
           provenance: newProvenance,
           confidence: newConfidence,
+          metadata: newMetadata
         });
       }
     }
@@ -223,8 +230,13 @@ export async function upsertEdges(
     for (const u of toUpdate) {
       const { error } = await supabase
         .from("kg_edges")
-        .update({ provenance: u.provenance, confidence: u.confidence })
-        .eq("id", u.id);
+        .update({ 
+          provenance: u.provenance, 
+          confidence: u.confidence,
+          metadata: u.metadata
+        })
+        .eq("id", u.id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_edges update failed: ${error.message}`);
     }
 
@@ -277,7 +289,11 @@ export async function deleteByDocument(
 
     // 2. Delete orphan nodes (edges cascade)
     if (orphanIds.length > 0) {
-      const { error } = await supabase.from("kg_nodes").delete().in("id", orphanIds);
+      const { error } = await supabase
+        .from("kg_nodes")
+        .delete()
+        .in("id", orphanIds)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes delete failed: ${error.message}`);
     }
 
@@ -286,7 +302,8 @@ export async function deleteByDocument(
       const { error } = await supabase
         .from("kg_nodes")
         .update({ source_documents: n.remaining })
-        .eq("id", n.id);
+        .eq("id", n.id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes shared update failed: ${error.message}`);
     }
 
@@ -319,15 +336,9 @@ type ExistingEdge = {
   relation: string;
   provenance: KGProvenance;
   confidence: number;
+  metadata: Record<string, unknown> | null;
 };
 
-export function nodeKey(label: string, entityType: string): string {
-  return `${label}::${entityType}`;
-}
-
-function edgeKey(source: string, target: string, relation: string): string {
-  return `${source}->${relation}->${target}`;
-}
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -342,7 +353,7 @@ function arraysEqual(a: string[], b: string[]): boolean {
 // value as authoritative and never widen to "public" accidentally).
 const VISIBILITY_RANK: Record<string, number> = {
   private: 0,
-  department: 1,
+  team: 1,
   public: 2,
 };
 

@@ -153,26 +153,32 @@ async function processDocument(
     org_id: orgId,
     document_id: docId,
     department_id: doc.dept_id ?? undefined,
-    visibility: (doc.visibility ?? 'department') as 'public' | 'department' | 'private',
+    visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
   }))
 
   const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
 
-  if (nodes.length === 0 && edges.length === 0) {
-    // Still update the hash so we skip next time
-    await markExtracted(orgId, docId, doc.content_hash)
-    return true
+  let docNodes = 0
+  let docEdges = 0
+
+  if (nodes.length > 0 || edges.length > 0) {
+    // 7. Upsert nodes and edges into the graph
+    const nodeIdMap = await upsertNodes(ctx, nodes)
+    await upsertEdges(ctx, edges, nodeIdMap)
+
+    docNodes = nodes.length
+    docEdges = edges.length
   }
 
-  // 7. Upsert nodes and edges into the graph
-  const nodeIdMap = await upsertNodes(ctx, nodes)
-  await upsertEdges(ctx, edges, nodeIdMap)
-
-  result.totalNodes += nodes.length
-  result.totalEdges += edges.length
-
   // 8. Mark document as extracted with the current content_hash
-  await markExtracted(orgId, docId, doc.content_hash)
+  // BUG-15 FIX: Skip if content_hash is null to avoid disabling dedup permanently
+  if (doc.content_hash) {
+    await markExtracted(orgId, docId, doc.content_hash)
+  }
+
+  // BUG-12 FIX: Only update global counters after full success
+  result.totalNodes += docNodes
+  result.totalEdges += docEdges
 
   return true
 }

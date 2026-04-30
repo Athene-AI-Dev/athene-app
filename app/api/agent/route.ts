@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
       orgId,
       userId,
       role,
+      user: {
+        id: userId,
+        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
+      }
     };
 
     const encoder = new TextEncoder();

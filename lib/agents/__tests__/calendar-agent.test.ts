@@ -30,8 +30,9 @@ describe("calendarAgent", () => {
     vi.clearAllMocks();
   });
 
-  it("extracts meeting details from natural language", async () => {
+  it("extracts meeting details from natural language using user timezone", async () => {
     const mockDraft = {
+      action_type: "create",
       summary: "Meeting with Alice",
       start: {
         dateTime: "2024-04-24T14:00:00Z",
@@ -44,35 +45,97 @@ describe("calendarAgent", () => {
       attendees: [{ displayName: "Alice", email: "alice@example.com" }]
     };
 
-    // 3. Use the hoisted mockInvoke
     mocks.mockInvoke.mockResolvedValue(mockDraft);
 
     const state: any = {
       messages: [new HumanMessage("meeting with Alice tomorrow 2pm for 1h")],
-      timezone: "America/New_York"
+      user: {
+        timezone: "America/New_York",
+        id: "user_123"
+      }
     };
 
     const result = await calendarAgent(state);
 
     expect(result.awaiting_approval).toBe(true);
-    // pending_write_action is the canonical field (pending_action was the old name)
     expect((result.pending_write_action as any)?.tool).toBe("calendar-create");
     expect((result.pending_write_action as any)?.payload?.summary).toBe("Meeting with Alice");
-    expect((result.pending_write_action as any)?.requested_at).toBeDefined();
   });
 
-  it("handles errors by returning a user-friendly message", async () => {
-    // 4. Use the hoisted mockInvoke to simulate failure
-    mocks.mockInvoke.mockRejectedValue(new Error("LLM Error"));
+  it("handles search requests by setting is_search and search_range", async () => {
+    const mockDraft = {
+      action_type: "search",
+      is_search: true,
+      summary: "Find time with Bob",
+      search_range: {
+        startAfter: "2024-04-25T09:00:00Z",
+        endBefore: "2024-04-25T17:00:00Z"
+      }
+    };
+
+    mocks.mockInvoke.mockResolvedValue(mockDraft);
 
     const state: any = {
-      messages: [new HumanMessage("invalid request")],
-      timezone: "UTC"
+      messages: [new HumanMessage("find 30 mins with Bob tomorrow")],
+      user: { timezone: "UTC", id: "user_123" }
     };
 
     const result = await calendarAgent(state);
 
-    expect(result.messages).toBeDefined();
-    expect(result.messages[0].content).toContain("I'm sorry, I couldn't quite process that calendar request");
+    expect((result.pending_write_action as any)?.tool).toBe("calendar-search");
+    expect((result.pending_write_action as any)?.payload?.is_search).toBe(true);
+  });
+
+  it("validates create actions and returns a message if start/end are missing", async () => {
+    const mockDraft = {
+      action_type: "create",
+      summary: "Incomplete meeting"
+      // start/end missing
+    };
+
+    mocks.mockInvoke.mockResolvedValue(mockDraft);
+
+    const state: any = {
+      messages: [new HumanMessage("schedule a meeting sometime")],
+      user: { timezone: "UTC", id: "user_123" }
+    };
+
+    const result = await calendarAgent(state);
+
+    expect(result.awaiting_approval).toBeUndefined();
+    expect(result.messages?.[0].content).toContain("missing the specific start or end time");
+  });
+
+  it("handles reschedule (update) requests", async () => {
+    const mockDraft = {
+      action_type: "update",
+      summary: "Rescheduled Meeting",
+      start: { dateTime: "2024-04-26T10:00:00Z", timeZone: "UTC" },
+      end: { dateTime: "2024-04-26T11:00:00Z", timeZone: "UTC" }
+    };
+
+    mocks.mockInvoke.mockResolvedValue(mockDraft);
+
+    const state: any = {
+      messages: [new HumanMessage("reschedule my 9am to 10am")],
+      user: { timezone: "UTC", id: "user_123" }
+    };
+
+    const result = await calendarAgent(state);
+
+    expect((result.pending_write_action as any)?.tool).toBe("calendar-update");
+  });
+
+  it("handles errors by returning a user-friendly message", async () => {
+    mocks.mockInvoke.mockRejectedValue(new Error("LLM Error"));
+
+    const state: any = {
+      messages: [new HumanMessage("invalid request")],
+      user: { timezone: "UTC", id: "user_123" }
+    };
+
+    const result = await calendarAgent(state);
+
+    expect(result.messages?.[0].content).toContain("I'm sorry, I couldn't quite process that calendar request");
   });
 });

@@ -128,17 +128,6 @@ export async function getToken(
   return getConnectionToken(connectionId, providerConfigKey, orgId);
 }
 
-<<<<<<< Updated upstream
-export async function getConnection(connectionId: string, providerConfigKey: string) {
-    const nango = getNango();
-    try {
-        const config = getProvider(providerConfigKey as any)
-        const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
-        return await nango.getConnection(nangoKey, connectionId);
-    } catch (error: unknown) {
-        return handleNangoError(error, 'getConnection');
-    }
-=======
 export async function getConnection(
   connectionId: string,
   providerConfigKey: string,
@@ -150,7 +139,6 @@ export async function getConnection(
 
   const nango = getNango();
 
-  // Verify ownership in Supabase first
   const { data: mapping, error: supabaseError } = await supabase
     .from('nango_connections')
     .select('id')
@@ -175,7 +163,6 @@ export async function getConnection(
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnection');
   }
->>>>>>> Stashed changes
 }
 
 /**

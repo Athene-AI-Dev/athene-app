@@ -34,15 +34,24 @@ import { getProviderToken } from '@/lib/integrations/base'
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+function mockTeamInfo(domain = 'test-workspace') {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    json: async () => ({ ok: true, team: { domain } }),
+  })
+}
+
 describe('Slack Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Reset the mocked token for each test
     vi.mocked(getProviderToken).mockResolvedValue('xoxb-fake-token')
   })
 
   describe('fetchSlackMessages', () => {
     it('returns FetchedChunk[] with correct shape (Happy Path)', async () => {
+      mockTeamInfo()
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -59,6 +68,7 @@ describe('Slack Integration', () => {
         headers: new Headers({ 'content-type': 'application/json' }),
         json: async () => ({
           ok: true,
+          has_more: false,
           messages: [{ ts: '1714123456.000100', text: 'Hello team!', user: 'U123' }],
         }),
       })
@@ -71,7 +81,32 @@ describe('Slack Integration', () => {
       expect(getProviderToken).toHaveBeenCalledWith('conn-1', 'slack', 'org-1')
     })
 
+    it('source_url uses workspace domain from team.info', async () => {
+      mockTeamInfo('test-workspace')
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          ok: true,
+          channels: [{ id: 'C123', name: 'general', is_archived: false }],
+        }),
+      })
+      mockFetch.mockResolvedValueOnce({
+        ok: true, status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          ok: true,
+          has_more: false,
+          messages: [{ ts: '1714123456.000100', text: 'Hello!', user: 'U123' }],
+        }),
+      })
+
+      const chunks = await fetchSlackMessages('conn-1', 'org-1')
+      expect(chunks[0].source_url).toContain('test-workspace.slack.com')
+    })
+
     it('returns empty array when no channels found', async () => {
+      mockTeamInfo()
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -83,6 +118,7 @@ describe('Slack Integration', () => {
     })
 
     it('handles pagination correctly', async () => {
+      mockTeamInfo()
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
         json: async () => ({ ok: true, channels: [{ id: 'C1' }], response_metadata: { next_cursor: 'p2' } }),
@@ -91,15 +127,16 @@ describe('Slack Integration', () => {
         ok: true, status: 200,
         json: async () => ({ ok: true, channels: [{ id: 'C2' }], response_metadata: { next_cursor: '' } }),
       })
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, messages: [] }) })
+      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, has_more: false, messages: [] }) })
 
       await fetchSlackMessages('conn-1', 'org-1')
       expect(mockFetch).toHaveBeenCalled()
     })
 
     it('fetches thread replies when thread_ts is present', async () => {
+      mockTeamInfo()
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, channels: [{ id: 'C1' }] }) })
-      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P', thread_ts: '1', reply_count: 1 }] }) })
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, has_more: false, messages: [{ ts: '1', text: 'P', thread_ts: '1', reply_count: 1 }] }) })
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P' }, { ts: '2', text: 'R' }] }) })
 
       const chunks = await fetchSlackMessages('conn-1', 'org-1')

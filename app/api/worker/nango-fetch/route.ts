@@ -108,6 +108,7 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   jira: [fetchJiraIssues],
   confluence: [fetchConfluencePages],
 
+<<<<<<< Updated upstream
   // --- Data ---
   snowflake: [fetchSnowflakeSamples],
 
@@ -115,6 +116,19 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   google: [fetchDriveChunks, searchEmailChunks, fetchCalendarChunks],
   microsoft: [microsoftFetcher],
   'microsoft-graph': [microsoftFetcher],
+=======
+  github: [
+    githubIssuesFetcher,
+    githubPrsFetcher,
+    githubWikiFetcher,
+  ],
+
+  linear: [
+    linearIssuesFetcher,
+    linearProjectsFetcher,
+    linearCyclesFetcher,
+  ],
+>>>>>>> Stashed changes
 }
 
 // ---- Request body type ------------------------------------------

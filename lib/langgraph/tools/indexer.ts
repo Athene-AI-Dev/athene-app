@@ -10,6 +10,9 @@
 //   ATH-28 (this file) runs the pipeline.
 //   ATH-58 extractor.extractEntitiesAndRelations(chunks) → graph data.
 //   ATH-59 storage.upsertNodes/upsertEdges persists the graph.
+//
+//   Rule #2 Protection: The indexer uses an explicit field allow-list
+//   for all Supabase writes to ensure ephemeral body text never leaks.
 // ============================================================
 
 import { createHash } from "node:crypto";
@@ -120,20 +123,37 @@ export async function indexDocument(
   }
 
   // ---- 5. Upsert vector + metadata rows (NEVER content) ----
-  if (newChunkIndices.length > 0) {
-    const rows = newChunkIndices.map((chunkIdx, i) => ({
-      org_id: orgId,
-      document_id: documentId,
-      chunk_index: chunks[chunkIdx].chunk_index,
-      content_hash: hashes[chunkIdx],
-      embedding: vectors[i],
-      department_id: deptId,
-      owner_user_id: ownerUserId,
-      visibility,
-      source_type: sourceType,
-      token_count: countTokens(chunks[chunkIdx].text),
-      metadata, // caller-sanitized; never includes body
-    }));
+    // BUG-01 FIX: Strict field allow-list to prevent text leaks
+    const rows = newChunkIndices.map((chunkIdx, i) => {
+      const row = {
+        org_id: orgId,
+        document_id: documentId,
+        chunk_index: chunks[chunkIdx].chunk_index,
+        content_hash: hashes[chunkIdx],
+        embedding: vectors[i],
+        department_id: deptId,
+        owner_user_id: ownerUserId,
+        visibility,
+        source_type: sourceType,
+        token_count: countTokens(chunks[chunkIdx].text),
+        metadata,
+      };
+
+      // Rule #2: Explicitly pick only allowed keys
+      return pick(row, [
+        "org_id",
+        "document_id",
+        "chunk_index",
+        "content_hash",
+        "embedding",
+        "department_id",
+        "owner_user_id",
+        "visibility",
+        "source_type",
+        "token_count",
+        "metadata",
+      ]);
+    });
 
     const { error: upsertErr } = await supabaseAdmin
       .from("document_embeddings")
@@ -175,15 +195,23 @@ export async function indexDocument(
         visibility,
       }));
 
-      const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks);
+      // BUG-02 FIX: Wrap KG pass in try/catch and ensure awaits
+      try {
+        const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks);
 
-      if (nodes.length > 0) {
-        const idMap = await upsertNodes(rlsContext, nodes);
-        nodesUpserted = nodes.length;
-        if (edges.length > 0) {
-          await upsertEdges(rlsContext, edges, idMap);
-          edgesUpserted = edges.length;
+        if (nodes.length > 0) {
+          const idMap = await upsertNodes(rlsContext, nodes);
+          nodesUpserted = nodes.length;
+          if (edges.length > 0) {
+            await upsertEdges(rlsContext, edges, idMap);
+            edgesUpserted = edges.length;
+          }
         }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[indexer] Knowledge Graph pass failed:", msg);
+        // Propagate error to QStash job if this is a critical failure
+        throw new Error(`KG pass failed: ${msg}`);
       }
     }
   }
@@ -229,6 +257,17 @@ function emptyResult(): IndexDocumentResult {
     nodesUpserted: 0,
     edgesUpserted: 0,
   };
+}
+
+/** Utility to pick specific keys from an object */
+function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  for (const key of keys) {
+    if (key in obj) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
 }
 
 /**

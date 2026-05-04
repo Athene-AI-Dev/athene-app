@@ -144,6 +144,10 @@ async function processDocument(
   let offset = 0
   let hasMoreChunks = true
 
+  // BUG-12 FIX: Accumulate counts locally to ensure global counters only update on full success
+  let docNodes = 0
+  let docEdges = 0
+
   while (hasMoreChunks) {
     const { data: chunks, error: chunkErr } = await supabaseAdmin
       .from('document_embeddings')
@@ -172,13 +176,14 @@ async function processDocument(
     }
 
     // 6. Run entity/relation extraction
+    // ATH-58: extractor.ts expects chunks with { text, chunk_index, org_id, document_id, department_id, visibility }
     const extractorChunks = chunks.map((c: any) => ({
       text: c.metadata?.text_preview ?? '',
       chunk_index: c.chunk_index ?? 0,
       org_id: orgId,
       document_id: docId,
       department_id: doc.dept_id ?? undefined,
-      visibility: (doc.visibility ?? 'department') as 'public' | 'department' | 'private',
+      visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
     }))
 
     const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
@@ -188,8 +193,8 @@ async function processDocument(
       const nodeIdMap = await upsertNodes(ctx, nodes)
       await upsertEdges(ctx, edges, nodeIdMap)
 
-      result.totalNodes += nodes.length
-      result.totalEdges += edges.length
+      docNodes += nodes.length
+      docEdges += edges.length
     }
 
     offset += CHUNK_BATCH_SIZE
@@ -199,7 +204,14 @@ async function processDocument(
   }
 
   // 8. Mark document as extracted with the current content_hash
-  await markExtracted(orgId, docId, doc.content_hash)
+  // BUG-15 FIX: Skip if content_hash is null to avoid disabling dedup permanently
+  if (doc.content_hash) {
+    await markExtracted(orgId, docId, doc.content_hash)
+  }
+
+  // BUG-12 FIX: Only update global counters after full success
+  result.totalNodes += docNodes
+  result.totalEdges += docEdges
 
   return true
 }

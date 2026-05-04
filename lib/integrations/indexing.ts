@@ -201,7 +201,6 @@ export async function indexDocument(
     owner_user_id: ownerUserId,
     source_type: chunk.metadata.provider,
     visibility,
-    content_preview: text.substring(0, 200), // schema comment: first 200 chars
     chunk_index: index,
     embedding: embeddings[index],
     // SHA-256 hash of the content — used to skip re-embedding unchanged chunks
@@ -280,7 +279,6 @@ export async function indexDocuments(
       owner_user_id: ownerUserId,
       source_type: item.chunk.metadata.provider,
       visibility,
-      content_preview: text.substring(0, 200),
       chunk_index: index,
       content_hash: createHash('sha256').update(text).digest('hex'),
       metadata: item.chunk.metadata,

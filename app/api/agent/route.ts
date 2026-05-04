@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
       role,
     };
 
-    const graph = await getAgentGraph();
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();

@@ -180,7 +180,7 @@ export async function indexDocument(
   departmentId: string | null,
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
-): Promise<void> {
+): Promise<string> {
   // 0. Resolve/create the documents row
   const documentId = await upsertDocumentRecord(
     chunk, orgId, connectionId, departmentId, visibility, ownerUserId
@@ -218,6 +218,8 @@ export async function indexDocument(
     logger.error({ title: chunk.title, err: error.message }, '[indexing] Error upserting chunks')
     throw error
   }
+
+  return documentId
 }
 
 /** Maximum texts per OpenAI embedding API call */
@@ -239,8 +241,8 @@ export async function indexDocuments(
   departmentId: string | null,
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
-): Promise<{ indexed: number; errors: number }> {
-  if (chunks.length === 0) return { indexed: 0, errors: 0 }
+): Promise<{ indexed: number; errors: number; documentIds: string[] }> {
+  if (chunks.length === 0) return { indexed: 0, errors: 0, documentIds: [] }
 
   // ---- Phase 1: resolve document rows in parallel -----------------
   type PreparedItem = {
@@ -320,7 +322,11 @@ export async function indexDocuments(
     }
   }
 
-  return { indexed: prepared.length, errors }
+  return { 
+    indexed: prepared.length, 
+    errors, 
+    documentIds: [...new Set(prepared.map(p => p.documentId))] 
+  }
 }
 
 // ---- Helpers ----------------------------------------------------

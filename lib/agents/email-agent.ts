@@ -123,10 +123,24 @@ export async function emailAgentNode(
 
   const draft = parseEmailDraft(rawResponse);
 
-  // ATH-37: Set pending_write_action and pause for HITL approval.
+  // ATH-37: Validate draft before triggering HITL gate.
+  // If the draft is completely empty or missing basic fields, we don't trigger approval.
+  const hasContent = draft.to.length > 0 || draft.subject.trim() || draft.body.trim();
+
+  if (!hasContent) {
+    return {
+      run_status: "failed",
+      messages: [
+        new AIMessage({
+          content: "I'm sorry, I was unable to generate a valid email draft. Please ensure there is enough context (like a recipient name or email) in the conversation.",
+        }),
+      ],
+    };
+  }
+
+  // Set pending_write_action and pause for HITL approval.
   // The graph's interrupt_before: ["approval_node"] will halt
-  // execution before the approval_node runs, giving the human
-  // a chance to review, edit, or reject the draft.
+  // execution before the approval_node runs.
   return {
     run_status: "awaiting_approval",
     awaiting_approval: true,

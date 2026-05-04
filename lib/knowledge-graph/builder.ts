@@ -125,7 +125,7 @@ async function processDocument(
   // 1. Load the document metadata for content_hash dedup check
   const { data: doc, error: docErr } = await supabaseAdmin
     .from('documents')
-    .select('id, content_hash, last_extracted_hash, dept_id, visibility')
+    .select('id, org_id, connection_id, external_id, source_type, content_hash, last_extracted_hash, dept_id, visibility')
     .eq('id', docId)
     .eq('org_id', orgId)
     .single()
@@ -139,79 +139,63 @@ async function processDocument(
     return false // skipped
   }
 
-  // 3. Process chunks in batches to avoid memory overflow (ATH-60)
-  const CHUNK_BATCH_SIZE = 50
-  let offset = 0
-  let hasMoreChunks = true
+  // 3. Rule #2 Fix: Re-fetch full content from source for extraction (Zero-Storage hydration)
+  // Since we don't store text, we must hydrate from the provider in real-time.
+  const { liveDocFetch } = await import('@/lib/langgraph/tools/live-doc-fetch')
+  const fetchedChunks = await liveDocFetch(
+    doc.source_type,
+    doc.connection_id,
+    doc.org_id,
+    { limit: 1000 } // Safety limit
+  )
 
-  // BUG-12 FIX: Accumulate counts locally to ensure global counters only update on full success
-  let docNodes = 0
-  let docEdges = 0
-
-  while (hasMoreChunks) {
-    const { data: chunks, error: chunkErr } = await supabaseAdmin
-      .from('document_embeddings')
-      .select('chunk_id, metadata, chunk_index')
-      .eq('document_id', docId)
-      .eq('org_id', orgId)
-      .order('chunk_index', { ascending: true })
-      .range(offset, offset + CHUNK_BATCH_SIZE - 1)
-
-    if (chunkErr) throw new Error(`Failed to load chunks: ${chunkErr.message}`)
-    if (!chunks || chunks.length === 0) {
-      hasMoreChunks = false
-      continue
-    }
-
-    // 4. Build RLS context for storage writes
-    const ctx: RLSContext = {
-      org_id: orgId,
-      user_id: 'system',
-      user_role: 'admin',
-    }
-
-    // 5. Delete existing graph contributions (only on the FIRST batch)
-    if (offset === 0) {
-      await deleteByDocument(ctx, docId)
-    }
-
-    // 6. Run entity/relation extraction
-    // ATH-58: extractor.ts expects chunks with { text, chunk_index, org_id, document_id, department_id, visibility }
-    const extractorChunks = chunks.map((c: any) => ({
-      text: c.metadata?.text_preview ?? '',
-      chunk_index: c.chunk_index ?? 0,
-      org_id: orgId,
-      document_id: docId,
-      department_id: doc.dept_id ?? undefined,
-      visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
-    }))
-
-    const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
-
-    if (nodes.length > 0 || edges.length > 0) {
-      // 7. Upsert nodes and edges into the graph
-      const nodeIdMap = await upsertNodes(ctx, nodes)
-      await upsertEdges(ctx, edges, nodeIdMap)
-
-      docNodes += nodes.length
-      docEdges += edges.length
-    }
-
-    offset += CHUNK_BATCH_SIZE
-    if (chunks.length < CHUNK_BATCH_SIZE) {
-      hasMoreChunks = false
-    }
+  // Find the specific content for this document
+  const fullContent = fetchedChunks.find(c => c.chunk_id === doc.external_id)?.content
+  if (!fullContent) {
+    throw new Error(`Failed to re-fetch content from ${doc.source_type} for ${docId}`)
   }
 
-  // 8. Mark document as extracted with the current content_hash
+  // 4. Build RLS context for storage writes
+  const ctx: RLSContext = {
+    org_id: orgId,
+    user_id: 'system',
+    user_role: 'admin',
+  }
+
+  // 5. Delete existing graph contributions from this document before re-extraction
+  await deleteByDocument(ctx, docId)
+
+  // 6. Run entity/relation extraction
+  // We use the full content and the same chunker as indexing to ensure index alignment
+  const { chunk: chunkText } = await import('@/lib/langgraph/tools/chunker')
+  const rawChunks = chunkText(fullContent)
+
+  const extractorChunks = rawChunks.map((c) => ({
+    text: c.text,
+    chunk_index: c.chunk_index,
+    org_id: orgId,
+    document_id: docId,
+    department_id: doc.dept_id ?? undefined,
+    visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
+  }))
+
+  const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
+
+  // BUG-12 FIX: Only update global counters after full success
+  if (nodes.length > 0 || edges.length > 0) {
+    // 7. Upsert nodes and edges into the graph
+    const nodeIdMap = await upsertNodes(ctx, nodes)
+    await upsertEdges(ctx, edges, nodeIdMap)
+
+    result.totalNodes += nodes.length
+    result.totalEdges += edges.length
+  }
+
+  // 8. Mark document as extracted
   // BUG-15 FIX: Skip if content_hash is null to avoid disabling dedup permanently
   if (doc.content_hash) {
     await markExtracted(orgId, docId, doc.content_hash)
   }
-
-  // BUG-12 FIX: Only update global counters after full success
-  result.totalNodes += docNodes
-  result.totalEdges += docEdges
 
   return true
 }
@@ -219,17 +203,18 @@ async function processDocument(
 // ---- Hash stamp ---------------------------------------------
 
 async function markExtracted(
-  orgId: string,
-  docId: string,
-  contentHash: string | null,
+  org_id: string,
+  doc_id: string,
+  content_hash: string | null,
 ): Promise<void> {
   const { error } = await supabaseAdmin
     .from('documents')
-    .update({ last_extracted_hash: contentHash })
-    .eq('id', docId)
-    .eq('org_id', orgId)
+    .update({ last_extracted_hash: content_hash })
+    .eq('id', doc_id)
+    .eq('org_id', org_id)
 
   if (error) {
-    console.error(`[builder] Failed to mark extracted for ${docId}:`, error.message)
+    throw new Error(`Failed to mark extracted: ${error.message}`)
   }
 }
+

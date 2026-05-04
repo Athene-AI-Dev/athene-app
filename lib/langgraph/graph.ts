@@ -5,6 +5,7 @@ import { retrievalAgent } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
 import { emailAgentNode } from "./nodes/email-agent";
 import { calendarAgentNode } from "./nodes/calendar-agent";
+import { synthesisAgentNode } from "./nodes/synthesis-agent";
 import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
@@ -23,12 +24,11 @@ export async function getAgentGraph(): Promise<any> {
     // Worker nodes
     .addNode("retrieval", retrievalAgent)
     .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
-    // Email and Calendar agents (propose actions)
     .addNode("email_agent", emailAgentNode)
     .addNode("calendar_agent", calendarAgentNode)
-    // Write-action executors (paused by interrupt_before for HITL approval)
-    .addNode("email_send", actionExecutorNode)
-    .addNode("calendar_create", actionExecutorNode);
+    .addNode("synthesis", synthesisAgentNode)
+    // Write-action executor (paused by interrupt_before for HITL approval)
+    .addNode("action_executor", actionExecutorNode);
 
   // Edges
   workflow.addEdge(START, "supervisor");
@@ -36,32 +36,37 @@ export async function getAgentGraph(): Promise<any> {
   // Workers always return to the supervisor after completion
   workflow.addEdge("retrieval", "supervisor");
   workflow.addEdge("cross_dept_retrieval", "supervisor");
-  
-  // Transition from agent to executor node (paused by interrupt_before)
-  workflow.addEdge("email_agent", "email_send");
-  workflow.addEdge("calendar_agent", "calendar_create");
+  workflow.addEdge("email_agent", "supervisor");
+  workflow.addEdge("calendar_agent", "supervisor");
+  workflow.addEdge("action_executor", "supervisor");
 
-  // Executors return to supervisor
-  workflow.addEdge("email_send", "supervisor");
-  workflow.addEdge("calendar_create", "supervisor");
+  // Synthesis is the terminal node for answers
+  workflow.addEdge("synthesis", END);
 
-  // The supervisor routes to a worker, action executor, or FINISH
+  // The supervisor routes to a worker, synthesis, or END
   workflow.addConditionalEdges(
     "supervisor",
-    (state) => state.next || "FINISH",
+    (state) => state.next || "END",
     {
       retrieval: "retrieval",
       cross_dept_retrieval: "cross_dept_retrieval",
       email_agent: "email_agent",
       calendar_agent: "calendar_agent",
-      FINISH: END,
+      synthesis: "synthesis",
+      action_executor: "action_executor",
+      END: END,
     }
   );
 
-  compiledGraph = workflow.compile({ 
+  // ATH-43: The interrupt_before: ["action_executor"] halts execution
+  // whenever the graph is about to run the action_executor node.
+  // This gives the user a chance to review the pending_write_action
+  // (set by email_agent or calendar_agent) before it actually executes.
+  compiledGraph = workflow.compile({
     checkpointer,
-    interruptBefore: ["email_send", "calendar_create"],
+    interruptBefore: ["action_executor"],
   });
   return compiledGraph;
 }
+
 

@@ -15,7 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 import type { KGEdge, KGNode, KGProvenance } from "./types";
-import { strongerProvenance, unionStrings } from "./extractor";
+import { strongerProvenance, unionStrings, nodeKey, edgeKey } from "./utils";
 
 // ---- Node upsert ----------------------------------------------
 
@@ -57,7 +57,22 @@ export async function upsertNodes(
     const toUpdate: Array<{ id: string; patch: Partial<ExistingNode> }> = [];
 
     for (const n of nodes) {
+      // ATH-60 security: Ensure all documents provided actually belong to this org
+      // This prevents cross-tenant data poisoning.
+      if (n.source_documents.length > 0) {
+        const { count, error: authErr } = await supabase
+          .from("documents")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", ctx.org_id)
+          .in("id", n.source_documents);
+        
+        if (authErr || (count ?? 0) !== n.source_documents.length) {
+          throw new Error(`Unauthorized document access in node upsert: ${n.label}`);
+        }
+      }
+
       const key = nodeKey(n.label, n.entity_type);
+
       const existing = existingByKey.get(key);
       if (!existing) {
         toInsert.push(n);
@@ -88,26 +103,44 @@ export async function upsertNodes(
 
     // 3. Apply updates one-by-one (Supabase has no bulk-different-rows API)
     for (const { id, patch } of toUpdate) {
-      const { error } = await supabase.from("kg_nodes").update(patch).eq("id", id);
+      const { error } = await supabase
+        .from("kg_nodes")
+        .update(patch)
+        .eq("id", id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes update failed: ${error.message}`);
     }
 
-    // 4. Bulk insert new rows
+    // 4. Bulk insert new rows (deduplicate within the batch first)
     let insertedRows: Array<{ id: string; label: string; entity_type: string }> = [];
     if (toInsert.length > 0) {
-      const payload = toInsert.map((n) => ({
-        org_id: n.org_id,
-        label: n.label,
-        entity_type: n.entity_type,
-        department_ids: n.department_ids,
-        visibility: n.visibility,
-        source_documents: n.source_documents,
-        description: n.description ?? null,
-        metadata: n.metadata ?? {},
-      }));
+      const uniqueToInsert = new Map<string, any>();
+      for (const n of toInsert) {
+        const key = nodeKey(n.label, n.entity_type);
+        if (!uniqueToInsert.has(key)) {
+          uniqueToInsert.set(key, {
+            org_id: n.org_id,
+            label: n.label,
+            entity_type: n.entity_type,
+            department_ids: n.department_ids,
+            visibility: n.visibility,
+            source_documents: n.source_documents,
+            description: n.description ?? null,
+            metadata: n.metadata ?? {},
+          });
+        } else {
+          // Merge within the batch
+          const existing = uniqueToInsert.get(key);
+          existing.department_ids = unionStrings(existing.department_ids, n.department_ids);
+          existing.source_documents = unionStrings(existing.source_documents, n.source_documents);
+          existing.visibility = maxVisibilityRaw(existing.visibility, n.visibility);
+          if (!existing.description && n.description) existing.description = n.description;
+        }
+      }
+
       const { data, error } = await supabase
         .from("kg_nodes")
-        .insert(payload)
+        .insert(Array.from(uniqueToInsert.values()))
         .select("id, label, entity_type");
       if (error) throw new Error(`kg_nodes insert failed: ${error.message}`);
       insertedRows = data ?? [];
@@ -188,7 +221,7 @@ export async function upsertEdges(
 
     const { data: existing, error: fetchErr } = await supabase
       .from("kg_edges")
-      .select("id, source_node, target_node, relation, provenance, confidence")
+      .select("id, source_node, target_node, relation, provenance, confidence, metadata")
       .eq("org_id", ctx.org_id)
       .in("source_node", sourceIds)
       .in("target_node", targetIds);
@@ -211,25 +244,50 @@ export async function upsertEdges(
       }
       const newProvenance = strongerProvenance(match.provenance, r.provenance);
       const newConfidence = Math.max(match.confidence, r.confidence);
-      if (newProvenance !== match.provenance || newConfidence !== match.confidence) {
-        toUpdate.push({
-          id: match.id,
-          provenance: newProvenance,
-          confidence: newConfidence,
-        });
-      }
+      
+      // ATH-60: Implement edge weighting via metadata
+      // Combine with weekly_cdr_2's metadata merging
+      const existingWeight = (match.metadata as any)?.occurrence_count ?? 1;
+      const newWeight = existingWeight + 1;
+      const mergedMetadata = { ...((match.metadata as any) ?? {}), ...r.metadata, occurrence_count: newWeight };
+
+      toUpdate.push({
+        id: match.id,
+        provenance: newProvenance,
+        confidence: newConfidence,
+        metadata: mergedMetadata
+      });
     }
+
 
     for (const u of toUpdate) {
       const { error } = await supabase
         .from("kg_edges")
-        .update({ provenance: u.provenance, confidence: u.confidence })
-        .eq("id", u.id);
+        .update({ 
+          provenance: u.provenance, 
+          confidence: u.confidence,
+          metadata: u.metadata 
+        })
+        .eq("id", u.id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_edges update failed: ${error.message}`);
     }
 
+
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("kg_edges").insert(toInsert);
+      const uniqueToInsert = new Map<string, Resolved>();
+      for (const r of toInsert) {
+        const key = edgeKey(r.source_node, r.target_node, r.relation);
+        if (!uniqueToInsert.has(key)) {
+          uniqueToInsert.set(key, r);
+        } else {
+          const existing = uniqueToInsert.get(key)!;
+          existing.provenance = strongerProvenance(existing.provenance, r.provenance);
+          existing.confidence = Math.max(existing.confidence, r.confidence);
+        }
+      }
+
+      const { error } = await supabase.from("kg_edges").insert(Array.from(uniqueToInsert.values()));
       if (error) throw new Error(`kg_edges insert failed: ${error.message}`);
     }
   });
@@ -277,7 +335,11 @@ export async function deleteByDocument(
 
     // 2. Delete orphan nodes (edges cascade)
     if (orphanIds.length > 0) {
-      const { error } = await supabase.from("kg_nodes").delete().in("id", orphanIds);
+      const { error } = await supabase
+        .from("kg_nodes")
+        .delete()
+        .in("id", orphanIds)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes delete failed: ${error.message}`);
     }
 
@@ -286,7 +348,8 @@ export async function deleteByDocument(
       const { error } = await supabase
         .from("kg_nodes")
         .update({ source_documents: n.remaining })
-        .eq("id", n.id);
+        .eq("id", n.id)
+        .eq("org_id", ctx.org_id);
       if (error) throw new Error(`kg_nodes shared update failed: ${error.message}`);
     }
 
@@ -319,15 +382,9 @@ type ExistingEdge = {
   relation: string;
   provenance: KGProvenance;
   confidence: number;
+  metadata: Record<string, unknown> | null;
 };
 
-export function nodeKey(label: string, entityType: string): string {
-  return `${label}::${entityType}`;
-}
-
-function edgeKey(source: string, target: string, relation: string): string {
-  return `${source}->${relation}->${target}`;
-}
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -342,7 +399,7 @@ function arraysEqual(a: string[], b: string[]): boolean {
 // value as authoritative and never widen to "public" accidentally).
 const VISIBILITY_RANK: Record<string, number> = {
   private: 0,
-  department: 1,
+  team: 1,
   public: 2,
 };
 

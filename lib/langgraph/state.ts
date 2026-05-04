@@ -61,6 +61,23 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => false,
   }),
+  // Supervisor fields
+  hop_count: Annotation<number>({
+    reducer: (_x, y) => y,
+    default: () => 0,
+  }),
+  active_agent: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
+  complexity: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
+  reasoning: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
 });
 
 export type AtheneStateType = typeof AtheneState.State;

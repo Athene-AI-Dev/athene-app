@@ -1,15 +1,11 @@
 import { Client } from '@upstash/qstash';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { incrWithExpire, redis } from '@/lib/redis/client';
 
 export const qstash = new Client({
   token: process.env.QSTASH_TOKEN || '',
 });
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://local-dummy.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy'
-);
 
 export type DispatchOptions = {
   orgId: string;
@@ -41,13 +37,14 @@ export async function dispatchThrottled({
       // Give back the slot we just took — we're not going to use it
       await redis.decr(key);
 
-      const { error } = await supabase.from('pending_background_jobs').insert({
+      const { error } = await supabaseAdmin.from('pending_background_jobs').insert({
         org_id: orgId,
         source_type: sourceType,
         url,
         body,
         status: 'waiting',
       });
+
 
       if (error) {
         console.error('[QStash] Failed to queue pending job:', error);
@@ -82,7 +79,7 @@ export async function releaseSlot(orgId: string, sourceType: string) {
     // Atomically claim the oldest waiting job by updating its status only if it is
     // still 'waiting'. This prevents two concurrent releaseSlot calls from both
     // claiming the same job (the second UPDATE matches 0 rows and gets no data back).
-    const { data: jobs, error: selectErr } = await supabase
+    const { data: jobs, error: selectErr } = await supabaseAdmin
       .from('pending_background_jobs')
       .select('id, org_id, source_type, url, body')
       .eq('org_id', orgId)
@@ -101,7 +98,7 @@ export async function releaseSlot(orgId: string, sourceType: string) {
     const job = jobs[0];
 
     // Claim atomically — only succeeds if status is still 'waiting'
-    const { data: claimed } = await supabase
+    const { data: claimed } = await supabaseAdmin
       .from('pending_background_jobs')
       .update({ status: 'processing' })
       .eq('id', job.id)
@@ -111,7 +108,8 @@ export async function releaseSlot(orgId: string, sourceType: string) {
 
     if (!claimed) return; // Another worker claimed it first
 
-    await supabase.from('pending_background_jobs').delete().eq('id', job.id);
+    await supabaseAdmin.from('pending_background_jobs').delete().eq('id', job.id);
+
 
     await dispatchThrottled({
       orgId: job.org_id,

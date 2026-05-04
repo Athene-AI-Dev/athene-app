@@ -1,11 +1,10 @@
+export type ClerkOrgRole = 'org:admin' | 'org:member' | 'org:bi_analyst';
+
 /**
  * Maps Clerk organization roles to application internal roles.
- *
- * Clerk auth is handled by clerkMiddleware() in middleware.ts which
- * calls auth() — no manual JWT verification needed. This module
- * only exports the role-mapping helper used by the RBAC resolver.
  */
-export function mapRole(orgRole?: string): "admin" | "member" | "super_user" | null {
+export function mapRole(orgRole?: ClerkOrgRole | string): "admin" | "member" | "super_user" | null {
+
   if (!orgRole) return null;
 
   switch (orgRole) {

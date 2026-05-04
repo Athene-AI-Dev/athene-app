@@ -129,17 +129,20 @@ export async function fetchDriveFileContent(
 ): Promise<string> {
   if (mimeType === GOOGLE_DOC_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`
-    return googleFetch<string>(connectionId, orgId, url)
+    const res = await googleFetchRaw(connectionId, orgId, url)
+    return res.text()
   }
 
   if (mimeType === GOOGLE_SHEET_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`
-    return googleFetch<string>(connectionId, orgId, url)
+    const res = await googleFetchRaw(connectionId, orgId, url)
+    return res.text()
   }
 
   if (mimeType === GOOGLE_SLIDES_MIME) {
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`
-    return googleFetch<string>(connectionId, orgId, url)
+    const res = await googleFetchRaw(connectionId, orgId, url)
+    return res.text()
   }
 
   if (mimeType === GOOGLE_FOLDER_MIME) {

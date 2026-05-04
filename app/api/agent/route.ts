@@ -13,6 +13,18 @@ export async function POST(req: NextRequest) {
     }
 
     const { message, threadId } = await req.json();
+    const effectiveThreadId = threadId || `user-${userId}`;
+
+    const graph = await getAgentGraph();
+    
+    // ATH-43: Prevent concurrent messages if the thread is awaiting approval
+    const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
+    if (currentState?.values?.awaiting_approval) {
+      return NextResponse.json(
+        { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
+        { status: 409 }
+      );
+    }
 
     const role = mapRole(orgRole ?? undefined) ?? "member";
 
@@ -32,7 +44,7 @@ export async function POST(req: NextRequest) {
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {
-            thread_id: threadId || `user-${userId}`,
+            thread_id: effectiveThreadId,
           },
           streamMode: "values",
         });

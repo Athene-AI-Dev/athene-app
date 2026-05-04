@@ -18,8 +18,20 @@
 
 import { supabaseAdmin } from "../supabase/server";
 import type { PendingWriteAction } from "../langgraph/state";
+import { logger } from "../logger";
+import { z } from "zod";
+
+
+export const emailDraftSchema = z.object({
+  to: z.array(z.string().email()).min(1, "At least one recipient is required"),
+  cc: z.array(z.string().email()).default([]),
+  subject: z.string().min(1, "Subject is required"),
+  body: z.string().min(1, "Body is required"),
+  _warning: z.string().optional(),
+});
 
 // ---- Types ---------------------------------------------------
+
 
 export type HitlAction = "approve" | "edit" | "reject";
 
@@ -34,6 +46,30 @@ export interface HitlResult {
   /** The final payload to execute (original or edited) */
   payload: Record<string, unknown> | null;
 }
+
+// ---- Validation ----------------------------------------------
+
+/**
+ * Validates a pending action payload against the appropriate tool schema.
+ * Throws if validation fails.
+ */
+export async function validatePayload(
+  tool: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  try {
+    if (tool === "email-send") {
+      emailDraftSchema.parse(payload);
+    } else if (tool === "calendar-create") {
+      const { calendarEventSchema } = await import("@/lib/agents/calendar-agent");
+      calendarEventSchema.parse(payload);
+    }
+  } catch (err: any) {
+    logger.warn({ tool, err: err.message }, "Payload validation failed");
+    throw err;
+  }
+}
+
 
 // ---- Thread ownership check ----------------------------------
 
@@ -126,7 +162,7 @@ export async function logHitlDecision(params: {
   });
 
   if (error) {
-    // Log but don't throw — audit failures should not block the action
-    console.error("[hitl] Failed to write audit log:", error.message);
+    logger.error({ error: error.message, threadId: params.threadId }, "[hitl] Audit log insertion failed — blocking action");
+    throw new Error(`Audit logging failed: ${error.message}. Action blocked for safety.`);
   }
 }

@@ -21,20 +21,28 @@ class UnionFind {
 
   find(x: string): string {
     if (!this.parent.has(x)) this.parent.set(x, x)
-    const p = this.parent.get(x)!
-    if (p !== x) {
-      const root = this.find(p)
-      this.parent.set(x, root) // path compression
-      return root
+    
+    let curr = x
+    const path: string[] = []
+    
+    // Iterative find with path compression
+    while (this.parent.get(curr) !== curr) {
+      path.push(curr)
+      curr = this.parent.get(curr)!
     }
-    return x
+    
+    for (const node of path) {
+      this.parent.set(node, curr)
+    }
+    
+    return curr
   }
 
   union(a: string, b: string): void {
     const ra = this.find(a)
     const rb = this.find(b)
     if (ra !== rb) {
-      // Deterministic: always attach higher to lower so community ID = min node ID
+      // Deterministic: always attach higher to lower so community ID = min node ID (lexicographic)
       if (ra < rb) {
         this.parent.set(rb, ra)
       } else {
@@ -81,8 +89,8 @@ export async function detectCommunities(orgId: string): Promise<void> {
   const uf = new UnionFind()
 
   // Initialise all node IDs
-  for (const { id } of nodes) {
-    uf.find(id) // initialises parent[id] = id
+  for (const row of nodes) {
+    uf.find(row.id) // initialises parent[id] = id
   }
 
   // Union connected nodes

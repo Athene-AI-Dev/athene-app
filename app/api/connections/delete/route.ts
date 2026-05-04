@@ -1,18 +1,22 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { deleteConnection } from "@/lib/nango/client";
+import { mapRole } from "@/lib/auth/clerk";
 
 /**
  * 🔒 SECURE DELETE ENDPOINT (Final Clean Version)
- * Strictly enforces Clerk Organization membership for deletion safety.
+ * Strictly enforces Clerk Organization membership and Admin role.
  */
 export async function DELETE(request: Request) {
-  // ⚡ Await auth() as required by Next.js 15+ / Turbopack
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
 
-  // 🛡️ AUDIT CHECK: Enforce strict multi-tenant isolation
   if (!userId || !orgId) {
-    return new NextResponse("Unauthorized: Organization membership required", { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const role = mapRole(orgRole ?? undefined);
+  if (role !== "admin") {
+    return new NextResponse("Forbidden", { status: 403 });
   }
 
   // 📝 Extract parameters from URL search params

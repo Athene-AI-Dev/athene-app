@@ -24,6 +24,14 @@ import { ChatOpenAI } from '@langchain/openai'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { registerTool } from './registry'
 
+/**
+ * Sanitise a value for use in raw PostgREST `.or()` filter strings.
+ * Strips characters that could break the filter grammar.
+ */
+function sanitizeForPostgrest(value: string): string {
+  return value.replace(/[",\\.()]/g, '')
+}
+
 // ---- Mini model for cheap entity extraction -----------------
 
 const mini = new ChatOpenAI({ modelName: 'gpt-4o-mini', temperature: 0 })
@@ -102,7 +110,10 @@ async function findNodes(
   }
 
   // OR-match across all label variants (case-insensitive)
-  const labelFilter = labels.map((l) => `label.ilike.%${l}%`).join(',')
+  // Sanitise labels to prevent PostgREST filter injection
+  const labelFilter = labels
+    .map((l) => `label.ilike.%${sanitizeForPostgrest(l)}%`)
+    .join(',')
   const { data, error } = await query.or(labelFilter).limit(20)
 
   if (error) throw new Error(`[graph-query] findNodes: ${error.message}`)

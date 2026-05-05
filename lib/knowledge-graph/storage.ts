@@ -52,25 +52,29 @@ export async function upsertNodes(
       existingByKey.set(nodeKey(row.label, row.entity_type), row);
     }
 
-    // 2. Split into update vs insert
+    // 2. Batch document ownership validation (single round-trip instead of N)
+    const allDocIds = Array.from(
+      new Set(nodes.flatMap((n) => n.source_documents).filter(Boolean))
+    );
+    if (allDocIds.length > 0) {
+      const { count, error: authErr } = await supabase
+        .from("documents")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", ctx.org_id)
+        .in("id", allDocIds);
+
+      if (authErr || (count ?? 0) !== allDocIds.length) {
+        throw new Error(
+          `Unauthorized document access in node upsert: ${allDocIds.length} requested, ${count ?? 0} owned`
+        );
+      }
+    }
+
+    // 3. Split into update vs insert
     const toInsert: KGNode[] = [];
     const toUpdate: Array<{ id: string; patch: Partial<ExistingNode> }> = [];
 
     for (const n of nodes) {
-      // ATH-60 security: Ensure all documents provided actually belong to this org
-      // This prevents cross-tenant data poisoning.
-      if (n.source_documents.length > 0) {
-        const { count, error: authErr } = await supabase
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("org_id", ctx.org_id)
-          .in("id", n.source_documents);
-        
-        if (authErr || (count ?? 0) !== n.source_documents.length) {
-          throw new Error(`Unauthorized document access in node upsert: ${n.label}`);
-        }
-      }
-
       const key = nodeKey(n.label, n.entity_type);
 
       const existing = existingByKey.get(key);
@@ -216,15 +220,22 @@ export async function upsertEdges(
       target_node: r.target_node,
       relation: r.relation,
     }));
-    const sourceIds = Array.from(new Set(pairs.map((p) => p.source_node)));
-    const targetIds = Array.from(new Set(pairs.map((p) => p.target_node)));
+    // Collect all node IDs involved in any edge endpoint
+    const allNodeIds = Array.from(
+      new Set(pairs.flatMap((p) => [p.source_node, p.target_node]))
+    );
 
+    // Use OR filter: fetch edges where EITHER endpoint is in our set,
+    // then JS-level dedup to find exact matches. AND filter misses edges
+    // where only one endpoint is in the resolved set.
     const { data: existing, error: fetchErr } = await supabase
       .from("kg_edges")
       .select("id, source_node, target_node, relation, provenance, confidence, metadata")
       .eq("org_id", ctx.org_id)
-      .in("source_node", sourceIds)
-      .in("target_node", targetIds);
+      .or(
+        `source_node.in.(${allNodeIds.map((id) => `"${id}"`).join(",")}),` +
+        `target_node.in.(${allNodeIds.map((id) => `"${id}"`).join(",")})`
+      );
     if (fetchErr) throw new Error(`kg_edges fetch failed: ${fetchErr.message}`);
 
     const existingByKey = new Map<string, ExistingEdge>();
@@ -233,7 +244,7 @@ export async function upsertEdges(
     }
 
     const toInsert: Resolved[] = [];
-    const toUpdate: Array<{ id: string; provenance: KGProvenance; confidence: number }> = [];
+    const toUpdate: Array<{ id: string; provenance: KGProvenance; confidence: number; metadata: Record<string, unknown> }> = [];
 
     for (const r of resolved) {
       const key = edgeKey(r.source_node, r.target_node, r.relation);
@@ -404,7 +415,13 @@ const VISIBILITY_RANK: Record<string, number> = {
 };
 
 function maxVisibilityRaw(a: string, b: string): string {
-  return (VISIBILITY_RANK[a] ?? 0) >= (VISIBILITY_RANK[b] ?? 0) ? a : b;
+  if (!(a in VISIBILITY_RANK)) {
+    throw new Error(`Unrecognised visibility value: "${a}"`);
+  }
+  if (!(b in VISIBILITY_RANK)) {
+    throw new Error(`Unrecognised visibility value: "${b}"`);
+  }
+  return VISIBILITY_RANK[a] >= VISIBILITY_RANK[b] ? a : b;
 }
 
 // Export a suitable supabase client type for tests that want it

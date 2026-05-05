@@ -164,11 +164,15 @@ export async function retrievalAgent(
     },
   };
 
+  // Map complexity tier from supervisor to topK (ATH-21 MODEL_MATRIX)
+  const topKMap: Record<string, number> = { simple: 5, standard: 8, complex: 12 };
+  const topK = topKMap[(state as any).complexity ?? "standard"] ?? 8;
+
   // ── Run both lookups in parallel ──────────────────────────
   const [vectorRaw, graphRaw] = await Promise.all([
     // Vector search — always runs
     vectorSearchTool
-      .invoke({ query, topK: 8 }, toolConfig)
+      .invoke({ query, topK }, toolConfig)
       .catch((err: unknown) => {
         console.error("[retrieval] Vector search failed:", err);
         return JSON.stringify({ results: [] });

@@ -17,9 +17,12 @@
 // ============================================================
 
 import { NextResponse } from 'next/server'
-import { verifyQStashSignature } from '@/lib/qstash/verify'
+import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
 import { qstash } from '@/lib/qstash/client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
+import { indexDocuments } from '@/lib/integrations/indexing'
+import { liveDocFetch } from '@/lib/langgraph/tools/live-doc-fetch'
 
 // ---- Payload type -------------------------------------------
 
@@ -41,7 +44,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     )
   }
 
-  // 2. Parse payload
+  // 2. Check idempotency
+  const isFirstTime = await checkIdempotency(request)
+  if (!isFirstTime) {
+    logger.info('[index-delta] Skipping duplicate job (idempotency)')
+    return NextResponse.json({ status: 'ok', skipped: 'duplicate' })
+  }
+
+  // 3. Parse payload
   let payload: IndexDeltaPayload
   try {
     payload = (await request.json()) as IndexDeltaPayload
@@ -49,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { org_id, document_ids, department_id } = payload
+  const { org_id, document_ids } = payload
 
   if (!org_id || !Array.isArray(document_ids) || document_ids.length === 0) {
     return NextResponse.json(
@@ -58,29 +68,93 @@ export async function POST(request: Request): Promise<NextResponse> {
     )
   }
 
-  console.log(
-    `[index-delta] Processing delta for org=${org_id}, docs=${document_ids.length}`,
+  logger.info(
+    { org_id, docsCount: document_ids.length },
+    "[index-delta] Processing delta re-index"
   )
 
-  // 3. Mark documents as pending re-indexing by clearing last_extracted_hash
-  //    This ensures the graph-build worker re-processes them even if content_hash
-  //    hasn't changed (e.g. forced reindex scenario).
-  const { error: resetErr } = await supabaseAdmin
-    .from('documents')
-    .update({ last_extracted_hash: null })
-    .eq('org_id', org_id)
-    .in('id', document_ids)
-
-  if (resetErr) {
-    console.error('[index-delta] Failed to reset extracted hashes:', resetErr.message)
-    // Non-fatal: graph-build will check hashes on its own
-  }
-
-  // 4. Enqueue graph-build for the document set
-  const graphBuildUrl =
-    `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
-
   try {
+    // 4. Fetch document details to get connection info
+    const { data: docs, error: fetchErr } = await supabaseAdmin
+      .from('documents')
+      .select('id, external_id, source_type, connection_id, department_id, visibility')
+      .in('id', document_ids)
+      .eq('org_id', org_id)
+
+    if (fetchErr) throw fetchErr
+    if (!docs || docs.length === 0) {
+      return NextResponse.json({ error: 'Documents not found' }, { status: 404 })
+    }
+
+    // 5. Reset extracted hashes to force graph-build to re-process them later
+    const { error: resetErr } = await supabaseAdmin
+      .from('documents')
+      .update({ last_extracted_hash: null })
+      .eq('org_id', org_id)
+      .in('id', document_ids)
+
+    if (resetErr) {
+      logger.error({ org_id, err: resetErr.message }, '[index-delta] Failed to reset extracted hashes')
+    }
+
+    // 6. Re-fetch and batch index
+    const chunksToBatch: any[] = []
+    
+    // We group docs by connection to potentially optimize if liveDocFetch supported it,
+    // but for now we maintain sequential fetch to avoid flooding providers.
+    for (const doc of docs) {
+      try {
+        const fetchedChunks = await liveDocFetch(
+          doc.source_type,
+          doc.connection_id,
+          org_id,
+          { limit: 1000 }
+        )
+        
+        const targetChunk = fetchedChunks.find(c => c.chunk_id === doc.external_id)
+        if (targetChunk) {
+          chunksToBatch.push({
+            chunk: targetChunk,
+            connectionId: doc.connection_id,
+            deptId: doc.department_id,
+            visibility: doc.visibility || 'department'
+          })
+        }
+      } catch (docErr) {
+        logger.error(
+          { org_id, docId: doc.id, err: docErr instanceof Error ? docErr.message : String(docErr) },
+          '[index-delta] Failed to re-fetch document content'
+        )
+      }
+    }
+
+    // Process indexing in batches per connection (since indexDocuments expects one connectionId)
+    const results = await Promise.all(
+      Object.entries(
+        chunksToBatch.reduce((acc, item) => {
+          if (!acc[item.connectionId]) acc[item.connectionId] = []
+          acc[item.connectionId].push(item)
+          return acc
+        }, {} as Record<string, any[]>)
+      ).map(async ([connId, items]) => {
+        return indexDocuments(
+          items.map(i => i.chunk),
+          org_id,
+          connId,
+          items[0].deptId,
+          items[0].visibility as any
+        )
+      })
+    )
+
+    const totalIndexed = results.reduce((sum, r) => sum + r.indexed, 0)
+
+    // 7. Enqueue graph-build for the document set
+    const graphBuildUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      logger.warn('[index-delta] NEXT_PUBLIC_APP_URL is missing; graph-build enqueue may fail')
+    }
+
     await qstash.publishJSON({
       url: graphBuildUrl,
       body: {
@@ -90,22 +164,25 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     })
 
-    console.log(
-      `[index-delta] Enqueued graph-build for org=${org_id}, docs=${document_ids.length}`,
+    logger.info(
+      { org_id, totalIndexed, totalRequested: document_ids.length },
+      "[index-delta] Re-index completed and graph-build enqueued"
     )
+
+    return NextResponse.json({
+      status: 'ok',
+      org_id,
+      indexed: totalIndexed,
+      document_ids_queued: document_ids.length,
+    })
+
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error('[index-delta] Failed to enqueue graph-build:', message)
+    logger.error({ org_id, err: message }, '[index-delta] Fatal error')
 
     return NextResponse.json(
-      { error: `Failed to enqueue graph-build: ${message}` },
+      { error: `Re-index failed: ${message}` },
       { status: 500 },
     )
   }
-
-  return NextResponse.json({
-    status: 'ok',
-    org_id,
-    document_ids_queued: document_ids.length,
-  })
 }

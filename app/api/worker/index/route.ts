@@ -1,5 +1,5 @@
 // ============================================================
-// app/api/worker/index-delta/route.ts — Delta index worker (ATH-44)
+// app/api/worker/index/route.ts — Delta index worker (ATH-44)
 //
 // QStash-triggered worker that processes a set of document IDs
 // for (re-)indexing and then enqueues a graph-build job.
@@ -24,12 +24,20 @@ import { logger } from '@/lib/logger'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { liveDocFetch } from '@/lib/langgraph/tools/live-doc-fetch'
 
+export const maxDuration = 300 // 5 minutes for bulk re-indexing and embedding
+
 // ---- Payload type -------------------------------------------
 
-interface IndexDeltaPayload {
+interface IndexPayload {
   org_id: string
   document_ids: string[]
-  department_id?: string | null
+}
+
+interface BatchItem {
+  chunk: any
+  connectionId: string
+  deptId: string | null
+  visibility: string
 }
 
 // ---- POST handler -------------------------------------------
@@ -47,14 +55,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   // 2. Check idempotency
   const isFirstTime = await checkIdempotency(request)
   if (!isFirstTime) {
-    logger.info('[index-delta] Skipping duplicate job (idempotency)')
+    logger.info('[index] Skipping duplicate job (idempotency)')
     return NextResponse.json({ status: 'ok', skipped: 'duplicate' })
   }
 
   // 3. Parse payload
-  let payload: IndexDeltaPayload
+  let payload: IndexPayload
   try {
-    payload = (await request.json()) as IndexDeltaPayload
+    payload = (await request.json()) as IndexPayload
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
@@ -70,7 +78,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   logger.info(
     { org_id, docsCount: document_ids.length },
-    "[index-delta] Processing delta re-index"
+    "[index] Processing delta re-index"
   )
 
   try {
@@ -94,11 +102,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       .in('id', document_ids)
 
     if (resetErr) {
-      logger.error({ org_id, err: resetErr.message }, '[index-delta] Failed to reset extracted hashes')
+      logger.error({ org_id, err: resetErr.message }, '[index] Failed to reset extracted hashes')
     }
 
     // 6. Re-fetch and batch index
-    const chunksToBatch: any[] = []
+    const chunksToBatch: BatchItem[] = []
     
     // We group docs by connection to potentially optimize if liveDocFetch supported it,
     // but for now we maintain sequential fetch to avoid flooding providers.
@@ -123,7 +131,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       } catch (docErr) {
         logger.error(
           { org_id, docId: doc.id, err: docErr instanceof Error ? docErr.message : String(docErr) },
-          '[index-delta] Failed to re-fetch document content'
+          '[index] Failed to re-fetch document content'
         )
       }
     }
@@ -135,7 +143,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           if (!acc[item.connectionId]) acc[item.connectionId] = []
           acc[item.connectionId].push(item)
           return acc
-        }, {} as Record<string, any[]>)
+        }, {} as Record<string, BatchItem[]>)
       ).map(async ([connId, items]) => {
         return indexDocuments(
           items.map(i => i.chunk),
@@ -150,10 +158,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     const totalIndexed = results.reduce((sum, r) => sum + r.indexed, 0)
 
     // 7. Enqueue graph-build for the document set
-    const graphBuildUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
-    if (!process.env.NEXT_PUBLIC_APP_URL) {
-      logger.warn('[index-delta] NEXT_PUBLIC_APP_URL is missing; graph-build enqueue may fail')
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (!appUrl) {
+      throw new Error('NEXT_PUBLIC_APP_URL is not configured; cannot enqueue graph-build')
     }
+    const graphBuildUrl = `${appUrl}/api/worker/graph-build`
 
     await qstash.publishJSON({
       url: graphBuildUrl,
@@ -166,7 +175,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     logger.info(
       { org_id, totalIndexed, totalRequested: document_ids.length },
-      "[index-delta] Re-index completed and graph-build enqueued"
+      "[index] Re-index completed and graph-build enqueued"
     )
 
     return NextResponse.json({

@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { reportAgent } from '@/lib/agents/report-agent'
 import { HumanMessage } from '@langchain/core/messages'
 
+export const maxDuration = 300 // 5 minutes for AI briefing generation
+
 // ---- Payload type -------------------------------------------
 
 interface MorningBriefingPayload {
@@ -91,12 +93,21 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // 7. Update automation last_run status
     if (automation_id) {
+      // Get current count first
+      const { data: autoData } = await supabaseAdmin
+        .from('automations')
+        .select('run_count')
+        .eq('id', automation_id)
+        .single()
+      
+      const nextCount = (autoData?.run_count ?? 0) + 1
+
       await supabaseAdmin
         .from('automations')
         .update({
           last_run_at: new Date().toISOString(),
           last_run_status: 'ok',
-          run_count: (await supabaseAdmin.from('automations').select('run_count').eq('id', automation_id).single()).data?.run_count + 1
+          run_count: nextCount
         })
         .eq('id', automation_id)
     }

@@ -40,7 +40,7 @@ export async function upsertNodes(
     const { data: existingRows, error: fetchErr } = await supabase
       .from("kg_nodes")
       .select(
-        "id, label, entity_type, department_ids, source_documents, visibility, description"
+        "id, label, entity_type, department_ids, source_documents, visibility, description, metadata"
       )
       .eq("org_id", ctx.org_id)
       .in("label", labels);
@@ -373,6 +373,7 @@ type ExistingNode = {
   source_documents: string[] | null;
   visibility: string;
   description: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type ExistingEdge = {

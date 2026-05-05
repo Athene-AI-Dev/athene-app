@@ -93,7 +93,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const result = await buildGraphForDocuments(org_id, document_ids, job_type)
 
     logger.info(
-      { orgId, processed: result.processedDocs, skipped: result.skippedDocs, nodes: result.totalNodes, edges: result.totalEdges, errors: result.errors.length },
+      { org_id, processed: result.processedDocs, skipped: result.skippedDocs, nodes: result.totalNodes, edges: result.totalEdges, errors: result.errors.length },
       "[graph-build] Batch completed"
     )
 
@@ -104,14 +104,14 @@ export async function POST(request: Request): Promise<NextResponse> {
         await qstash.publishJSON({
           url: graphBuildUrl,
           body: {
-            org_id: orgId,
+            org_id: org_id,
             document_ids: result.remainingDocs,
             job_type: 'incremental',
           },
         })
-        logger.info({ orgId, remaining: result.remainingDocs.length }, "[graph-build] Re-enqueued remaining documents")
+        logger.info({ org_id, remaining: result.remainingDocs.length }, "[graph-build] Re-enqueued remaining documents")
       } catch (enqueueErr: any) {
-        logger.error({ orgId, err: enqueueErr.message }, "[graph-build] Failed to re-enqueue remaining documents")
+        logger.error({ org_id, err: enqueueErr.message }, "[graph-build] Failed to re-enqueue remaining documents")
       }
     }
 

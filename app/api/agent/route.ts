@@ -4,6 +4,8 @@ import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
 import { rateLimit } from "@/lib/redis/client";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,6 +36,44 @@ export async function POST(req: NextRequest) {
     }
 
     const effectiveThreadId = threadId;
+
+    // Resolve internal org and user for thread persistence
+    const { data: orgRow } = await supabaseAdmin
+      .from("organizations")
+      .select("id")
+      .eq("clerk_org_id", orgId)
+      .single();
+
+    if (!orgRow) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+
+    const { data: memberRow } = await supabaseAdmin
+      .from("org_members")
+      .select("id")
+      .eq("clerk_user_id", userId)
+      .eq("org_id", orgRow.id)
+      .single();
+
+    if (!memberRow) {
+      return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+    }
+
+    // 3. Ensure Thread Persistence (Required for HITL foreign keys)
+    const { error: threadError } = await supabaseAdmin
+      .from("threads")
+      .upsert({
+        id: effectiveThreadId,
+        org_id: orgRow.id,
+        user_id: memberRow.id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" });
+
+    if (threadError) {
+      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
+      // If it's not a valid UUID, this will fail here instead of crashing the graph later
+      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
+    }
 
     const graph = await getAgentGraph();
     

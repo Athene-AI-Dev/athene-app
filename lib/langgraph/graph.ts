@@ -9,58 +9,71 @@ import { synthesisAgentNode } from "./nodes/synthesis-agent";
 import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
+// Shared compilation promise to prevent race conditions during cold starts
+let _compilingPromise: Promise<any> | null = null;
+
 export async function getAgentGraph(): Promise<any> {
+  if (_compilingPromise) return _compilingPromise;
 
-  const checkpointer = await getCheckpointer();
+  _compilingPromise = (async () => {
+    try {
+      const checkpointer = await getCheckpointer();
 
-  const workflow = new StateGraph(AtheneState)
-    // Router
-    .addNode("supervisor", supervisor)
-    // Worker nodes
-    .addNode("retrieval", retrievalAgent)
-    .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
-    .addNode("email_agent", emailAgentNode)
-    .addNode("calendar_agent", calendarAgentNode)
-    .addNode("synthesis", synthesisAgentNode)
-    // Write-action executor (paused by interrupt_before for HITL approval)
-    .addNode("action_executor", actionExecutorNode);
+      const workflow = new StateGraph(AtheneState)
+        // Router
+        .addNode("supervisor", supervisor)
+        // Worker nodes
+        .addNode("retrieval", retrievalAgent)
+        .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
+        .addNode("email_agent", emailAgentNode)
+        .addNode("calendar_agent", calendarAgentNode)
+        .addNode("synthesis", synthesisAgentNode)
+        // Write-action executor (paused by interrupt_before for HITL approval)
+        .addNode("action_executor", actionExecutorNode);
 
-  // Edges
-  workflow.addEdge(START, "supervisor");
+      // Edges
+      workflow.addEdge(START, "supervisor");
 
-  // Workers always return to the supervisor after completion
-  workflow.addEdge("retrieval", "supervisor");
-  workflow.addEdge("cross_dept_retrieval", "supervisor");
-  workflow.addEdge("email_agent", "supervisor");
-  workflow.addEdge("calendar_agent", "supervisor");
-  workflow.addEdge("action_executor", "supervisor");
+      // Workers always return to the supervisor after completion
+      workflow.addEdge("retrieval", "supervisor");
+      workflow.addEdge("cross_dept_retrieval", "supervisor");
+      workflow.addEdge("email_agent", "supervisor");
+      workflow.addEdge("calendar_agent", "supervisor");
+      workflow.addEdge("action_executor", "supervisor");
 
-  // Synthesis is the terminal node for answers
-  workflow.addEdge("synthesis", END);
+      // Synthesis is the terminal node for answers
+      workflow.addEdge("synthesis", END);
 
-  // The supervisor routes to a worker, synthesis, or END
-  workflow.addConditionalEdges(
-    "supervisor",
-    (state) => state.next || "END",
-    {
-      retrieval: "retrieval",
-      cross_dept_retrieval: "cross_dept_retrieval",
-      email_agent: "email_agent",
-      calendar_agent: "calendar_agent",
-      synthesis: "synthesis",
-      action_executor: "action_executor",
-      END: END,
+      // The supervisor routes to a worker, synthesis, or END
+      workflow.addConditionalEdges(
+        "supervisor",
+        (state) => state.next || "END",
+        {
+          retrieval: "retrieval",
+          cross_dept_retrieval: "cross_dept_retrieval",
+          email_agent: "email_agent",
+          calendar_agent: "calendar_agent",
+          synthesis: "synthesis",
+          action_executor: "action_executor",
+          END: END,
+        }
+      );
+
+      // ATH-43: The interrupt_before: ["action_executor"] halts execution
+      // whenever the graph is about to run the action_executor node.
+      // This gives the user a chance to review the pending_write_action
+      // (set by email_agent or calendar_agent) before it actually executes.
+      return workflow.compile({
+        checkpointer,
+        interruptBefore: ["action_executor"],
+      });
+    } catch (err) {
+      _compilingPromise = null; // Allow retry on failure
+      throw err;
     }
-  );
+  })();
 
-  // ATH-43: The interrupt_before: ["action_executor"] halts execution
-  // whenever the graph is about to run the action_executor node.
-  // This gives the user a chance to review the pending_write_action
-  // (set by email_agent or calendar_agent) before it actually executes.
-  return workflow.compile({
-    checkpointer,
-    interruptBefore: ["action_executor"],
-  });
+  return _compilingPromise;
 }
 
 

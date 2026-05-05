@@ -15,6 +15,7 @@ export type UserRole = "admin" | "super_user" | "member" | null;
 
 export interface UserAccess {
   internal_user_id: string | null;
+  internal_org_id: string | null;
   role: UserRole;
   dept_id: string | null;
   accessible_dept_ids: string[] | null;
@@ -91,6 +92,7 @@ export async function resolveUserAccess(
 
         result = {
           internal_user_id: data.id,
+          internal_org_id: orgData.id,
           role: data.role,
           dept_id: data.department_id,
           accessible_dept_ids: accessible_dept_ids.length ? accessible_dept_ids : null,
@@ -115,6 +117,7 @@ export async function resolveUserAccess(
       logger.warn({ userId, orgId }, "[RBAC] No org_members row");
       result = {
         internal_user_id: null,
+        internal_org_id: null,
         role: null,
         dept_id: null,
         accessible_dept_ids: null,

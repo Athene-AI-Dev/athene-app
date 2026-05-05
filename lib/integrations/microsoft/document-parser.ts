@@ -1,6 +1,6 @@
 import mammoth from 'mammoth'
 import * as pdf from 'pdf-parse'
-import * as xlsx from 'xlsx'
+import ExcelJS from 'exceljs'
 
 export async function parseDocument(fileName: string, buffer: Buffer): Promise<string> {
   if (fileName.endsWith('.docx')) {
@@ -11,12 +11,18 @@ export async function parseDocument(fileName: string, buffer: Buffer): Promise<s
     const data = await pdfParser(buffer)
     return data.text
   } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-    const workbook = xlsx.read(buffer, { type: 'buffer' })
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(buffer)
     let text = ''
-    workbook.SheetNames.forEach(sheetName => {
-      const sheet = workbook.Sheets[sheetName]
-      text += `Sheet: ${sheetName}\n`
-      text += xlsx.utils.sheet_to_csv(sheet) + '\n\n'
+    workbook.eachSheet((sheet) => {
+      text += `Sheet: ${sheet.name}\n`
+      sheet.eachRow((row) => {
+        const rowValues = Array.isArray(row.values) 
+          ? row.values.slice(1).map(v => (v && typeof v === 'object' ? JSON.stringify(v) : String(v || ''))).join(',')
+          : ''
+        text += rowValues + '\n'
+      })
+      text += '\n'
     })
     return text
   } else if (fileName.endsWith('.txt')) {

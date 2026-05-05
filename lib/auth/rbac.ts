@@ -149,4 +149,25 @@ export async function invalidateRBACCache(userId: string, orgId: string): Promis
   }
 }
 
+/**
+ * Asserts that a user has admin or super_user role within a specific organization.
+ * Throws an error or returns a boolean depending on implementation.
+ * For API routes, we'll return the role or null.
+ */
+export async function assertAdminRole(userId: string, orgId: string): Promise<UserRole | null> {
+  const { data: member, error } = await supabaseAdmin
+    .from("org_members")
+    .select("role")
+    .eq("id", userId)
+    .eq("org_id", orgId) // Critical scoping fix (ATH-47 #1, #3)
+    .single();
 
+  if (error || !member) return null;
+  
+  const role = member.role as UserRole;
+  if (role === "admin" || role === "super_user") {
+    return role;
+  }
+  
+  return null;
+}

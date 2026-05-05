@@ -1,10 +1,11 @@
 CREATE TABLE IF NOT EXISTS bi_accessible_grants (
   grant_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id          uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  resource_type   text NOT NULL,
+  resource_type   text NOT NULL CHECK (resource_type IN ('document','folder','department')), -- Constraint added (ATH-47 #9)
   resource_id     uuid NOT NULL,
-  granted_by      uuid NOT NULL REFERENCES org_members(id),
-  granted_at      timestamptz NOT NULL DEFAULT now()
+  granted_by      uuid REFERENCES org_members(id) ON DELETE SET NULL, -- FK behavior fix (ATH-47 #7)
+  granted_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, resource_type, resource_id) -- Duplicate prevention (ATH-47 #8)
 );
 
 -- Note: The instruction mentions bi_access_audit is already written. 

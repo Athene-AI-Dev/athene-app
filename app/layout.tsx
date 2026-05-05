@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -35,11 +36,20 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <body
-          className="min-h-full flex flex-col bg-background text-foreground antialiased"
+          className="min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary"
         >
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem={false}
+            disableTransitionOnChange
+          >
             {children}
+            <Toaster position="bottom-right" closeButton richColors />
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
   );
 }
+

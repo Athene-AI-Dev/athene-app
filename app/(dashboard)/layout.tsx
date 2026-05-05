@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/app-sidebar";
 import { Header } from "@/components/header";
 import { resolveUserAccess } from "@/lib/auth/rbac";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 export default async function DashboardLayout({
   children,
@@ -15,8 +16,7 @@ export default async function DashboardLayout({
   if (!userId) {
     redirect("/");
   }
-  // Dashboard requires an active org — Clerk may return null orgId if the
-  // user hasn't joined/selected one. Send them to sign-in to pick one.
+  // Dashboard requires an active org
   if (!orgId) {
     redirect("/sign-in");
   }
@@ -24,20 +24,29 @@ export default async function DashboardLayout({
   const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar role={userAccess.role} className="hidden md:flex" />
+    <SidebarProvider>
+      <div className="flex h-screen w-full bg-background overflow-hidden font-sans relative">
+        {/* Sidebar */}
+        <Sidebar role={userAccess.role} />
 
-      {/* Main Content Wrapper */}
-      <div className="flex-1 flex flex-col h-full relative overflow-hidden">
-        {/* Header */}
-        <Header role={userAccess.role} />
+        {/* Main Content Wrapper */}
+        <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+          {/* Decorative Background Elements */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[120px] -z-10 rounded-full" />
+          <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-primary/3 blur-[100px] -z-10 rounded-full" />
 
-        {/* Scrollable Page Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
-        </main>
+          {/* Header */}
+          <Header role={userAccess.role} />
+
+          {/* Scrollable Page Content */}
+          <main className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className="mx-auto max-w-7xl px-6 py-10 lg:px-12 min-h-full">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
+

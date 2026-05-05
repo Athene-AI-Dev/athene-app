@@ -1,180 +1,134 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { 
+  LayoutDashboard, 
   MessageSquare, 
-  BookOpen, 
-  BarChart3, 
-  Users, 
-  Key, 
   Zap, 
-  Database, 
-  ChevronDown, 
+  Files, 
+  Settings2, 
   ShieldCheck, 
-  Workflow, 
-  ClipboardList 
+  ChevronRight,
+  Sparkles,
+  Command,
+  Plus
 } from "lucide-react";
-import { useState, memo } from "react";
-import { UserButton } from "@clerk/nextjs";
+import { 
+  Sidebar, 
+  SidebarContent, 
+  SidebarFooter, 
+  SidebarHeader, 
+  SidebarMenu, 
+  SidebarMenuItem, 
+  SidebarMenuButton,
+} from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/auth/rbac";
 
-interface NavLink {
-  href: string;
-  label: string;
-  icon: React.ReactNode;
-  requiresRole?: UserRole[];
-}
+const NAV_ITEMS = [
+  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { label: "Synthesis Chat", icon: MessageSquare, href: "/chat" },
+  { label: "Agent Builder", icon: Zap, href: "/builder" },
+  { label: "Knowledge Base", icon: Files, href: "/files" },
+];
 
-interface SidebarProps {
-  role: UserRole;
-  className?: string;
-}
-
-const Sidebar = memo(function SidebarContent({ role, className }: SidebarProps) {
+export function AppSidebar({ role, className }: { role: UserRole; className?: string }) {
   const pathname = usePathname();
-  const [adminOpen, setAdminOpen] = useState(pathname.startsWith("/admin"));
-
-  const mainLinks: NavLink[] = [
-    {
-      href: "/chat",
-      label: "Chat",
-      icon: <MessageSquare className="h-5 w-5" />,
-    },
-    {
-      href: "/briefing",
-      label: "Briefing",
-      icon: <BookOpen className="h-5 w-5" />,
-    },
-    {
-      href: "/insights",
-      label: "Insights",
-      icon: <BarChart3 className="h-5 w-5" />,
-      requiresRole: ["super_user", "admin"],
-    },
-  ];
-
-  const adminLinks: NavLink[] = [
-    { href: "/admin/users", label: "Users", icon: <Users className="h-5 w-5" /> },
-    { href: "/admin/integrations", label: "Integrations", icon: <Zap className="h-5 w-5" /> },
-    { href: "/admin/keys", label: "Keys", icon: <Key className="h-5 w-5" /> },
-    { href: "/admin/grants", label: "BI Grants", icon: <Database className="h-5 w-5" /> },
-    { href: "/admin/audit", label: "Audit", icon: <ClipboardList className="h-5 w-5" /> },
-    { href: "/admin/automations", label: "Automations", icon: <Workflow className="h-5 w-5" /> },
-  ];
-
-  const isActive = (href: string) => pathname === href;
-  const isAdminActive = adminLinks.some((link) =>
-    pathname.startsWith(link.href.split("/").slice(0, -1).join("/"))
-  );
 
   return (
-    <aside className={cn("w-64 border-r border-slate-200 bg-white flex flex-col h-screen z-10", className)}>
-      {/* Logo Section */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-100 shrink-0">
-        <Link href="/chat" className="flex items-center">
-          <Image
-            src="/athene-logo.png"
-            alt="Athene AI"
-            width={120}
-            height={32}
-            className="object-contain"
-            priority
-          />
+    <Sidebar className={cn("glass border-r border-white/5 animate-in slide-in-from-left duration-700", className)}>
+      <SidebarHeader className="h-20 px-8 flex items-center justify-between border-b border-white/5">
+        <Link href="/dashboard" className="flex items-center gap-3 group">
+          <div className="h-9 w-9 bg-[#D96FAB] rounded-xl flex items-center justify-center glow-primary shadow-lg group-hover:scale-105 transition-transform">
+             <Command className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-lg font-black tracking-tighter text-foreground">
+             Athene<span className="text-[#D96FAB]">AI</span>
+          </span>
         </Link>
-      </div>
+      </SidebarHeader>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-        {/* Main Links */}
-        {mainLinks.map((link) => {
-          if (link.requiresRole && !link.requiresRole.includes(role)) return null;
-          const active = isActive(link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                active
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              )}
-            >
-              <div className={cn("flex-shrink-0", active ? "text-blue-700" : "text-slate-400")}>
-                {link.icon}
-              </div>
-              <span className="truncate">{link.label}</span>
-            </Link>
-          );
-        })}
+      <SidebarContent className="p-6 space-y-10">
+        <div>
+          <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-muted-foreground/40 px-4 mb-4">Operations</h3>
+          <SidebarMenu className="space-y-1">
+            {NAV_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton 
+                  asChild 
+                  isActive={pathname === item.href}
+                  className={cn(
+                    "h-11 rounded-xl px-4 flex items-center gap-3 transition-all group",
+                    pathname === item.href 
+                      ? "bg-[#D96FAB]/10 text-[#D96FAB] border border-[#D96FAB]/20" 
+                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                  )}
+                >
+                  <Link href={item.href}>
+                    <item.icon className={cn(
+                      "w-4 h-4 transition-transform group-hover:scale-110",
+                      pathname === item.href ? "text-[#D96FAB]" : "text-[#7AADCF]"
+                    )} />
+                    <span className="text-[13px] font-bold tracking-tight">{item.label}</span>
+                    {pathname === item.href && (
+                      <ChevronRight className="ml-auto w-3.5 h-3.5 animate-in slide-in-from-left-2" />
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </div>
 
-        {/* Admin Section */}
         {role === "admin" && (
-          <div className="pt-2 mt-6 border-t border-slate-100">
-            <button
-              onClick={() => setAdminOpen(!adminOpen)}
-              className={cn(
-                "w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors mt-2",
-                isAdminActive || adminOpen
-                  ? "text-blue-700 bg-slate-50"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-              )}
-            >
-              <span className="flex items-center gap-3">
-                <ShieldCheck className={cn("h-5 w-5 flex-shrink-0", (isAdminActive || adminOpen) ? "text-blue-700" : "text-slate-400")} />
-                <span className="truncate">Admin Controls</span>
-              </span>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 flex-shrink-0 transition-transform duration-200 text-slate-400",
-                  adminOpen && "rotate-180"
-                )}
-              />
-            </button>
-
-            {adminOpen && (
-              <div className="ml-2 mt-1 space-y-1 border-l border-slate-200 pl-2 py-1">
-                {adminLinks.map((link) => {
-                  const active = isActive(link.href);
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                        active
-                          ? "bg-blue-50 text-blue-700"
-                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                      )}
-                    >
-                      <div className={cn("flex-shrink-0", active ? "text-blue-700" : "text-slate-400")}>
-                        {link.icon}
-                      </div>
-                      <span className="truncate">{link.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+          <div>
+            <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-muted-foreground/40 px-4 mb-4">Governance</h3>
+            <SidebarMenu className="space-y-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
+                  <Link href="/admin/integrations">
+                    <Sparkles className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
+                    <span className="text-[13px] font-bold tracking-tight">System Connectors</span>
+                    <Badge variant="outline" className="ml-auto text-[9px] font-black tracking-widest px-1.5 h-4 border-white/5 bg-white/5">PRO</Badge>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
+                  <Link href="/admin/settings">
+                    <Settings2 className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
+                    <span className="text-[13px] font-bold tracking-tight">Access Control</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </div>
         )}
-      </nav>
+      </SidebarContent>
 
-      {/* Footer Section */}
-      <div className="p-4 border-t border-slate-100 shrink-0">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors">
-          <UserButton />
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-medium text-slate-900 leading-none truncate">Account</span>
-            <span className="text-xs text-slate-500 mt-1 leading-none truncate">Manage profile</span>
-          </div>
+      <SidebarFooter className="p-6 border-t border-white/5 bg-accent/20">
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-[#D96FAB]/10 to-[#7AADCF]/10 border border-white/5 space-y-4">
+           <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center border border-white/5 shadow-inner">
+                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="flex flex-col">
+                 <span className="text-[12px] font-black text-foreground">Allan Walker</span>
+                 <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">Enterprise Tier</span>
+              </div>
+           </div>
+           <Button className="w-full h-10 rounded-xl bg-[#D96FAB] text-white hover:bg-[#ECA8CC] font-black uppercase tracking-widest text-[9px] gap-2 shadow-lg">
+              <Plus className="w-3.5 h-3.5" />
+              Upgrade Plan
+           </Button>
         </div>
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   );
-});
+}
 
-export { Sidebar };
+export { AppSidebar as Sidebar };

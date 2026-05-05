@@ -1,22 +1,27 @@
 import { NextResponse } from "next/server";
-import { Nango } from "@nangohq/node";
+import { getNango } from "@/lib/nango/client";
 import { auth } from "@clerk/nextjs/server";
 
 export async function POST() {
   const { userId, orgId } = await auth();
 
-  if (!userId) {
+  if (!userId || !orgId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const nango = new Nango({ secretKey: process.env.NANGO_SECRET_KEY || "" });
+  try {
+    const nango = getNango();
 
-  const { data } = await nango.createConnectSession({
-    end_user: {
-      id: userId,
-    },
-    organization: orgId ? { id: orgId } : undefined,
-  });
+    const { data } = await nango.createConnectSession({
+      end_user: {
+        id: userId,
+      },
+      organization: { id: orgId },
+    });
 
-  return NextResponse.json({ token: data.token });
+    return NextResponse.json({ token: data.token });
+  } catch (err) {
+    console.error('[nango/session]', err);
+    return NextResponse.json({ error: 'Failed to create session' }, { status: 500 });
+  }
 }

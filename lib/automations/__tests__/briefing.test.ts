@@ -56,7 +56,7 @@ vi.mock("@/lib/qstash/client", () => ({
 
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
-import { generateMorningBriefing } from "../morning-briefings";
+import { generateMorningBriefing } from "../morning-briefing";
 import { scheduleMorningBriefings, getNextLocal7AmUtc } from "../schedule-briefings";
 
 // ── Reset helpers ─────────────────────────────────────────────────────────────

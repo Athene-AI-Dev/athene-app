@@ -51,7 +51,7 @@ export async function supervisor(state: AtheneStateType) {
     };
   }
 
-  const userRole = (state as any).user_role ?? state.role ?? "member";
+  const userRole = state.role ?? "member";
   const hopsLeft = MAX_HOPS - hopCount;
 
   const responseSchema = z.object({

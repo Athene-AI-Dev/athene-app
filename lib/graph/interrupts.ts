@@ -65,7 +65,7 @@ export async function validatePayload(
       calendarEventSchema.parse(payload);
     }
   } catch (err: any) {
-    const detail = err instanceof z.ZodError ? err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') : err.message;
+    const detail = err instanceof z.ZodError ? err.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') : err.message;
     logger.warn({ tool, detail }, "Payload validation failed");
     throw new Error(`Draft validation failed: ${detail}`);
   }

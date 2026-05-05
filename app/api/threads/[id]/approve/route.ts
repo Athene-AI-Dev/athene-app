@@ -32,7 +32,7 @@ import { z } from "zod";
 
 const hitlRequestSchema = z.object({
   action: z.enum(["approve", "edit", "reject"]),
-  edits: z.record(z.unknown()).optional(),
+  edits: z.record(z.string(), z.unknown()).optional(),
 }).refine(data => data.action !== "edit" || (data.edits && Object.keys(data.edits).length > 0), {
   message: "Edit action requires a non-empty edits object",
   path: ["edits"],
@@ -72,7 +72,7 @@ export async function POST(
     body = hitlRequestSchema.parse(rawBody);
   } catch (err: any) {
     return NextResponse.json(
-      { error: err instanceof z.ZodError ? err.errors[0].message : "Invalid request body" },
+      { error: err instanceof z.ZodError ? err.issues[0].message : "Invalid request body" },
       { status: 400 },
     );
   }

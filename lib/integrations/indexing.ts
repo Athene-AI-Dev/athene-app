@@ -188,7 +188,7 @@ export async function indexDocument(
   // 1. Split content into chunks
   const contentChunks = chunkContent(chunk.content)
 
-  if (contentChunks.length === 0) return
+  if (contentChunks.length === 0) return documentId
 
   // 2. Generate embeddings for all chunks in a single batch
   const embeddings = await generateEmbeddings(contentChunks)
@@ -318,7 +318,7 @@ export async function indexDocuments(
     if (error) {
       console.error('[indexing] Bulk upsert error:', error.message)
       errors += records.length
-      return { indexed: 0, errors }
+      return { indexed: 0, errors, documentIds: [] }
     }
   }
 

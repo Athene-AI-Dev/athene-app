@@ -102,7 +102,7 @@ export async function getConnectionToken(
     // 🔒 If verification passed, proceed to fetch token
     const config = getProvider(providerConfigKey as any)
     const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
-    return await nango.getToken(nangoKey, connectionId)
+    return await nango.getToken(nangoKey, connectionId) as any;
 
 
   } catch (error: unknown) {

@@ -69,7 +69,7 @@ class LLMFactory {
     } else if (provider === "google") {
       instance = new ChatGoogleGenerativeAI({
         apiKey,
-        modelName: "gemini-1.5-pro",
+        model: "gemini-1.5-pro",
         temperature,
       });
     } else {

@@ -123,6 +123,7 @@ export async function indexDocument(
   }
 
   // ---- 5. Upsert vector + metadata rows (NEVER content) ----
+  if (newTexts.length > 0) {
     // BUG-01 FIX: Strict field allow-list to prevent text leaks
     const rows = newChunkIndices.map((chunkIdx, i) => {
       const row = {

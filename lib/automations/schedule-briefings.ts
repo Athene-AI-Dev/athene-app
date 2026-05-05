@@ -7,13 +7,16 @@ import { qstash } from "@/lib/qstash/client";
  * org_members : timezone, briefing_delivery
  */
 type BriefingAutomation = {
-  id: string;            // automations.id  (used as automationId in worker body)
+  id: string;
   org_id: string;
   user_id: string;
   org_members: {
     timezone: string | null;
     briefing_delivery: string | null;
-  } | null;
+  } | {
+    timezone: string | null;
+    briefing_delivery: string | null;
+  }[] | null;
 };
 
 function getBriefingEndpoint() {
@@ -141,8 +144,12 @@ export async function scheduleMorningBriefings(now = new Date()) {
     const endpoint = getBriefingEndpoint();
 
     for (const automation of (automations || []) as BriefingAutomation[]) {
-      const timezone = automation.org_members?.timezone || "UTC";
-      const deliveryMethod = automation.org_members?.briefing_delivery || "in_app";
+      const memberInfo = Array.isArray(automation.org_members) 
+        ? automation.org_members[0] 
+        : automation.org_members;
+
+      const timezone = memberInfo?.timezone || "UTC";
+      const deliveryMethod = memberInfo?.briefing_delivery || "in_app";
       const scheduledFor = getNextLocal7AmUtc(timezone, now);
       const delaySeconds = Math.max(
         0,

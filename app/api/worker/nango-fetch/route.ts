@@ -88,9 +88,19 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
     fetchHubSpotNotes,
   ],
   salesforce: [
-    fetchSalesforceAccounts,
-    fetchSalesforceCases,
-    fetchSalesforceOpportunities,
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'salesforce', orgId)
+      const instanceUrl = metadata.instance_url
+      if (!instanceUrl) {
+        throw new Error(`Salesforce instance_url not found for connection ${connectionId}`)
+      }
+      const [accounts, cases, opportunities] = await Promise.all([
+        fetchSalesforceAccounts(connectionId, instanceUrl, orgId),
+        fetchSalesforceCases(connectionId, instanceUrl, orgId),
+        fetchSalesforceOpportunities(connectionId, instanceUrl, orgId),
+      ])
+      return [...accounts, ...cases, ...opportunities]
+    },
   ],
   zendesk: [
     async (connectionId, orgId) => {
@@ -108,8 +118,28 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   ],
 
   // --- Dev Tools ---
-  github: [githubIssuesFetcher, githubPrsFetcher, githubWikiFetcher],
-  linear: [linearIssuesFetcher, linearCyclesFetcher, linearProjectsFetcher],
+  github: [
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'github', orgId)
+      const { owner, repo } = metadata
+      if (!owner || !repo) {
+        throw new Error(`GitHub owner or repo not found for connection ${connectionId}`)
+      }
+      const [issues, prs, wiki] = await Promise.all([
+        githubIssuesFetcher(connectionId, orgId, owner, repo),
+        githubPrsFetcher(connectionId, orgId, owner, repo),
+        githubWikiFetcher(connectionId, orgId, owner, repo),
+      ])
+      return [...issues, ...prs, ...wiki]
+    },
+  ],
+  linear: [
+    async (connectionId, orgId) => {
+      // Linear fetchers might need specific metadata or just use the connection
+      // Assuming they handle their own logic or need a workspace ID
+      return [...await linearIssuesFetcher(connectionId, orgId), ...await linearCyclesFetcher(connectionId, orgId), ...await linearProjectsFetcher(connectionId, orgId)]
+    }
+  ],
   jira: [fetchJiraIssues],
   confluence: [fetchConfluencePages],
 

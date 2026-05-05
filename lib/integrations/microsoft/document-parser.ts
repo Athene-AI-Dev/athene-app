@@ -12,7 +12,7 @@ export async function parseDocument(fileName: string, buffer: Buffer): Promise<s
     return data.text
   } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(buffer)
+    await workbook.xlsx.load(buffer as any)
     let text = ''
     workbook.eachSheet((sheet) => {
       text += `Sheet: ${sheet.name}\n`

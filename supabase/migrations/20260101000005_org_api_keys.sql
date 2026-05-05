@@ -12,7 +12,7 @@
 CREATE TABLE llm_keys (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id          uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  provider        text NOT NULL,             -- 'anthropic', 'openai', 'google'
+  provider        text NOT NULL CHECK (provider IN ('anthropic', 'openai', 'google')),
   key_encrypted   bytea NOT NULL,            -- pgp_sym_encrypt(key, kms_key)
   key_hint        text NOT NULL,             -- last 4 chars for UI display (e.g., '...a3Bx')
   label           text,                      -- friendly name: "Production Anthropic Key"
@@ -58,6 +58,33 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
+-- SECURITY DEFINER helper to safely retrieve decrypted keys
+-- for the LLM factory (ATH-21). Bypasses RLS but checks org_id.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION get_decrypted_llm_key(p_org_id uuid, p_provider text)
+RETURNS text
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_encrypted_key bytea;
+BEGIN
+  SELECT key_encrypted INTO v_encrypted_key
+  FROM llm_keys
+  WHERE org_id = p_org_id 
+    AND provider = p_provider
+    AND is_active = true;
+
+  IF v_encrypted_key IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN decrypt_llm_key(v_encrypted_key);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
 -- RLS on llm_keys — admin only
 -- ============================================================
 
@@ -78,7 +105,10 @@ CREATE POLICY keys_admin_write ON llm_keys FOR ALL
 -- Service role can read keys for decryption during agent runs
 -- (The agent API route sets app.kms_key before calling decrypt_llm_key)
 CREATE POLICY keys_service_read ON llm_keys FOR SELECT
-  USING (org_id::text = app_setting('org_id'));
+  USING (
+    org_id::text = app_setting('org_id')
+    AND is_active = true
+  );
 
 -- ============================================================
 -- Indexes
@@ -88,8 +118,23 @@ CREATE INDEX idx_llm_keys_org ON llm_keys(org_id);
 CREATE INDEX idx_llm_keys_org_provider ON llm_keys(org_id, provider, is_active);
 
 -- ============================================================
--- updated_at trigger
+-- updated_at trigger (Only on configuration changes)
 -- ============================================================
 
+CREATE OR REPLACE FUNCTION update_llm_keys_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only bump updated_at if columns other than last_used_at changed
+  IF (OLD.key_encrypted IS DISTINCT FROM NEW.key_encrypted OR
+      OLD.label IS DISTINCT FROM NEW.label OR
+      OLD.is_active IS DISTINCT FROM NEW.is_active) THEN
+    NEW.updated_at = now();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER trg_llm_keys_updated_at
-  BEFORE UPDATE ON llm_keys FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  BEFORE UPDATE ON llm_keys
+  FOR EACH ROW
+  EXECUTE FUNCTION update_llm_keys_updated_at();

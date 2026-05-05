@@ -1,6 +1,6 @@
 import { AtheneStateType } from "../state";
 import { z } from "zod";
-import { model } from "../llm-factory";
+import { resolveModelClient } from "../llm-factory";
 import { logger } from "@/lib/logger";
 
 const MAX_HOPS = 6;
@@ -65,7 +65,7 @@ export async function supervisor(state: AtheneStateType) {
     .replace("{user_role}", String(userRole))
     .replace("{hops_left}", String(hopsLeft));
 
-  const structuredModel = model.withStructuredOutput(responseSchema);
+  const structuredModel = (await resolveModelClient("medium")).withStructuredOutput(responseSchema);
 
   const response = await structuredModel.invoke([
     { role: "system", content: systemContent },

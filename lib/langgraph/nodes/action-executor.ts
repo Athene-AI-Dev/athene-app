@@ -6,7 +6,7 @@
 // appropriate integration, and stores the result or error.
 // ============================================================
 
-import type { AtheneState, AtheneStateUpdate } from "../state";
+import type { AtheneState, AtheneStateUpdate, PendingWriteAction } from "../state";
 import { sendEmail } from "@/lib/integrations/microsoft/outlook-fetcher";
 import type { EmailDraft } from "@/lib/integrations/microsoft/outlook-fetcher";
 import { createEvent } from "@/lib/integrations/microsoft/calendar-fetcher";
@@ -14,12 +14,10 @@ import type { EventDraft } from "@/lib/integrations/microsoft/calendar-fetcher";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 
+const MS_PROVIDER_KEY = "microsoft";
 
-type PendingWriteAction = {
-  tool: string;
-  payload: Record<string, unknown>;
-  requested_at: string;
-};
+
+
 
 async function resolveMicrosoftConnectionId(clerkOrgId: string): Promise<string> {
   const { data: orgRow, error: orgError } = await supabaseAdmin
@@ -39,7 +37,7 @@ async function resolveMicrosoftConnectionId(clerkOrgId: string): Promise<string>
     .from("nango_connections")
     .select("connection_id")
     .eq("org_id", orgRow.id)
-    .eq("provider_config_key", "microsoft")
+    .eq("provider_config_key", MS_PROVIDER_KEY)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

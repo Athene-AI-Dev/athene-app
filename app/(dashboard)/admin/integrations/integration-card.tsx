@@ -76,41 +76,6 @@ export function IntegrationCard({
   const config = statusConfig[integration.status];
 
   return (
-<<<<<<< HEAD
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col group hover:border-blue-300 hover:shadow-md transition-all duration-200">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="relative w-9 h-9 rounded-lg bg-white border border-slate-100 p-1 flex items-center justify-center overflow-hidden">
-            {imageError ? (
-              <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                <Blocks className="w-4 h-4 text-slate-400" />
-              </div>
-            ) : (
-              <Image
-                src={icon}
-                alt={integration.displayName}
-                width={36}
-                height={36}
-                className="object-contain"
-                onError={() => setImageError(true)}
-              />
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-900 leading-tight">
-              {integration.displayName}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[140px]">
-              {integration.connectionId}
-            </p>
-          </div>
-        </div>
-
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${statusStyles[integration.status]}`}>
-          {statusIcons[integration.status]}
-          {integration.status === 'connected' ? 'Live' : integration.status}
-        </span>
-=======
     <div className="group relative rounded-[2.5rem] bg-card border border-white/5 p-8 transition-all duration-500 hover:scale-[1.02] hover:border-white/10 hover:shadow-2xl hover:shadow-[#D96FAB]/5">
       <div className="absolute top-0 right-0 p-8">
         <Badge className={cn("rounded-full px-3 py-1 font-black text-[9px] uppercase tracking-widest border", config.color)}>
@@ -119,7 +84,6 @@ export function IntegrationCard({
              {config.label}
            </div>
         </Badge>
->>>>>>> origin/allan
       </div>
 
       <div className="flex items-start gap-5 mb-8">

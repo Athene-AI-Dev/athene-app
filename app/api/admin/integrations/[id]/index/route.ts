@@ -22,11 +22,11 @@ async function ensureAdmin() {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { orgId } = await ensureAdmin()
-    const connectionId = params.id
+    const { id: connectionId } = await params
 
     const body = await req.json()
     const { provider } = body

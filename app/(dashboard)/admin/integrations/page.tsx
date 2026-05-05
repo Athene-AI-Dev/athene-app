@@ -132,7 +132,7 @@ export default function IntegrationsPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                connectionId: event.connectionId,
+                connectionId: (event as any).connectionId,
                 provider: provider.key,
               }),
             });

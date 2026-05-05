@@ -9,6 +9,7 @@ import { redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { mapRole } from "./clerk";
 import { logger } from "@/lib/logger";
+import { cache } from "react";
 
 
 export type UserRole = "admin" | "super_user" | "member" | null;
@@ -35,11 +36,11 @@ function makeCacheKey(userId: string, orgId: string) {
  * Resolves user access levels.
  * @param clerkRole Optional pre-resolved role from Clerk (e.g. from auth() in middleware)
  */
-export async function resolveUserAccess(
+export const resolveUserAccess = cache(async (
   userId: string,
   orgId: string,
   clerkRole?: string | null
-): Promise<UserAccess> {
+): Promise<UserAccess> => {
   const cacheKey = makeCacheKey(userId, orgId);
 
   try {
@@ -134,7 +135,7 @@ export async function resolveUserAccess(
 
   logger.info({ userId, orgId, role: result.role }, "[rbac] Resolution complete");
   return result;
-}
+});
 
 /**
  * Manually invalidates the RBAC cache for a specific user/org pair.

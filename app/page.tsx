@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 export default async function Home() {
   const { userId } = await auth();
   
-  // Redirect to /chat if already authenticated
+  // Redirect to /briefing if already authenticated
   if (userId) {
-    redirect("/chat");
+    redirect("/briefing");
   }
 
   return (

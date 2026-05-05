@@ -63,9 +63,14 @@ type FetcherFn = (
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
   // --- Google Workspace (Granular) ---
-  google_drive: [fetchDriveChunks],
-  gmail: [searchEmailChunks],
-  google_calendar: [fetchCalendarChunks],
+  google_drive: [(cid, oid) => fetchDriveChunks(cid, oid)],
+  gmail: [(cid, oid, opts) => searchEmailChunks(cid, oid, '*', opts?.limit ?? 10)],
+  google_calendar: [(cid, oid) => {
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + 30);
+    return fetchCalendarChunks(cid, oid, now, future);
+  }],
 
   // --- Microsoft 365 (Granular) ---
   sharepoint: [microsoftFetcher],
@@ -112,7 +117,16 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   snowflake: [fetchSnowflakeSamples],
 
   // --- Legacy Umbrella Keys (Backwards Compatibility) ---
-  google: [fetchDriveChunks, searchEmailChunks, fetchCalendarChunks],
+  google: [
+    (cid, oid) => fetchDriveChunks(cid, oid),
+    (cid, oid, opts) => searchEmailChunks(cid, oid, '*', opts?.limit ?? 10),
+    (cid, oid) => {
+      const now = new Date();
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+      return fetchCalendarChunks(cid, oid, now, future);
+    }
+  ],
   microsoft: [microsoftFetcher],
   'microsoft-graph': [microsoftFetcher],
 }

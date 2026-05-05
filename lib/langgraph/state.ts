@@ -14,6 +14,14 @@ export const AtheneState = Annotation.Root({
     reducer: (x, y) => x.concat(y),
     default: () => [],
   }),
+  user: Annotation<{
+    timezone: string;
+    id: string;
+    email?: string;
+  } | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
   // Approval gate fields
   awaiting_approval: Annotation<boolean>({
     reducer: (_x, y) => y,

@@ -5,18 +5,18 @@
 // structured CalendarEventDraft and queues it for HITL approval.
 //
 // Design notes:
-//   • Prompt is inlined as a template literal — fs.readFileSync
-//     crashes in Next.js Edge / serverless environments.
-//   • Timezone defaults to UTC; the AI extracts any explicit
-//     timezone from the user's message.
-//   • Returns pending_write_action (canonical field) instead of
-//     the legacy pending_action field.
+//     The system loads the prompt from lib/agents/prompts/calendar-draft.md.
+//   • Timezone is read from state.user.timezone (BUG-01 fix).
+//   • Validates create actions have start/end before queuing (BUG-02 fix).
+//   • Maps action_type to the correct tool name (BUG-03 fix).
 // ============================================================
 
 import { z } from "zod";
 import { getModel } from "../langgraph/llm-factory";
 import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { AIMessage } from "@langchain/core/messages";
+import fs from "fs";
+import path from "path";
 
 // ---- Structured output schema --------------------------------
 
@@ -81,34 +81,21 @@ export const calendarEventSchema = z.object({
 
 export type CalendarEventDraft = z.infer<typeof calendarEventSchema>;
 
-// ---- Inlined system prompt ----------------------------------
-// (Avoids fs.readFileSync which crashes in Edge Runtime)
+// Prompt is read from lib/agents/prompts/calendar-draft.md
+const PROMPT_FILE_PATH = path.join(
+  process.cwd(),
+  "lib/agents/prompts/calendar-draft.md"
+);
 
-const SYSTEM_PROMPT_TEMPLATE = `# Role
-You are a Strategic Calendar Assistant. Your mission is to translate complex, human scheduling requests into a precise, actionable calendar draft.
-
-# Context
-{dateContext}
-
-# Strategic Reasoning Steps
-1. **Determine Intent**: Is the user scheduling a specific time, searching for an available slot, or rescheduling/canceling?
-2. **Resolve Time Context**:
-   - Use the Current System Time as your anchor.
-   - Convert explicit timezones (e.g., "IST", "GMT") to the user's local timezone: {timezone}.
-   - Resolve fuzzy terms: "Morning" (9am), "Afternoon" (2pm), "Lunch" (12pm-1pm), "End of day" (5pm).
-3. **Identify Constraints**: Note any "avoid" days, "only if free" requirements, or "virtual" preferences.
-4. **Handle Multi-Action**: If the user says "Cancel X and Book Y", draft the NEW event and add a note in the description about the cancellation of X.
-
-# Handling Specific Scenarios
-- **The "Find" Request**: If the user says "Find a slot", "Sometime next week", or "When everyone is free", you must set the 'is_search' flag to true and define the 'search_range'.
-- **Missing Emails**: Use 'displayName' for people like "Alex" or "Priya". Do NOT hallucinate emails.
-- **Recurrence**: If the user says "Weekly", "Every Monday", or "Monthly", populate the 'recurrence' field with a descriptive pattern (e.g., "WEEKLY;BYDAY=MO").
-- **Location**: If "virtual" or "online" is mentioned, set the location to "Video Call / Remote".
-
-# Output Rules
-- You MUST produce a valid JSON object.
-- If you are missing critical information (like the date), ask the user for it politely.
-- Never claim to have "created" the event; always say you have "prepared the draft" for their approval.`;
+function getSystemPrompt(): string {
+  try {
+    return fs.readFileSync(PROMPT_FILE_PATH, "utf8");
+  } catch (err) {
+    console.error("[calendarAgent] Error reading prompt file:", err);
+    // Fallback to minimal prompt if file read fails
+    return "You are a calendar assistant. Draft a calendar event based on the user request.";
+  }
+}
 
 // ---- Agent node ---------------------------------------------
 
@@ -123,33 +110,45 @@ export async function calendarAgent(
   state: AtheneStateType
 ): Promise<AtheneStateUpdate> {
   const now = new Date();
-  // Timezone not in canonical state — default to UTC.
-  // The AI will still parse any explicit timezone in the user's message.
-  const timezone = "UTC";
+  // BUG-01 FIX: Read timezone from state.user
+  const timezone = state.user?.timezone || "UTC";
 
   const dateContext = `Current System Time: ${now.toISOString()}
-User Local Time: ${now.toUTCString()}
+User Local Time: ${now.toLocaleString("en-US", { timeZone: timezone })}
 User Timezone: ${timezone}`;
 
-  const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace(
-    "{dateContext}",
-    dateContext
-  ).replace("{timezone}", timezone);
+  const systemPrompt = getSystemPrompt()
+    .replace("{dateContext}", dateContext)
+    .replace("{timezone}", timezone);
 
   const draftModel = getModel().withStructuredOutput(calendarEventSchema, {
     name: "draft_calendar_event",
   });
 
   try {
-    const draft = await draftModel.invoke([
+    const draft = (await draftModel.invoke([
       { role: "system", content: systemPrompt },
       ...state.messages,
-    ]);
+    ])) as CalendarEventDraft;
+
+    // BUG-02 FIX: Draft validation before queuing
+    if (draft.action_type === "create" && (!draft.start || !draft.end)) {
+      return {
+        messages: [
+          new AIMessage({
+            content: "I've drafted the meeting, but I'm missing the specific start or end time. Could you let me know when it should happen?",
+          }),
+        ],
+      };
+    }
+
+    // BUG-03 FIX: Dynamic tool name based on action_type
+    const toolName = `calendar-${draft.action_type}`;
 
     return {
       awaiting_approval: true,
       pending_write_action: {
-        tool: "calendar-create",
+        tool: toolName,
         payload: draft as Record<string, unknown>,
         requested_at: now.toISOString(),
       },

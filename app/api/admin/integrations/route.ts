@@ -36,7 +36,9 @@ export async function GET(_req: NextRequest) {
         displayName: config?.displayName ?? providerKey,
         category: config?.category ?? 'other',
         resources: config?.resources ?? [],
-        status: conn.errors?.length ? 'error' : 'connected',
+        status: conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
+        lastSyncedAt: conn.last_synced_at ?? null,
+        totalDocs: 0, // TODO: Count from documents table
         createdAt: conn.created_at ?? null,
       }
     })

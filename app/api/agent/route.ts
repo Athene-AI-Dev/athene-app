@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { message, threadId } = await req.json();
+    const { message, threadId, task_type, is_cross_dept_query } = await req.json();
 
     // 1. Validate Message
     if (!message || typeof message !== "string" || message.trim().length === 0) {
@@ -93,6 +93,12 @@ export async function POST(req: NextRequest) {
       orgId,
       userId,
       role,
+      user: {
+        id: userId,
+        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
+      },
+      task_type: task_type || "general",
+      is_cross_dept_query: !!is_cross_dept_query,
     };
 
     const encoder = new TextEncoder();

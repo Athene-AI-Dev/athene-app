@@ -20,7 +20,10 @@ vi.mock("@langchain/langgraph", () => {
   return { Annotation, messagesStateReducer: () => [], StateGraph: vi.fn(), START: "START", END: "END" };
 });
 vi.mock("@langchain/langgraph-checkpoint", () => ({ BaseCheckpointSaver: class {} }));
-vi.mock("@langchain/core/messages", () => ({}));
+vi.mock("@langchain/core/messages", () => ({
+  HumanMessage: class { content: any; constructor(init: any) { Object.assign(this, init); } },
+  AIMessage: class { content: any; constructor(init: any) { Object.assign(this, init); } },
+}));
 vi.mock("@langchain/core/runnables", () => ({}));
 vi.mock("@anthropic-ai/sdk", () => ({ default: class {} }));
 vi.mock("openai", () => ({ default: class {} }));
@@ -33,6 +36,7 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 vi.mock("../../langgraph/llm-factory", () => ({
+  getModel: vi.fn(),
   resolveModelClient: vi.fn(),
 }));
 
@@ -40,6 +44,7 @@ vi.mock("../../langgraph/llm-factory", () => ({
 
 import { emailAgentNode } from "../email-agent";
 import * as llmFactory from "../../langgraph/llm-factory";
+import { HumanMessage } from "@langchain/core/messages";
 
 // ---- Helpers ------------------------------------------------
 
@@ -53,7 +58,7 @@ function makeMockState(overrides: Record<string, any> = {}) {
     accessible_dept_ids: ["dept-engineering"],
     bi_grant_id: null,
     messages: [
-      { _getType: () => "human", content: "Email Bob about Friday's meeting" },
+      new HumanMessage({ content: "Email Bob about Friday's meeting" }),
     ],
     active_agent: "email_agent",
     task_type: "email-draft",
@@ -81,17 +86,13 @@ function makeMockState(overrides: Record<string, any> = {}) {
 }
 
 function mockAnthropicResponse(jsonText: string) {
-  vi.mocked(llmFactory.resolveModelClient).mockResolvedValue({
-    provider: "anthropic",
-    modelId: "claude-sonnet-4-6",
-    anthropic: {
-      messages: {
-        create: vi.fn().mockResolvedValue({
-          content: [{ type: "text", text: jsonText }],
-        }),
-      },
-    } as any,
-  });
+  const mockModel = {
+    invoke: vi.fn().mockResolvedValue({
+      content: jsonText,
+    }),
+  };
+  vi.mocked(llmFactory.getModel).mockReturnValue(mockModel as any);
+  vi.mocked(llmFactory.resolveModelClient).mockResolvedValue(mockModel as any);
 }
 
 // ---- Tests --------------------------------------------------
@@ -133,7 +134,7 @@ describe("emailAgentNode (ATH-37)", () => {
     }));
 
     const update = await emailAgentNode(makeMockState({
-      messages: [{ _getType: () => "human", content: "Send Alice the Q3 report" }],
+      messages: [new HumanMessage({ content: "Send Alice the Q3 report" })],
       retrieved_chunks: [{
         id: "chunk-sf-42", document_id: "doc-sf", chunk_index: 0, similarity: 0.92,
         content_preview: "Contact: Alice Chen\nEmail: alice.chen@globex.io\nCompany: Globex Inc",
@@ -161,32 +162,25 @@ describe("emailAgentNode (ATH-37)", () => {
     expect(p.subject).toBe("Standup");
   });
 
-  it("returns empty fields on malformed LLM output (never crashes)", async () => {
+  it("returns failed status on malformed LLM output (never triggers approval)", async () => {
     mockAnthropicResponse("This is not JSON at all");
     const update = await emailAgentNode(makeMockState() as any);
 
-    expect(update.awaiting_approval).toBe(true);
-    expect(update.pending_write_action!.tool).toBe("email-send");
-    const p = update.pending_write_action!.payload as Record<string, any>;
-    expect(p.to).toEqual([]);
-    expect(p.subject).toBe("");
-    expect(p.body).toBe("");
+    expect(update.run_status).toBe("failed");
+    expect(update.awaiting_approval).toBeUndefined();
+    expect(update.pending_write_action).toBeUndefined();
+    expect(update.messages?.[0].content).toContain("unable to generate a valid email draft");
   });
 
   it("passes retrieved CRM context to the LLM prompt", async () => {
     let capturedPrompt = "";
-    vi.mocked(llmFactory.resolveModelClient).mockResolvedValue({
-      provider: "anthropic",
-      modelId: "claude-sonnet-4-6",
-      anthropic: {
-        messages: {
-          create: vi.fn().mockImplementation(async (params: any) => {
-            capturedPrompt = params.system;
-            return { content: [{ type: "text", text: JSON.stringify({ to: ["bob.smith@acmecorp.com"], cc: [], subject: "Test", body: "body" }) }] };
-          }),
-        },
-      } as any,
-    });
+    const mockModel = {
+      invoke: vi.fn().mockImplementation(async (messages: any) => {
+        capturedPrompt = messages[0].content; // system prompt
+        return { content: JSON.stringify({ to: ["bob.smith@acmecorp.com"], cc: [], subject: "Test", body: "body" }) };
+      }),
+    };
+    vi.mocked(llmFactory.getModel).mockReturnValue(mockModel as any);
 
     await emailAgentNode(makeMockState() as any);
     expect(capturedPrompt).toContain("bob.smith@acmecorp.com");

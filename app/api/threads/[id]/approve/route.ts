@@ -20,9 +20,13 @@ import { resolveUserAccess } from "@/lib/auth/rbac";
 import {
   processDecision,
   logHitlDecision,
+  validatePayload,
   type HitlRequest,
 } from "@/lib/graph/interrupts";
 import { getAgentGraph } from "@/lib/langgraph/graph";
+import { logger } from "@/lib/logger";
+import { z } from "zod";
+
 
 // ---- Route handler -------------------------------------------
 
@@ -109,6 +113,19 @@ export async function POST(
       { status: 409 },
     );
   }
+  
+  // ATH-43: Validate edited payload if applicable
+  if (body.action === "edit") {
+    try {
+      const mergedPayload = { ...pendingAction.payload, ...body.edits };
+      await validatePayload(pendingAction.tool, mergedPayload);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: `Invalid edits: ${err.message}` },
+        { status: 400 }
+      );
+    }
+  }
 
   // 5. Process the decision
   let result;
@@ -153,27 +170,41 @@ export async function POST(
   );
 
   // 8. Resume the graph.
-  // The graph will now execute approval_node → synthesis_agent → END
-  // We don't await the full stream here — the client polls /api/agent/status
+  // We await the first chunk of the stream to ensure it starts successfully
+  // before returning a success response to the client.
   const resumeConfig = { configurable: { thread_id: threadId } };
 
-  // Fire-and-forget: stream the rest of the graph.
-  // Client polls /api/agent/status for completion — we intentionally don't block here.
-  (async () => {
-    try {
-      const stream = await graph.stream(null, resumeConfig);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _chunk of stream) { /* drives execution */ }
-    } catch (err) {
-      console.error("[hitl] Graph resume failed after approval", {
-        threadId,
-        orgId: clerkOrgId,
-        userId: access.internal_user_id,
-        decision: body.action,
-        error: err instanceof Error ? err.message : String(err),
-      });
+  try {
+    const stream = await graph.stream(null, resumeConfig);
+    
+    // Drive the first step of execution synchronously to catch immediate errors
+    const iterator = stream[Symbol.asyncIterator]();
+    const firstChunk = await iterator.next();
+    
+    if (firstChunk.done) {
+      logger.info({ threadId }, "[hitl] Graph resume finished immediately");
     }
-  })();
+
+    // Continue the rest of the execution in the background
+    (async () => {
+      try {
+        for await (const _chunk of { [Symbol.asyncIterator]: () => iterator }) {
+          // drives remaining execution
+        }
+      } catch (err) {
+        logger.error({ threadId, err }, "[hitl] Background graph execution failed");
+      }
+    })();
+  } catch (err) {
+    logger.error({
+      threadId,
+      error: err instanceof Error ? err.message : String(err),
+    }, "[hitl] Graph resume failed immediately");
+    return NextResponse.json(
+      { error: "Failed to resume graph execution" },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     success: true,

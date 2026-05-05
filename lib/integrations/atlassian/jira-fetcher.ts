@@ -1,6 +1,7 @@
-import { getCloudId, atlassianFetch } from "./client";
+import { getAtlassianResources, atlassianFetch } from "./client";
 import { extractTextFromADF } from "./adf-to-text";
 import type { FetchedChunk } from "../base";
+import { assertSafeMetadata } from "../base";
 
 /**
  * Fetches Jira issues for the given connection and org.
@@ -11,7 +12,14 @@ export async function fetchJiraIssues(
   orgId: string,
   options?: { since?: string; limit?: number }
 ): Promise<FetchedChunk[]> {
-  const cloudId = await getCloudId(connectionId, orgId, "jira");
+  const resources = await getAtlassianResources(connectionId, "jira", orgId);
+  if (!resources || resources.length === 0) {
+    throw new Error("Atlassian API: No accessible Jira resources found");
+  }
+
+  const cloudId = resources[0].id;
+  const cloudUrl = resources[0].url; // e.g. https://athene-ai.atlassian.net
+
   const chunks: FetchedChunk[] = [];
   const maxResults = options?.limit ?? 50;
   let startAt = 0;
@@ -29,7 +37,9 @@ export async function fetchJiraIssues(
     }>(
       connectionId,
       cloudId,
-      `/rest/api/3/search?jql=${encodeURIComponent(jql)}&startAt=${startAt}&maxResults=${maxResults}&fields=summary,description,status,assignee,reporter,created,updated`,
+      `/rest/api/3/search?jql=${encodeURIComponent(
+        jql
+      )}&startAt=${startAt}&maxResults=${maxResults}&fields=summary,description,status,assignee,reporter,created,updated`,
       orgId,
       "jira"
     );
@@ -39,11 +49,15 @@ export async function fetchJiraIssues(
 
     for (const issue of data.issues) {
       const description = extractTextFromADF(issue.fields.description);
-      chunks.push({
+      const chunk: FetchedChunk = {
         chunk_id: `jira_${issue.id}`,
         title: `[${issue.key}] ${issue.fields.summary}`,
-        content: `Summary: ${issue.fields.summary}\nStatus: ${issue.fields.status?.name}\nAssignee: ${issue.fields.assignee?.displayName ?? "Unassigned"}\n\n${description}`,
-        source_url: `https://api.atlassian.com/ex/jira/${cloudId}/browse/${issue.key}`,
+        content: `Summary: ${issue.fields.summary}\nStatus: ${
+          issue.fields.status?.name
+        }\nAssignee: ${
+          issue.fields.assignee?.displayName ?? "Unassigned"
+        }\n\n${description}`,
+        source_url: `${cloudUrl}/browse/${issue.key}`,
         metadata: {
           provider: "jira",
           resource_type: "issue",
@@ -51,12 +65,68 @@ export async function fetchJiraIssues(
           status: issue.fields.status?.name,
           last_modified: issue.fields.updated,
         },
-      });
+      };
+
+      assertSafeMetadata(chunk.metadata);
+      chunks.push(chunk);
     }
 
     startAt += data.issues.length;
     if (startAt >= total) break;
   }
 
+  return chunks;
+}
+
+/**
+ * Real-time JQL search for LangGraph retrieval-agent use (Mode B).
+ * Returns raw Jira API response — not indexed, ephemeral.
+ */
+export async function searchJiraIssues(
+  connectionId: string,
+  jql: string,
+  orgId: string,
+  limit: number = 10
+): Promise<FetchedChunk[]> {
+  const resources = await getAtlassianResources(connectionId, "jira", orgId);
+  if (!resources || resources.length === 0) {
+    throw new Error("Atlassian API: No accessible Jira resources found");
+  }
+
+  const cloudId = resources[0].id;
+  const cloudUrl = resources[0].url;
+
+  const data = await atlassianFetch<{ issues: any[] }>(
+    connectionId,
+    cloudId,
+    `/rest/api/3/search?jql=${encodeURIComponent(
+      jql
+    )}&maxResults=${limit}&fields=summary,description,status,assignee,updated`,
+    orgId,
+    "jira"
+  );
+
+  const chunks: FetchedChunk[] = (data.issues ?? []).map((issue) => {
+    const description = extractTextFromADF(issue.fields.description);
+    return {
+      chunk_id: `jira_${issue.id}`,
+      title: `[${issue.key}] ${issue.fields.summary}`,
+      content: `Summary: ${issue.fields.summary}\nStatus: ${
+        issue.fields.status?.name
+      }\nAssignee: ${
+        issue.fields.assignee?.displayName ?? "Unassigned"
+      }\n\n${description}`,
+      source_url: `${cloudUrl}/browse/${issue.key}`,
+      metadata: {
+        provider: "jira",
+        resource_type: "issue",
+        issue_key: issue.key,
+        status: issue.fields.status?.name,
+        last_modified: issue.fields.updated,
+      },
+    };
+  });
+
+  chunks.forEach((c) => assertSafeMetadata(c.metadata));
   return chunks;
 }

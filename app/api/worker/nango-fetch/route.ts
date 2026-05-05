@@ -62,19 +62,38 @@ type FetcherFn = (
  * Each fetcher returns FetchedChunk[] for indexing.
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
-  slack: [
-    async (connectionId, orgId) => fetchSlackMessages(connectionId, orgId),
-  ],
+  // --- Google Workspace (Granular) ---
+  google_drive: [fetchDriveChunks],
+  gmail: [searchEmailChunks],
+  google_calendar: [fetchCalendarChunks],
 
+  // --- Microsoft 365 (Granular) ---
+  sharepoint: [microsoftFetcher],
+  onedrive: [microsoftFetcher],
+  outlook: [microsoftFetcher],
+  ms_calendar: [microsoftFetcher],
+
+  // --- Productivity & CRM ---
+  slack: [fetchSlackMessages],
+  notion: [fetchAllDatabases, fetchAllPages],
+  hubspot: [
+    fetchHubSpotCompanies,
+    fetchHubSpotContacts,
+    fetchHubSpotDeals,
+    fetchHubSpotNotes,
+  ],
+  salesforce: [
+    fetchSalesforceAccounts,
+    fetchSalesforceCases,
+    fetchSalesforceOpportunities,
+  ],
   zendesk: [
     async (connectionId, orgId) => {
       const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
       const subdomain = metadata.subdomain
-
       if (!subdomain) {
         throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
       }
-
       const [tickets, articles] = await Promise.all([
         fetchZendeskTickets(connectionId, orgId, subdomain),
         fetchZendeskArticles(connectionId, orgId, subdomain),
@@ -83,11 +102,19 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
     },
   ],
 
-  'microsoft-graph': [microsoftFetcher],
-
+  // --- Dev Tools ---
+  github: [githubIssuesFetcher, githubPrsFetcher, githubWikiFetcher],
+  linear: [linearIssuesFetcher, linearCyclesFetcher, linearProjectsFetcher],
   jira: [fetchJiraIssues],
-
   confluence: [fetchConfluencePages],
+
+  // --- Data ---
+  snowflake: [fetchSnowflakeSamples],
+
+  // --- Legacy Umbrella Keys (Backwards Compatibility) ---
+  google: [fetchDriveChunks, searchEmailChunks, fetchCalendarChunks],
+  microsoft: [microsoftFetcher],
+  'microsoft-graph': [microsoftFetcher],
 }
 
 // ---- Request body type ------------------------------------------
@@ -155,8 +182,7 @@ export async function POST(request: Request): Promise<Response> {
 
     // 6. Enqueue graph-build job if any chunks were indexed (ATH-44)
     //    Fire-and-forget: graph build runs asynchronously after embedding.
-    if (result.indexed > 0) {
-      const docIds = [...new Set(allChunks.map((c) => c.chunk_id))]
+    if (result.indexed > 0 && result.documentIds.length > 0) {
       const graphBuildUrl =
         `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
       try {
@@ -164,12 +190,12 @@ export async function POST(request: Request): Promise<Response> {
           url: graphBuildUrl,
           body: {
             org_id: orgId,
-            document_ids: docIds,
+            document_ids: result.documentIds,
             job_type: 'incremental',
           },
         })
         console.log(
-          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
+          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${result.documentIds.length}`,
         )
       } catch (gErr) {
         // Non-fatal: graph build will be triggered on next sync if this fails

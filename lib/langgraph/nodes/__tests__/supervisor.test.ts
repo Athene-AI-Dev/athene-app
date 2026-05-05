@@ -4,9 +4,11 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockInvoke = vi.hoisted(() => vi.fn());
 
 vi.mock("@langchain/openai", () => ({
-  ChatOpenAI: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockReturnValue({ invoke: mockInvoke }),
-  })),
+  ChatOpenAI: vi.fn().mockImplementation(function () {
+    return {
+      withStructuredOutput: vi.fn().mockReturnValue({ invoke: mockInvoke }),
+    };
+  }),
 }));
 
 import { supervisor } from "../supervisor";

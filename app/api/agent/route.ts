@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
+import { rateLimit } from "@/lib/redis/client";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,6 +15,37 @@ export async function POST(req: NextRequest) {
 
     const { message, threadId } = await req.json();
 
+    // 1. Validate Message
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return NextResponse.json({ error: "A non-empty message string is required." }, { status: 400 });
+    }
+    if (message.length > 10000) {
+      return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
+    }
+
+    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
+    if (!threadId) {
+      return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
+    }
+
+    const { allowed } = await rateLimit(`agent:${userId}`, 10, 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
+    }
+
+    const effectiveThreadId = threadId;
+
+    const graph = await getAgentGraph();
+    
+    // ATH-43: Prevent concurrent messages if the thread is awaiting approval
+    const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
+    if (currentState?.values?.awaiting_approval) {
+      return NextResponse.json(
+        { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
+        { status: 409 }
+      );
+    }
+
     const role = mapRole(orgRole ?? undefined) ?? "member";
 
     const initialState = {
@@ -23,7 +55,6 @@ export async function POST(req: NextRequest) {
       role,
     };
 
-    const graph = await getAgentGraph();
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -32,7 +63,7 @@ export async function POST(req: NextRequest) {
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {
-            thread_id: threadId || `user-${userId}`,
+            thread_id: effectiveThreadId,
           },
           streamMode: "values",
         });

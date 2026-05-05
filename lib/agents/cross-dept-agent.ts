@@ -17,7 +17,7 @@
 import { ToolNode } from '@langchain/langgraph/prebuilt'
 import { ToolMessage } from '@langchain/core/messages'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { crossDeptVectorSearchTool } from '@/lib/tools/registry'
+import { crossDeptVectorSearchTool } from '@/lib/langgraph/tools/registry'
 import type { AtheneState, AtheneStateUpdate } from '@/lib/langgraph/state'
 
 // Module-level ToolNode singleton — never recreated per request

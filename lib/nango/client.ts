@@ -160,7 +160,9 @@ export async function getConnection(
   }
 
   try {
-    return await nango.getConnection(providerConfigKey, connectionId);
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    return await nango.getConnection(nangoKey, connectionId);
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnection');
   }

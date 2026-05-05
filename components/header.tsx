@@ -22,8 +22,6 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
     setMounted(true);
   }, []);
 
-  if (!mounted) return null;
-
   return (
     <header className="border-b border-[var(--header-border)] bg-gradient-to-r from-[var(--header-bg)] via-[var(--header-bg)] to-purple-950/30 dark:via-purple-950/20 backdrop-blur-sm sticky top-0 z-40">
       <div className="flex h-16 items-center justify-between px-8">
@@ -55,8 +53,8 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
           <div className="flex items-center">
             <OrganizationSwitcher
               hidePersonal={true}
-              afterSelectOrganizationUrl="/chat"
-              afterLeaveOrganizationUrl="/chat"
+              afterSelectOrganizationUrl="/briefing"
+              afterLeaveOrganizationUrl="/briefing"
               appearance={{
                 elements: {
                   organizationSwitcherTrigger:
@@ -75,12 +73,14 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="p-2 rounded-lg hover:bg-[var(--nav-hover)] dark:hover:bg-purple-950/30 transition-colors duration-200 text-[var(--foreground)] hover:text-[var(--accent)]"
-            aria-label="Toggle theme"
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            aria-pressed={theme === "dark"}
+            suppressHydrationWarning
           >
-            {theme === "dark" ? (
-              <Sun className="h-4 w-4" />
+            {mounted ? (
+              theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
             ) : (
-              <Moon className="h-4 w-4" />
+              <div className="h-4 w-4" /> // Placeholder to avoid layout shift
             )}
           </button>
 

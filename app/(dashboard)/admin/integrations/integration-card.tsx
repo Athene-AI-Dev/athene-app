@@ -37,6 +37,7 @@ export function IntegrationCard({
   onIndex 
 }: IntegrationCardProps) {
   const [indexing, setIndexing] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const handleIndex = async () => {
     setIndexing(true);
@@ -64,18 +65,20 @@ export function IntegrationCard({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="relative w-9 h-9 rounded-lg bg-white border border-slate-100 p-1 flex items-center justify-center overflow-hidden">
-            <Image
-              src={icon}
-              alt={integration.displayName}
-              width={36}
-              height={36}
-              className="object-contain"
-              fallback={
-                <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                  <Blocks className="w-4 h-4 text-slate-400" />
-                </div>
-              }
-            />
+            {imageError ? (
+              <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                <Blocks className="w-4 h-4 text-slate-400" />
+              </div>
+            ) : (
+              <Image
+                src={icon}
+                alt={integration.displayName}
+                width={36}
+                height={36}
+                className="object-contain"
+                onError={() => setImageError(true)}
+              />
+            )}
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-900 leading-tight">

@@ -14,7 +14,7 @@ export default async function AdminLayout({
 
   // Not signed in → send to sign-in. Not in an org → send to chat.
   if (!userId) redirect("/sign-in");
-  if (!orgId) redirect("/chat");
+  if (!orgId) redirect("/org-selection");
 
   const userAccess = await resolveUserAccess(userId, orgId, orgRole);
 
@@ -38,7 +38,7 @@ export default async function AdminLayout({
         </div>
         {/* Redirect to /chat if not admin (via button click) */}
         <Button asChild variant="outline" className="mt-4 border-purple-500/20 hover:bg-purple-500/5">
-          <Link href="/chat">Return to Chat</Link>
+          <Link href="/briefing">Return to Dashboard</Link>
         </Button>
       </div>
     );

@@ -16,7 +16,12 @@ const MORNING_BRIEFING_PROMPT =
  * 2. Get the generated report/briefing text
  * 3. Save it into the `briefings` table
  */
-export async function generateMorningBriefing(userId: string) {
+export async function generateMorningBriefing(
+  userId: string,
+  orgId: string,
+  automationId?: string,
+  deliveryMethod = "in_app"
+) {
   try {
     /**
      * The reportAgent expects an Athene state object.
@@ -30,7 +35,7 @@ export async function generateMorningBriefing(userId: string) {
      */
     const result = await reportAgent(
       {
-        orgId: "default",
+        orgId,
         userId,
         role: "member",
         messages: [
@@ -46,16 +51,20 @@ export async function generateMorningBriefing(userId: string) {
      * reportAgent returns final_answer.
      * If for some reason it is missing, we use fallback text.
      */
-    const briefingContent = result.final_answer || "No briefing generated.";
+    const briefingText = result.final_answer || "No briefing generated.";
 
     /**
      * Store the generated briefing in Supabase.
-     * This assumes there is a table called `briefings`.
+     * `content` is jsonb — wrap the text in a structured object.
+     * `created_at` is omitted: the DB column defaults to now().
      */
     const { error } = await supabaseAdmin.from("briefings").insert({
       user_id: userId,
-      content: briefingContent,
-      created_at: new Date().toISOString(),
+      org_id: orgId,
+      automation_id: automationId ?? null,
+      content: { text: briefingText },
+      summary: briefingText.slice(0, 160),
+      delivery_method: deliveryMethod,
     });
 
     if (error) {
@@ -65,7 +74,7 @@ export async function generateMorningBriefing(userId: string) {
     return {
       success: true,
       userId,
-      briefing: briefingContent,
+      briefing: briefingText,
     };
   } catch (error) {
     console.error("[morning-briefing] Failed to generate briefing:", error);

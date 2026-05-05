@@ -1,14 +1,24 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { qstash } from "@/lib/qstash/client";
 
-type BriefingUser = {
-  id: string;
-  timezone?: string | null;
+/**
+ * Shape of a row returned from the automations + org_members join.
+ * automations: id, org_id, user_id, type, status
+ * org_members : timezone, briefing_delivery
+ */
+type BriefingAutomation = {
+  id: string;            // automations.id  (used as automationId in worker body)
+  org_id: string;
+  user_id: string;
+  org_members: {
+    timezone: string | null;
+    briefing_delivery: string | null;
+  } | null;
 };
 
 function getBriefingEndpoint() {
   const appUrl = process.env.APP_URL || "http://localhost:3000";
-  return `${appUrl}/api/automations/morning-briefing`;
+  return `${appUrl}/api/worker/morning-briefing`;
 }
 
 /**
@@ -70,9 +80,12 @@ function getLocalParts(date: Date, timeZone: string) {
     minute: Number(values.minute),
   };
 }
+
 /**
  * Calculates the next 7 AM in the user's timezone,
  * returned as a UTC Date.
+ *
+ * Uses strict `<` so users at exactly 7:00:00 AM are NOT pushed to the next day.
  */
 export function getNextLocal7AmUtc(timeZone: string, now = new Date()) {
   const localNow = getLocalParts(now, timeZone);
@@ -86,7 +99,7 @@ export function getNextLocal7AmUtc(timeZone: string, now = new Date()) {
     0
   );
 
-  if (scheduledUtc <= now) {
+  if (scheduledUtc < now) {
     const nextLocalDay = new Date(
       Date.UTC(localNow.year, localNow.month - 1, localNow.day + 1)
     );
@@ -108,23 +121,28 @@ export function getNextLocal7AmUtc(timeZone: string, now = new Date()) {
  * Schedules morning briefings for all opted-in users.
  *
  * Flow:
- * 1. Find users where briefing_enabled = true
- * 2. Compute each user's next local 7 AM
- * 3. Schedule QStash delayed job for that time
+ * 1. Query `automations` for rows where type='morning_briefing' AND status='active'
+ *    (this is the source of truth for opt-in — briefing_enabled on org_members
+ *     is the user-facing toggle; the automations row is created when they enable it)
+ * 2. Join org_members to get timezone + briefing_delivery preference
+ * 3. Compute each user's next local 7 AM
+ * 4. Schedule a QStash delayed job to /api/worker/morning-briefing
  */
 export async function scheduleMorningBriefings(now = new Date()) {
   try {
-    const { data: users, error } = await supabaseAdmin
-      .from("users")
-      .select("id, timezone")
-      .eq("briefing_enabled", true);
+    const { data: automations, error } = await supabaseAdmin
+      .from("automations")
+      .select("id, org_id, user_id, org_members(timezone, briefing_delivery)")
+      .eq("type", "morning_briefing")
+      .eq("status", "active");
 
     if (error) throw error;
 
     const endpoint = getBriefingEndpoint();
 
-    for (const user of (users || []) as BriefingUser[]) {
-      const timezone = user.timezone || "UTC";
+    for (const automation of (automations || []) as BriefingAutomation[]) {
+      const timezone = automation.org_members?.timezone || "UTC";
+      const deliveryMethod = automation.org_members?.briefing_delivery || "in_app";
       const scheduledFor = getNextLocal7AmUtc(timezone, now);
       const delaySeconds = Math.max(
         0,
@@ -134,17 +152,20 @@ export async function scheduleMorningBriefings(now = new Date()) {
       await qstash.publishJSON({
         url: endpoint,
         body: {
-          userId: user.id,
+          userId: automation.user_id,
+          orgId: automation.org_id,
+          automationId: automation.id,
           timezone,
+          deliveryMethod,
           scheduledFor: scheduledFor.toISOString(),
         },
-        delay: `${delaySeconds}s`,
+        delay: delaySeconds,
       });
     }
 
     return {
       success: true,
-      scheduledCount: users?.length || 0,
+      scheduledCount: automations?.length || 0,
     };
   } catch (error) {
     console.error("[schedule-briefings] Failed to schedule briefings:", error);

@@ -9,12 +9,7 @@ import { synthesisAgentNode } from "./nodes/synthesis-agent";
 import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
-// Cached compiled graph — lazily initialized on first call to getAgentGraph()
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let compiledGraph: any = null;
-
 export async function getAgentGraph(): Promise<any> {
-  if (compiledGraph) return compiledGraph;
 
   const checkpointer = await getCheckpointer();
 
@@ -62,11 +57,10 @@ export async function getAgentGraph(): Promise<any> {
   // whenever the graph is about to run the action_executor node.
   // This gives the user a chance to review the pending_write_action
   // (set by email_agent or calendar_agent) before it actually executes.
-  compiledGraph = workflow.compile({
+  return workflow.compile({
     checkpointer,
     interruptBefore: ["action_executor"],
   });
-  return compiledGraph;
 }
 
 

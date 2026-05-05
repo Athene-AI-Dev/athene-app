@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
+import { rateLimit } from "@/lib/redis/client";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,7 +14,26 @@ export async function POST(req: NextRequest) {
     }
 
     const { message, threadId } = await req.json();
-    const effectiveThreadId = threadId || `user-${userId}`;
+
+    // 1. Validate Message
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return NextResponse.json({ error: "A non-empty message string is required." }, { status: 400 });
+    }
+    if (message.length > 10000) {
+      return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
+    }
+
+    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
+    if (!threadId) {
+      return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
+    }
+
+    const { allowed } = await rateLimit(`agent:${userId}`, 10, 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
+    }
+
+    const effectiveThreadId = threadId;
 
     const graph = await getAgentGraph();
     
@@ -35,7 +55,6 @@ export async function POST(req: NextRequest) {
       role,
     };
 
-    const graph = await getAgentGraph();
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();

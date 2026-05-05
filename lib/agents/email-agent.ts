@@ -13,6 +13,8 @@
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { getModel } from "../langgraph/llm-factory";
 import type { AtheneState, AtheneStateUpdate } from "../langgraph/state";
+import { logger } from "../logger";
+
 
 // ---- Prompt (inlined at build time, no fs.readFileSync) ------
 
@@ -95,7 +97,7 @@ function parseEmailDraft(raw: string): {
       _warning: typeof parsed._warning === "string" ? parsed._warning : undefined,
     };
   } catch {
-    console.error("[email-agent] Failed to parse LLM JSON:", text.slice(0, 200));
+    logger.error({ text: text.slice(0, 200) }, "[email-agent] Failed to parse LLM JSON");
     return fallback;
   }
 }

@@ -62,19 +62,38 @@ type FetcherFn = (
  * Each fetcher returns FetchedChunk[] for indexing.
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
-  slack: [
-    async (connectionId, orgId) => fetchSlackMessages(connectionId, orgId),
-  ],
+  // --- Google Workspace (Granular) ---
+  google_drive: [fetchDriveChunks],
+  gmail: [searchEmailChunks],
+  google_calendar: [fetchCalendarChunks],
 
+  // --- Microsoft 365 (Granular) ---
+  sharepoint: [microsoftFetcher],
+  onedrive: [microsoftFetcher],
+  outlook: [microsoftFetcher],
+  ms_calendar: [microsoftFetcher],
+
+  // --- Productivity & CRM ---
+  slack: [fetchSlackMessages],
+  notion: [fetchAllDatabases, fetchAllPages],
+  hubspot: [
+    fetchHubSpotCompanies,
+    fetchHubSpotContacts,
+    fetchHubSpotDeals,
+    fetchHubSpotNotes,
+  ],
+  salesforce: [
+    fetchSalesforceAccounts,
+    fetchSalesforceCases,
+    fetchSalesforceOpportunities,
+  ],
   zendesk: [
     async (connectionId, orgId) => {
       const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
       const subdomain = metadata.subdomain
-
       if (!subdomain) {
         throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
       }
-
       const [tickets, articles] = await Promise.all([
         fetchZendeskTickets(connectionId, orgId, subdomain),
         fetchZendeskArticles(connectionId, orgId, subdomain),
@@ -83,11 +102,19 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
     },
   ],
 
-  'microsoft-graph': [microsoftFetcher],
-
+  // --- Dev Tools ---
+  github: [githubIssuesFetcher, githubPrsFetcher, githubWikiFetcher],
+  linear: [linearIssuesFetcher, linearCyclesFetcher, linearProjectsFetcher],
   jira: [fetchJiraIssues],
-
   confluence: [fetchConfluencePages],
+
+  // --- Data ---
+  snowflake: [fetchSnowflakeSamples],
+
+  // --- Legacy Umbrella Keys (Backwards Compatibility) ---
+  google: [fetchDriveChunks, searchEmailChunks, fetchCalendarChunks],
+  microsoft: [microsoftFetcher],
+  'microsoft-graph': [microsoftFetcher],
 }
 
 // ---- Request body type ------------------------------------------

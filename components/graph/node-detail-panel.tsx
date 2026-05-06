@@ -1,6 +1,7 @@
 "use client";
 
-import { X, ExternalLink, FileText, GitBranch } from "lucide-react";
+// FIX #3: Removed unused ExternalLink import
+import { X, FileText, GitBranch } from "lucide-react";
 import { ENTITY_COLORS, type EntityColorKey } from "@/components/graph/knowledge-graph-canvas";
 
 interface NodeData {
@@ -65,8 +66,11 @@ export function NodeDetailPanel({
         <h3 className="node-detail-panel__label">{node.label}</h3>
       </div>
 
-      {/* Body */}
-      <div className="node-detail-panel__body">
+      {/* FIX #6: Body with scroll to prevent viewport overflow */}
+      <div
+        className="node-detail-panel__body"
+        style={{ overflowY: "auto", maxHeight: "calc(100vh - 120px)" }}
+      >
         {/* Description */}
         {node.description && (
           <div className="node-detail-panel__section">
@@ -97,7 +101,11 @@ export function NodeDetailPanel({
               <div className="node-detail-panel__meta-item">
                 <span className="node-detail-panel__meta-label">Updated</span>
                 <span className="node-detail-panel__meta-value">
-                  {new Date(node.updated_at).toLocaleDateString()}
+                  {/* FIX #4: Guard against malformed dates */}
+                  {(() => {
+                    const d = new Date(node.updated_at!);
+                    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+                  })()}
                 </span>
               </div>
             )}
@@ -118,6 +126,12 @@ export function NodeDetailPanel({
                 </li>
               ))}
             </ul>
+            {/* FIX #2: Indicate when more documents exist beyond visible 10 */}
+            {node.source_documents.length > 10 && (
+              <p className="node-detail-panel__doc-overflow">
+                +{node.source_documents.length - 10} more
+              </p>
+            )}
           </div>
         )}
 
@@ -133,12 +147,13 @@ export function NodeDetailPanel({
             <p className="node-detail-panel__empty">No connections found</p>
           ) : (
             <ul className="node-detail-panel__neighbor-list">
-              {neighbors.map((n, i) => {
+              {neighbors.map((n) => {
                 const nColor =
                   ENTITY_COLORS[n.entity_type as EntityColorKey] ??
                   ENTITY_COLORS.concept;
                 return (
-                  <li key={`${n.id}-${i}`} className="node-detail-panel__neighbor">
+                  // FIX #1: Use n.id as stable key (no index)
+                  <li key={n.id} className="node-detail-panel__neighbor">
                     <button
                       onClick={() => onNavigateToNode(n.id)}
                       className="node-detail-panel__neighbor-btn"
@@ -151,7 +166,9 @@ export function NodeDetailPanel({
                         {n.label}
                       </span>
                       <span className="node-detail-panel__neighbor-rel">
-                        {n.direction === "outbound" ? "→" : "←"} {n.relation}
+                        {/* FIX #5: Strip underscores from relation for display */}
+                        {n.direction === "outbound" ? "→" : "←"}{" "}
+                        {n.relation.replace(/_/g, " ").toLowerCase()}
                       </span>
                     </button>
                   </li>

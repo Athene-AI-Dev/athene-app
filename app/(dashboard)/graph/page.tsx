@@ -46,14 +46,19 @@ function MobileGraphList() {
         if (!res.ok) throw new Error();
         const data = await res.json();
         setNodes(data.nodes ?? []);
-      } catch {
+      } catch (err) {
+        // FIX #4: Log errors instead of swallowing
+        console.error("[MobileGraphList] Failed to fetch nodes:", err);
         setNodes([]);
       } finally {
         setIsLoading(false);
       }
     }
-    setIsLoading(true);
-    const t = setTimeout(load, 300);
+    // FIX #3: Move setIsLoading inside timeout so spinner only shows after debounce
+    const t = setTimeout(() => {
+      setIsLoading(true);
+      load();
+    }, 300);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -112,7 +117,8 @@ function MobileGraphList() {
 
 // ── Page Component ──────────────────────────────────────────
 export default function GraphPage() {
-  const [isMobile, setIsMobile] = useState(false);
+  // FIX #1: null initial state prevents SSR flicker
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState("member");
 
   useEffect(() => {
@@ -120,17 +126,19 @@ export default function GraphPage() {
     const mql = window.matchMedia("(max-width: 768px)");
     setIsMobile(mql.matches);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener("change", handler);
+    // FIX #5: Optional chaining for older Safari compatibility
+    mql.addEventListener?.("change", handler);
 
-    // Fetch user role from the nodes endpoint (piggyback)
+    // FIX #2: Type guard + TODO for fragile role piggyback
+    // TODO: Replace with a dedicated /api/user/role endpoint
     fetch("/api/graph/nodes?limit=1")
       .then((r) => r.json())
       .then((d) => {
-        if (d.role) setUserRole(d.role);
+        if (d.role && typeof d.role === "string") setUserRole(d.role);
       })
       .catch(() => {});
 
-    return () => mql.removeEventListener("change", handler);
+    return () => mql.removeEventListener?.("change", handler);
   }, []);
 
   return (
@@ -148,8 +156,8 @@ export default function GraphPage() {
         </div>
       </div>
 
-      {/* Canvas or mobile list */}
-      {isMobile ? (
+      {/* FIX #1: Render nothing until isMobile is resolved */}
+      {isMobile === null ? null : isMobile ? (
         <MobileGraphList />
       ) : (
         <KnowledgeGraphCanvas userRole={userRole} />

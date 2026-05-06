@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -92,6 +92,13 @@ const EDGE_STYLES: Record<string, React.CSSProperties> = {
   AMBIGUOUS: { stroke: "#9ca3af", strokeWidth: 1, strokeDasharray: "2,2" },
 };
 
+// ── Deterministic jitter (FIX #2: replaces Math.random) ─────
+/** Hash-based jitter so node positions are stable across re-renders */
+function jitter(id: string, scale: number): number {
+  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return ((hash % 100) / 100 - 0.5) * scale;
+}
+
 // ── Layout helpers ──────────────────────────────────────────
 
 /** Simple grid-based layout grouped by community clusters */
@@ -121,8 +128,8 @@ function layoutNodes(apiNodes: APINode[]): GraphNode[] {
         id: n.id,
         type: "default",
         position: {
-          x: cx + ix * 160 + (Math.random() - 0.5) * 30,
-          y: cy + iy * 120 + (Math.random() - 0.5) * 30,
+          x: cx + ix * 160 + jitter(n.id, 30),
+          y: cy + iy * 120 + jitter(n.id, 30),
         },
         data: {
           label: n.label,
@@ -177,6 +184,35 @@ function buildEdges(apiEdges: APIEdge[]): GraphEdge[] {
   });
 }
 
+// ── Edge fetch helper (FIX #4: chunks to avoid URL length limits) ──
+const EDGE_BATCH_SIZE = 100;
+
+async function fetchEdgesInBatches(nodeIds: string[]): Promise<APIEdge[]> {
+  const allEdges: APIEdge[] = [];
+
+  for (let i = 0; i < nodeIds.length; i += EDGE_BATCH_SIZE) {
+    const batch = nodeIds.slice(i, i + EDGE_BATCH_SIZE);
+    const params = batch.map((id) => `nodeIds[]=${id}`).join("&");
+    try {
+      const res = await fetch(`/api/graph/edges?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        allEdges.push(...(data.edges ?? []));
+      }
+    } catch (err) {
+      console.error("[graph] Edge batch fetch error:", err);
+    }
+  }
+
+  // Deduplicate by edge ID
+  const seen = new Set<string>();
+  return allEdges.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+}
+
 // ── Main Component ──────────────────────────────────────────
 
 export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
@@ -188,7 +224,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   const [selectedNode, setSelectedNode] = useState<APINode | null>(null);
   const [neighbors, setNeighbors] = useState<NeighborInfo[]>([]);
   const [neighborsLoading, setNeighborsLoading] = useState(false);
-  const [highlightedIds, setHighlightedIds] = useState<Set<string> | null>(null);
+  // FIX #7: highlightedIds removed — was set but never read
   const [communities, setCommunities] = useState<string[]>([]);
   const [loadedCommunities, setLoadedCommunities] = useState<Set<string>>(new Set());
   const [totalNodes, setTotalNodes] = useState(0);
@@ -196,7 +232,13 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const initRef = useRef(false);
 
-  // ── Fetch nodes ──────────────────────────────────────────
+  // FIX #1: Use ref for apiNodes to break the stale closure cycle
+  const apiNodesRef = useRef<APINode[]>([]);
+  useEffect(() => {
+    apiNodesRef.current = apiNodes;
+  }, [apiNodes]);
+
+  // ── Fetch nodes (FIX #1: reads apiNodesRef.current, not apiNodes) ──
   const fetchNodes = useCallback(
     async (page = 1, community?: string, append = false) => {
       setIsLoading(true);
@@ -222,22 +264,19 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
         }
 
         setIsEmpty(false);
+        const currentApiNodes = apiNodesRef.current;
         const mergedNodes = append
-          ? [...apiNodes, ...newNodes.filter((n) => !apiNodes.some((e) => e.id === n.id))]
+          ? [...currentApiNodes, ...newNodes.filter((n) => !currentApiNodes.some((e) => e.id === n.id))]
           : newNodes;
 
         setApiNodes(mergedNodes);
         setNodes(layoutNodes(mergedNodes));
 
-        // Fetch edges for the node set
+        // FIX #4: Fetch edges in batches to avoid URL length limits
         const nodeIds = mergedNodes.map((n) => n.id);
         if (nodeIds.length > 0) {
-          const params = nodeIds.map((id) => `nodeIds[]=${id}`).join("&");
-          const edgeRes = await fetch(`/api/graph/edges?${params}`);
-          if (edgeRes.ok) {
-            const edgeData = await edgeRes.json();
-            setEdges(buildEdges(edgeData.edges ?? []));
-          }
+          const allEdges = await fetchEdgesInBatches(nodeIds);
+          setEdges(buildEdges(allEdges));
         }
       } catch (err) {
         console.error("[graph] Fetch error:", err);
@@ -245,7 +284,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
         setIsLoading(false);
       }
     },
-    [apiNodes, departmentFilter, setNodes, setEdges]
+    [departmentFilter, setNodes, setEdges] // FIX #1: apiNodes removed from deps
   );
 
   // ── Initial load ──────────────────────────────────────────
@@ -255,58 +294,67 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
     fetchNodes(1);
   }, [fetchNodes]);
 
+  // FIX #3: Department filter change triggers re-fetch
+  useEffect(() => {
+    if (!initRef.current) return; // Skip on initial mount
+    fetchNodes(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departmentFilter]);
+
   // ── Node click → side panel ───────────────────────────────
   const handleNodeClick: NodeMouseHandler<GraphNode> = useCallback(
     (_event, rfNode) => {
-      const node = apiNodes.find((n) => n.id === rfNode.id);
+      const currentNodes = apiNodesRef.current;
+      const node = currentNodes.find((n) => n.id === rfNode.id);
       if (!node) return;
 
       setSelectedNode(node);
       setNeighborsLoading(true);
       setNeighbors([]);
 
-      // Find neighbors from current edge set
-      const neighborList: NeighborInfo[] = [];
+      // FIX #5: Defer neighbor computation so loading state renders
+      setTimeout(() => {
+        const neighborList: NeighborInfo[] = [];
 
-      edges.forEach((e) => {
-        // Get the relation string from the data bag (type-safe)
-        const relation = (e.data as GraphEdgeData | undefined)?.relation ?? "RELATED_TO";
+        edges.forEach((e) => {
+          const relation = (e.data as GraphEdgeData | undefined)?.relation ?? "RELATED_TO";
 
-        if (e.source === node.id) {
-          const targetNode = apiNodes.find((n) => n.id === e.target);
-          if (targetNode) {
-            neighborList.push({
-              id: targetNode.id,
-              label: targetNode.label,
-              entity_type: targetNode.entity_type,
-              relation,
-              direction: "outbound",
-            });
+          if (e.source === node.id) {
+            const targetNode = currentNodes.find((n) => n.id === e.target);
+            if (targetNode) {
+              neighborList.push({
+                id: targetNode.id,
+                label: targetNode.label,
+                entity_type: targetNode.entity_type,
+                relation,
+                direction: "outbound",
+              });
+            }
+          } else if (e.target === node.id) {
+            const sourceNode = currentNodes.find((n) => n.id === e.source);
+            if (sourceNode) {
+              neighborList.push({
+                id: sourceNode.id,
+                label: sourceNode.label,
+                entity_type: sourceNode.entity_type,
+                relation,
+                direction: "inbound",
+              });
+            }
           }
-        } else if (e.target === node.id) {
-          const sourceNode = apiNodes.find((n) => n.id === e.source);
-          if (sourceNode) {
-            neighborList.push({
-              id: sourceNode.id,
-              label: sourceNode.label,
-              entity_type: sourceNode.entity_type,
-              relation,
-              direction: "inbound",
-            });
-          }
-        }
-      });
+        });
 
-      setNeighbors(neighborList);
-      setNeighborsLoading(false);
+        setNeighbors(neighborList);
+        setNeighborsLoading(false);
+      }, 0);
     },
-    [apiNodes, edges]
+    [edges]
   );
 
   // ── Search highlight ──────────────────────────────────────
   const handleSearchResults = useCallback(
     (nodeIds: string[]) => {
-      setHighlightedIds(new Set(nodeIds));
+      // Dim non-matching nodes, highlight matches
       setNodes((prev) =>
         prev.map((n) => ({
           ...n,
@@ -322,7 +370,6 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   );
 
   const handleSearchClear = useCallback(() => {
-    setHighlightedIds(null);
     setNodes((prev) =>
       prev.map((n) => ({
         ...n,
@@ -348,10 +395,10 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   // ── Navigate to node ──────────────────────────────────────
   const handleNavigateToNode = useCallback(
     (nodeId: string) => {
-      const node = apiNodes.find((n) => n.id === nodeId);
+      const node = apiNodesRef.current.find((n) => n.id === nodeId);
       if (node) setSelectedNode(node);
     },
-    [apiNodes]
+    []
   );
 
   // ── Build graph (empty state) ─────────────────────────────

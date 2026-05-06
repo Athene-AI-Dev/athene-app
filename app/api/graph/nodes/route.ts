@@ -49,8 +49,10 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search");
     const entityType = searchParams.get("entityType");
     const departmentId = searchParams.get("departmentId");
-    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") ?? "100", 10)));
+    const rawPage = parseInt(searchParams.get("page") ?? "1", 10);
+    const page = isNaN(rawPage) ? 1 : Math.max(1, rawPage);
+    const rawLimit = parseInt(searchParams.get("limit") ?? "100", 10);
+    const limit = isNaN(rawLimit) ? 100 : Math.min(500, Math.max(1, rawLimit));
     const offset = (page - 1) * limit;
 
     // Build query
@@ -66,10 +68,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (search?.trim()) {
-      query = query.or(
-        `label.ilike.%${search.trim().replace(/[",\\.()]/g, "")}%,` +
-        `description.ilike.%${search.trim().replace(/[",\\.()]/g, "")}%`
-      );
+      const sanitizedSearch = search.trim().replace(/[%_*{}",.\\()[\]]/g, "");
+      if (sanitizedSearch) {
+        query = query.or(
+          `label.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`
+        );
+      }
     }
 
     if (entityType) {
@@ -77,7 +81,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Department filter — admin only
-    if (departmentId && access.role === "admin") {
+    if (departmentId) {
+      if (access.role !== "admin") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
       query = query.contains("department_ids", [departmentId]);
     }
 
@@ -108,14 +115,32 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch distinct communities for the "load more" UI
-    const { data: communities } = await supabaseAdmin
+    // Apply the same role-based visibility filters to prevent community ID leaks
+    let commQuery = supabaseAdmin
       .from("kg_nodes")
       .select("community")
       .eq("org_id", internalOrgId)
       .not("community", "is", null)
       .order("community");
 
-    const uniqueCommunities = [...new Set((communities ?? []).map((c: any) => c.community))];
+    if (access.role === "member") {
+      commQuery = commQuery.or(
+        `visibility.eq.public,` +
+        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.public`)
+      );
+    } else if (access.role === "super_user") {
+      const deptIds = access.accessible_dept_ids ?? [];
+      if (deptIds.length > 0) {
+        const deptFilter = deptIds.map((id) => `department_ids.cs.{${id}}`).join(",");
+        commQuery = commQuery.or(`visibility.eq.public,${deptFilter}`);
+      } else {
+        commQuery = commQuery.eq("visibility", "public");
+      }
+    }
+
+    const { data: communities } = await commQuery;
+
+    const uniqueCommunities = [...new Set((communities ?? []).map((c: { community: string }) => c.community))];
 
     return NextResponse.json({
       nodes: nodes ?? [],

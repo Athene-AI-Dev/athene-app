@@ -3,12 +3,30 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { incrWithExpire, redis } from '@/lib/redis/client';
 
 const qstashToken = process.env.QSTASH_TOKEN;
-if (!qstashToken) {
-  throw new Error("Missing QSTASH_TOKEN environment variable");
+
+// Lazily initialised — callers that invoke qstash methods will get a clear
+// error; but simply importing this module won't crash the process when the
+// token is absent (e.g. local dev without QStash configured).
+let _qstashClient: Client | null = null;
+
+function getQStashClient(): Client {
+  if (_qstashClient) return _qstashClient;
+  if (!qstashToken) {
+    throw new Error(
+      "QSTASH_TOKEN is not set. Configure it in .env.local to enable background jobs."
+    );
+  }
+  _qstashClient = new Client({ token: qstashToken });
+  return _qstashClient;
 }
 
-export const qstash = new Client({
-  token: qstashToken,
+// Keep the named export so existing call-sites that do `qstash.publishJSON`
+// continue to work — they'll get the lazy-init error only when they actually call it.
+export const qstash = new Proxy({} as Client, {
+  get(_target, prop) {
+    const client = getQStashClient();
+    return (client as any)[prop];
+  },
 });
 
 

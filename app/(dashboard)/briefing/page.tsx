@@ -33,6 +33,10 @@ export default function BriefingPage() {
     try {
       setLoading(true);
       const res = await fetch('/api/briefing?type=today');
+      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
+        console.error('[briefing] today fetch failed', res.status);
+        return;
+      }
       const data = await res.json();
       if (!data.error) {
         setBriefing(data);
@@ -47,6 +51,7 @@ export default function BriefingPage() {
   const fetchHistory = async () => {
     try {
       const res = await fetch('/api/briefing?type=history');
+      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return;
       const data = await res.json();
       if (!data.error) {
         setHistory(data);
@@ -60,6 +65,10 @@ export default function BriefingPage() {
     try {
       setLoading(true);
       const res = await fetch(`/api/briefing?id=${item.id}`);
+      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
+        toast.error('Failed to load past briefing');
+        return;
+      }
       const data = await res.json();
       if (!data.error) {
         setBriefing(data);

@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Sparkles,
   Command,
-  Plus
+  Plus,
+  BarChart3
 } from "lucide-react";
 import { 
   Sidebar, 
@@ -84,27 +85,45 @@ export function AppSidebar({ role, className }: { role: UserRole; className?: st
           </SidebarMenu>
         </div>
 
-        {role === "admin" && (
+        {(role === "admin" || role === "super_user") && (
           <div>
             <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-muted-foreground/40 px-4 mb-4">Governance</h3>
             <SidebarMenu className="space-y-1">
               <SidebarMenuItem>
-                <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
-                  <Link href="/admin/integrations">
-                    <Sparkles className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
-                    <span className="text-[13px] font-bold tracking-tight">System Connectors</span>
-                    <Badge variant="outline" className="ml-auto text-[9px] font-black tracking-widest px-1.5 h-4 border-white/5 bg-white/5">PRO</Badge>
+                <SidebarMenuButton asChild className={cn(
+                  "h-11 rounded-xl px-4 flex items-center gap-3 transition-all group",
+                  pathname === "/insights"
+                    ? "bg-[#D96FAB]/10 text-[#D96FAB] border border-[#D96FAB]/20"
+                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                )}>
+                  <Link href="/insights">
+                    <BarChart3 className={cn("w-4 h-4", pathname === "/insights" ? "text-[#D96FAB]" : "text-[#7AADCF]")} />
+                    <span className="text-[13px] font-bold tracking-tight">BI Insights</span>
+                    {pathname === "/insights" && <ChevronRight className="ml-auto w-3.5 h-3.5" />}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
-                  <Link href="/admin/settings">
-                    <Settings2 className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
-                    <span className="text-[13px] font-bold tracking-tight">Access Control</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {role === "admin" && (
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
+                      <Link href="/admin/integrations">
+                        <Sparkles className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
+                        <span className="text-[13px] font-bold tracking-tight">System Connectors</span>
+                        <Badge variant="outline" className="ml-auto text-[9px] font-black tracking-widest px-1.5 h-4 border-white/5 bg-white/5">PRO</Badge>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild className="h-11 rounded-xl px-4 flex items-center gap-3 text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all group">
+                      <Link href="/admin/settings">
+                        <Settings2 className="w-4 h-4 text-[#7AADCF] group-hover:text-[#D96FAB] transition-colors" />
+                        <span className="text-[13px] font-bold tracking-tight">Access Control</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
+              )}
             </SidebarMenu>
           </div>
         )}

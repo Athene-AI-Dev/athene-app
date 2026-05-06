@@ -4,6 +4,20 @@ import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { HumanMessage } from "@langchain/core/messages";
+import { z } from "zod";
+
+// ATH-53: Added Zod schemas for robust input validation (Recommendation #5)
+const CreateInsightSchema = z.object({
+  title: z.string().min(1, "Title is required").max(200),
+  query: z.string().min(1, "Query is required").max(2000),
+});
+
+const UpdateInsightSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1).max(200).optional(),
+  sort_order: z.number().min(0).max(10000).optional(),
+  refresh: z.boolean().optional(),
+});
 
 /**
  * Verifies the caller is admin or super_user (bi_analyst).
@@ -19,27 +33,32 @@ async function ensureAdminOrAnalyst() {
   return { userId, orgId, role };
 }
 
-/** Resolves internal org UUID from Clerk org ID */
-async function resolveOrgRow(clerkOrgId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("organizations")
-    .select("id")
-    .eq("clerk_org_id", clerkOrgId)
-    .single();
-  if (error || !data) throw new Error("Org not found");
-  return data;
-}
-
-/** Resolves internal member UUID from Clerk user ID + internal org ID */
-async function resolveMemberRow(clerkUserId: string, orgId: string) {
+/**
+ * Resolves both internal org and member UUIDs in a single query (Recommendation #5/Audit).
+ * This eliminates sequential lookup latency.
+ */
+async function resolveContext(clerkUserId: string, clerkOrgId: string) {
   const { data, error } = await supabaseAdmin
     .from("org_members")
-    .select("id, role")
+    .select(`
+      id,
+      role,
+      organizations!inner(id)
+    `)
     .eq("clerk_user_id", clerkUserId)
-    .eq("org_id", orgId)
+    .eq("organizations.clerk_org_id", clerkOrgId)
     .single();
-  if (error || !data) throw new Error("Member not found");
-  return data;
+
+  if (error || !data) {
+    logger.warn({ clerkUserId, clerkOrgId, error: error?.message }, "[insights] Context resolution failed");
+    throw new Error("Context not found");
+  }
+
+  return {
+    memberId: data.id,
+    memberRole: data.role,
+    orgId: (data.organizations as any).id,
+  };
 }
 
 /**
@@ -59,7 +78,8 @@ async function runAgentQuery(
 
     const threadId = crypto.randomUUID();
 
-    const finalState = await graph.invoke(
+    // ATH-53: Added 55s timeout to stay within Vercel's 60s limit
+    const agentPromise = graph.invoke(
       {
         messages: [new HumanMessage(query)],
         orgId: clerkOrgId,
@@ -71,6 +91,12 @@ async function runAgentQuery(
       },
       { configurable: { thread_id: threadId } }
     );
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Agent timeout")), 55000)
+    );
+
+    const finalState = (await Promise.race([agentPromise, timeoutPromise])) as any;
 
     const answer: string =
       typeof finalState.final_answer === "string"
@@ -99,13 +125,13 @@ async function runAgentQuery(
 // ---------------------------------------------------------------------------
 export async function GET(_req: NextRequest) {
   try {
-    const { userId, orgId } = await ensureAdminOrAnalyst();
-    const org = await resolveOrgRow(orgId);
+    const { userId, orgId: clerkOrgId } = await ensureAdminOrAnalyst();
+    const { orgId } = await resolveContext(userId, clerkOrgId);
 
     const { data, error } = await supabaseAdmin
       .from("insights")
       .select("*")
-      .eq("org_id", org.id)
+      .eq("org_id", orgId)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
@@ -124,39 +150,47 @@ export async function GET(_req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
-    const { userId, orgId, role } = await ensureAdminOrAnalyst();
-    const org = await resolveOrgRow(orgId);
-    const member = await resolveMemberRow(userId, org.id);
+    const { userId, orgId: clerkOrgId, role } = await ensureAdminOrAnalyst();
+    const { orgId, memberId } = await resolveContext(userId, clerkOrgId);
 
-    let body: { title?: string; query?: string };
+    let body: any;
     try { body = await req.json(); } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    const { title, query } = body;
-    if (!title?.trim() || !query?.trim()) {
-      return NextResponse.json({ error: "title and query are required" }, { status: 400 });
+    // ATH-53: Use Zod for validation
+    const result_val = CreateInsightSchema.safeParse(body);
+    if (!result_val.success) {
+      return NextResponse.json({ error: result_val.error.issues[0].message }, { status: 400 });
     }
+    const { title, query } = result_val.data;
 
     // Run the cross-department agent to get an answer
-    const { answer, citations } = await runAgentQuery(query.trim(), userId, orgId, role);
+    const { answer, citations } = await runAgentQuery(query, userId, clerkOrgId, role);
 
     const result = { answer, citations };
 
     const { data, error } = await supabaseAdmin
       .from("insights")
       .insert({
-        org_id: org.id,
-        created_by: member.id,
-        title: title.trim(),
-        query: query.trim(),
+        org_id: orgId,
+        created_by: memberId,
+        title,
+        query,
         result,
         refreshed_at: new Date().toISOString(),
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // ATH-53: Explicit error handling for lost agent results
+      logger.error(
+        { error: error.message, orgId, query, result },
+        "[insights] POST insert failed after successful agent run"
+      );
+      throw error;
+    }
     return NextResponse.json(data, { status: 201 });
   } catch (err: any) {
     logger.error({ err: err.message }, "[insights] POST failed");
@@ -171,17 +205,20 @@ export async function POST(req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function PATCH(req: NextRequest) {
   try {
-    const { userId, orgId, role } = await ensureAdminOrAnalyst();
-    const org = await resolveOrgRow(orgId);
-    const member = await resolveMemberRow(userId, org.id);
+    const { userId, orgId: clerkOrgId, role } = await ensureAdminOrAnalyst();
+    const { orgId } = await resolveContext(userId, clerkOrgId);
 
-    let body: { id?: string; title?: string; sort_order?: number; refresh?: boolean };
+    let body: any;
     try { body = await req.json(); } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    const { id, title, sort_order, refresh } = body;
-    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+    // ATH-53: Use Zod for validation
+    const result_val = UpdateInsightSchema.safeParse(body);
+    if (!result_val.success) {
+      return NextResponse.json({ error: result_val.error.issues[0].message }, { status: 400 });
+    }
+    const { id, title, sort_order, refresh } = result_val.data;
 
     // Verify the insight belongs to this org
     const { data: existing } = await supabaseAdmin
@@ -191,16 +228,17 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (existing.org_id !== org.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (existing.org_id !== orgId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    const patch: Record<string, unknown> = { refreshed_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = {};
     if (title?.trim()) patch.title = title.trim();
     if (typeof sort_order === "number") patch.sort_order = sort_order;
 
     // Re-run the agent if explicitly requested (Refresh button)
     if (refresh) {
-      const { answer, citations } = await runAgentQuery(existing.query, userId, orgId, role);
+      const { answer, citations } = await runAgentQuery(existing.query, userId, clerkOrgId, role);
       patch.result = { answer, citations };
+      patch.refreshed_at = new Date().toISOString(); // ATH-53: Only update timestamp on actual refresh
     }
 
     const { data, error } = await supabaseAdmin
@@ -225,9 +263,8 @@ export async function PATCH(req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId, orgId, role } = await ensureAdminOrAnalyst();
-    const org = await resolveOrgRow(orgId);
-    const member = await resolveMemberRow(userId, org.id);
+    const { userId, orgId: clerkOrgId, role } = await ensureAdminOrAnalyst();
+    const { orgId, memberId } = await resolveContext(userId, clerkOrgId);
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -240,10 +277,10 @@ export async function DELETE(req: NextRequest) {
       .single();
 
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (existing.org_id !== org.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (existing.org_id !== orgId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     // Only the creator or an admin can delete
-    if (existing.created_by !== member.id && role !== "admin") {
+    if (existing.created_by !== memberId && role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

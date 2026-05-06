@@ -1,5 +1,5 @@
--- ATH-53: BI Insights table
--- Stores saved insight cards with their query, result and metadata.
+-- ATH-53 | author: eng | date: 2026-05-06 | BI Insights table and RLS.
+-- This migration creates the insights table and enforces org-level security.
 
 CREATE TABLE IF NOT EXISTS public.insights (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -25,15 +25,23 @@ CREATE POLICY "insights_admin_all" ON public.insights
       WHERE clerk_user_id = auth.uid()::text
         AND role IN ('admin', 'super_user')
     )
+  )
+  WITH CHECK (
+    org_id IN (
+      SELECT org_id FROM public.org_members
+      WHERE clerk_user_id = auth.uid()::text
+        AND role IN ('admin', 'super_user')
+    )
   );
 
--- Any org member can read insights for their org
+-- Any org member can read insights for their org (excluding admins to avoid overlap)
 CREATE POLICY "insights_member_read" ON public.insights
   FOR SELECT
   USING (
     org_id IN (
       SELECT org_id FROM public.org_members
       WHERE clerk_user_id = auth.uid()::text
+        AND role NOT IN ('admin', 'super_user')
     )
   );
 

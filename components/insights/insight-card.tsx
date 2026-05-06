@@ -20,12 +20,16 @@ interface InsightCardProps {
   insight: Insight;
   currentMemberId: string | null;
   isAdmin: boolean;
+  isConfirmingDelete?: boolean;
   onRefresh: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
 
 function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
+  if (!iso) return "Unknown";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "Unknown";
+  const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
@@ -34,9 +38,10 @@ function timeAgo(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function InsightCard({ insight, currentMemberId, isAdmin, onRefresh, onDelete }: InsightCardProps) {
+export function InsightCard({ insight, currentMemberId, isAdmin, isConfirmingDelete, onRefresh, onDelete }: InsightCardProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showCitations, setShowCitations] = useState(false);
 
   const canDelete = isAdmin || insight.created_by === currentMemberId;
 
@@ -85,9 +90,14 @@ export function InsightCard({ insight, currentMemberId, isAdmin, onRefresh, onDe
               size="icon"
               onClick={handleDelete}
               disabled={deleting}
-              className="h-9 w-9 rounded-xl text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive transition-all"
+              className={cn(
+                "h-9 w-9 rounded-xl transition-all",
+                isConfirmingDelete 
+                  ? "bg-destructive text-white hover:bg-destructive/90 w-auto px-3" 
+                  : "text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive"
+              )}
             >
-              <Trash2 className="w-4 h-4" />
+              {isConfirmingDelete ? <span className="text-[10px] font-black uppercase tracking-widest">Confirm?</span> : <Trash2 className="w-4 h-4" />}
             </Button>
           )}
         </div>
@@ -96,9 +106,36 @@ export function InsightCard({ insight, currentMemberId, isAdmin, onRefresh, onDe
       {/* Answer */}
       <div className="flex-1 space-y-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">Answer</span>
-        <p className="text-sm font-medium text-foreground/80 leading-relaxed line-clamp-4">
+        <p className="text-sm font-medium text-foreground/80 leading-relaxed">
           {insight.result.answer}
         </p>
+
+        {/* ATH-53: Clickable citations list */}
+        {showCitations && insight.result.citations.length > 0 && (
+          <div className="mt-4 p-4 rounded-2xl bg-accent/5 border border-white/5 space-y-3 animate-in slide-in-from-top-2 duration-300">
+            <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40 flex items-center gap-2">
+              <Quote className="w-3 h-3" /> Sources
+            </span>
+            <ul className="space-y-2">
+              {insight.result.citations.map((c, i) => (
+                <li key={i} className="text-xs font-medium">
+                  {c.url ? (
+                    <a 
+                      href={c.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[#7AADCF] hover:underline flex items-center gap-2"
+                    >
+                      {c.title || "Untitled source"}
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">{c.title || "Untitled source"}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Query chip */}
@@ -114,9 +151,12 @@ export function InsightCard({ insight, currentMemberId, isAdmin, onRefresh, onDe
           <span>{timeAgo(insight.refreshed_at)}</span>
         </div>
         {insight.result.citations.length > 0 && (
-          <Badge className="rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-[#7AADCF]/10 text-[#7AADCF] border-[#7AADCF]/20">
+          <button 
+            onClick={() => setShowCitations(!showCitations)}
+            className="rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-[#7AADCF]/10 text-[#7AADCF] border border-[#7AADCF]/20 hover:bg-[#7AADCF]/20 transition-colors"
+          >
             {insight.result.citations.length} sources
-          </Badge>
+          </button>
         )}
       </div>
     </div>

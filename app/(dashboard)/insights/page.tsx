@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   BarChart3,
   Plus,
@@ -10,6 +10,8 @@ import {
   Loader2,
   CheckCircle2,
 } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
+import { mapRole } from "@/lib/auth/clerk";
 import { Button } from "@/components/ui/button";
 import { InsightCard, type Insight } from "@/components/insights/insight-card";
 import { cn } from "@/lib/utils";
@@ -31,15 +33,38 @@ function AddInsightDialog({
   const [title, setTitle] = useState("");
   const [query, setQuery] = useState("");
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    if (open) { setTitle(""); setQuery(""); }
+    if (open) {
+      setTitle("");
+      setQuery("");
+      // ATH-53: Focus trap to first input
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
   }, [open]);
+
+  // ATH-53: Added keyboard trap and escape handler
+  useEffect(() => {
+    if (!open) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-      <div className="bg-card border border-white/10 shadow-2xl p-8 max-w-lg w-full mx-4 rounded-[2rem] animate-in zoom-in-95 duration-300 space-y-6">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div 
+        className="bg-card border border-white/10 shadow-2xl p-8 max-w-lg w-full mx-4 rounded-[2rem] animate-in zoom-in-95 duration-300 space-y-6"
+        onKeyDown={(e) => e.key === "Escape" && onClose()}
+      >
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -64,6 +89,7 @@ function AddInsightDialog({
             </label>
             <input
               id="insight-title"
+              ref={inputRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Q3 Revenue vs Headcount"
@@ -119,6 +145,17 @@ export default function InsightsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  const { orgRole } = useAuth();
+  const isAdmin = mapRole(orgRole ?? undefined) === "admin";
+
+  // ATH-53: Debounce search filter to reduce re-renders
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -187,11 +224,19 @@ export default function InsightsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    // ATH-53: Added confirmation step
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      setTimeout(() => setConfirmDeleteId(null), 3000);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/insights?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setInsights((prev) => prev.filter((c) => c.id !== id));
       showToast("Card removed.", "success");
+      setConfirmDeleteId(null);
     } catch (e: any) {
       showToast(`Delete failed: ${e.message}`, "error");
     }
@@ -199,8 +244,8 @@ export default function InsightsPage() {
 
   const filtered = insights.filter(
     (i) =>
-      i.title.toLowerCase().includes(search.toLowerCase()) ||
-      i.query.toLowerCase().includes(search.toLowerCase())
+      i.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      i.query.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   return (
@@ -306,7 +351,8 @@ export default function InsightsPage() {
               key={insight.id}
               insight={insight}
               currentMemberId={null}
-              isAdmin={true}
+              isAdmin={isAdmin}
+              isConfirmingDelete={confirmDeleteId === insight.id}
               onRefresh={handleRefresh}
               onDelete={handleDelete}
             />

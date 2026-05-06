@@ -180,7 +180,7 @@ export async function indexDocument(
   departmentId: string | null,
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
-): Promise<void> {
+): Promise<string> {
   // 0. Resolve/create the documents row
   const documentId = await upsertDocumentRecord(
     chunk, orgId, connectionId, departmentId, visibility, ownerUserId
@@ -188,7 +188,7 @@ export async function indexDocument(
   // 1. Split content into chunks
   const contentChunks = chunkContent(chunk.content)
 
-  if (contentChunks.length === 0) return
+  if (contentChunks.length === 0) return documentId
 
   // 2. Generate embeddings for all chunks in a single batch
   const embeddings = await generateEmbeddings(contentChunks)
@@ -201,7 +201,6 @@ export async function indexDocument(
     owner_user_id: ownerUserId,
     source_type: chunk.metadata.provider,
     visibility,
-    content_preview: text.substring(0, 200), // schema comment: first 200 chars
     chunk_index: index,
     embedding: embeddings[index],
     // SHA-256 hash of the content — used to skip re-embedding unchanged chunks
@@ -219,6 +218,8 @@ export async function indexDocument(
     logger.error({ title: chunk.title, err: error.message }, '[indexing] Error upserting chunks')
     throw error
   }
+
+  return documentId
 }
 
 /** Maximum texts per OpenAI embedding API call */
@@ -240,8 +241,8 @@ export async function indexDocuments(
   departmentId: string | null,
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
-): Promise<{ indexed: number; errors: number }> {
-  if (chunks.length === 0) return { indexed: 0, errors: 0 }
+): Promise<{ indexed: number; errors: number; documentIds: string[] }> {
+  if (chunks.length === 0) return { indexed: 0, errors: 0, documentIds: [] }
 
   // ---- Phase 1: resolve document rows in parallel -----------------
   type PreparedItem = {
@@ -280,7 +281,6 @@ export async function indexDocuments(
       owner_user_id: ownerUserId,
       source_type: item.chunk.metadata.provider,
       visibility,
-      content_preview: text.substring(0, 200),
       chunk_index: index,
       content_hash: createHash('sha256').update(text).digest('hex'),
       metadata: item.chunk.metadata,
@@ -318,11 +318,15 @@ export async function indexDocuments(
     if (error) {
       console.error('[indexing] Bulk upsert error:', error.message)
       errors += records.length
-      return { indexed: 0, errors }
+      return { indexed: 0, errors, documentIds: [] }
     }
   }
 
-  return { indexed: prepared.length, errors }
+  return { 
+    indexed: prepared.length, 
+    errors, 
+    documentIds: [...new Set(prepared.map(p => p.documentId))] 
+  }
 }
 
 // ---- Helpers ----------------------------------------------------

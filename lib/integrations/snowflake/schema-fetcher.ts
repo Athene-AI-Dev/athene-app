@@ -9,7 +9,7 @@ export interface TableSchema {
 }
 
 export async function discoverSchema(connectionId: string, orgId: string): Promise<TableSchema[]> {
-  const connection = await getConnection(connectionId, 'snowflake')
+  const connection = await getConnection(connectionId, 'snowflake', orgId)
   const allowlist = connection.metadata?.allowlist as string[] | undefined
 
   if (!allowlist || allowlist.length === 0) {

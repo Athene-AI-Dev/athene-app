@@ -65,3 +65,4 @@ export function jiraAdfToText(adf: any): string {
     return String(adf)
   }
 }
+export const adfToText = extractTextFromADF;

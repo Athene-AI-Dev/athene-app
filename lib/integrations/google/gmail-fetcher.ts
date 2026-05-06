@@ -1,4 +1,4 @@
-import { googleFetch } from './api-client'
+import { googleFetch, googleFetchRaw } from './api-client'
 import type { FetchedChunk } from '@/lib/integrations/base'
 import { assertSafeMetadata } from '@/lib/integrations/base'
 
@@ -59,28 +59,39 @@ export async function listUnreadEmails(
 
   if (!list.messages || list.messages.length === 0) return []
 
-  const metadataPromises = list.messages.map(async (msg) => {
-    const metaUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=To`
-    const full = await googleFetch<{
-      id: string
-      threadId: string
-      labelIds: string[]
-      snippet: string
-      payload: { headers: GmailHeader[] }
-      internalDate: string
-    }>(connectionId, orgId, metaUrl)
+  // ATH-30: Fix N+1 problem by processing metadata fetches in small parallel batches
+  // to avoid hitting rate limits and improve overall efficiency.
+  const BATCH_SIZE = 10
+  const results: GmailMessageMetadata[] = []
 
-    return {
-      id: full.id,
-      threadId: full.threadId,
-      labelIds: full.labelIds,
-      snippet: full.snippet,
-      headers: extractHeaders(full.payload.headers),
-      internalDate: full.internalDate,
-    }
-  })
+  for (let i = 0; i < list.messages.length; i += BATCH_SIZE) {
+    const batch = list.messages.slice(i, i + BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map(async (msg) => {
+        const metaUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=To`
+        const full = await googleFetch<{
+          id: string
+          threadId: string
+          labelIds: string[]
+          snippet: string
+          payload: { headers: GmailHeader[] }
+          internalDate: string
+        }>(connectionId, orgId, metaUrl)
 
-  return Promise.all(metadataPromises)
+        return {
+          id: full.id,
+          threadId: full.threadId,
+          labelIds: full.labelIds,
+          snippet: full.snippet,
+          headers: extractHeaders(full.payload.headers),
+          internalDate: full.internalDate,
+        }
+      })
+    )
+    results.push(...batchResults)
+  }
+
+  return results
 }
 
 /**
@@ -98,28 +109,38 @@ export async function searchEmails(
 
   if (!list.messages || list.messages.length === 0) return []
 
-  const metadataPromises = list.messages.map(async (msg) => {
-    const metaUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=To`
-    const full = await googleFetch<{
-      id: string
-      threadId: string
-      labelIds: string[]
-      snippet: string
-      payload: { headers: GmailHeader[] }
-      internalDate: string
-    }>(connectionId, orgId, metaUrl)
+  // ATH-30: Fix N+1 problem by processing metadata fetches in small parallel batches
+  const BATCH_SIZE = 10
+  const results: GmailMessageMetadata[] = []
 
-    return {
-      id: full.id,
-      threadId: full.threadId,
-      labelIds: full.labelIds,
-      snippet: full.snippet,
-      headers: extractHeaders(full.payload.headers),
-      internalDate: full.internalDate,
-    }
-  })
+  for (let i = 0; i < list.messages.length; i += BATCH_SIZE) {
+    const batch = list.messages.slice(i, i + BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map(async (msg) => {
+        const metaUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=To`
+        const full = await googleFetch<{
+          id: string
+          threadId: string
+          labelIds: string[]
+          snippet: string
+          payload: { headers: GmailHeader[] }
+          internalDate: string
+        }>(connectionId, orgId, metaUrl)
 
-  return Promise.all(metadataPromises)
+        return {
+          id: full.id,
+          threadId: full.threadId,
+          labelIds: full.labelIds,
+          snippet: full.snippet,
+          headers: extractHeaders(full.payload.headers),
+          internalDate: full.internalDate,
+        }
+      })
+    )
+    results.push(...batchResults)
+  }
+
+  return results
 }
 
 // ─── Live Body Fetching ──────────────────────────────────────────────────────
@@ -136,6 +157,31 @@ export async function fetchEmailBody(
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`
   const msg = await googleFetch<GmailMessageFull>(connectionId, orgId, url)
   return extractBodyFromPayload(msg.payload)
+}
+
+/**
+ * Fetches a Gmail attachment by ID.
+ * Returns the raw binary content as a Buffer.
+ * ATH-30: Uses googleFetchRaw to correctly handle binary downloads.
+ */
+export async function fetchGmailAttachment(
+  connectionId: string,
+  orgId: string,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`
+  
+  // Although Gmail returns JSON with base64 data, we use googleFetchRaw
+  // to be consistent with Drive and handle potentially large binary chunks safely.
+  const res = await googleFetchRaw(connectionId, orgId, url)
+  const data = await res.json() as { size: number; data: string }
+
+  if (!data.data) {
+    throw new Error(`[gmail-fetcher] Attachment ${attachmentId} contains no data`)
+  }
+
+  return Buffer.from(data.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
 }
 
 // ─── Sending ─────────────────────────────────────────────────────────────────

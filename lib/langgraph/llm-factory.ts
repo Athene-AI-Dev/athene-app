@@ -1,108 +1,91 @@
+import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { supabaseAdmin } from "../supabase/server";
-
-// ---------------------------------------------------------------------------
-// Model tier → Anthropic model name
-// Spec: simple=Haiku, medium=Sonnet (supervisor default), complex=Opus
-// ---------------------------------------------------------------------------
-const TIER_MODELS: Record<ModelTier, string> = {
-  simple: "claude-haiku-4-5-20251001",
-  medium: "claude-sonnet-4-6",
-  complex: "claude-opus-4-6",
-};
 
 /** LLM tier used by the agent registry to select model complexity */
 export type ModelTier = "simple" | "medium" | "complex";
 
-// ---------------------------------------------------------------------------
-// Per-(org, tier) client cache — avoids re-creating SDK instances on hot paths
-// ---------------------------------------------------------------------------
-const clientCache = new Map<string, ChatAnthropic>();
+const TIER_MAP: Record<ModelTier, string> = {
+  simple: "gpt-4o-mini",
+  medium: "gpt-4o",
+  complex: "gpt-4o",
+};
 
-// ---------------------------------------------------------------------------
-// BYOK: fetch & decrypt org-specific Anthropic key from llm_keys table.
-// Uses the decrypt_llm_key() Postgres function (pgp_sym_decrypt with
-// app.kms_key set to process.env.ENCRYPTION_SECRET server-side).
-// Returns null when no active BYOK key exists for this org.
-// ---------------------------------------------------------------------------
-async function fetchOrgApiKey(orgId: string): Promise<string | null> {
-  try {
-    // Set the KMS session variable required by decrypt_llm_key()
-    const kmsKey = process.env.ENCRYPTION_SECRET;
-    if (!kmsKey) return null;
+/**
+ * LLM Factory to ensure we use singletons for model instances.
+ */
+class LLMFactory {
+  private static instances: Map<string, any> = new Map();
 
-    // Call the RPC that sets the session var and decrypts atomically
-    const { data, error } = await supabaseAdmin.rpc("decrypt_llm_key_for_org", {
+  static getModel(tierOrName: ModelTier | string = "gpt-4o", temperature: number = 0) {
+    const modelName = TIER_MAP[tierOrName as ModelTier] || tierOrName;
+    const cacheKey = `${modelName}-${temperature}`;
+
+    if (!this.instances.has(cacheKey)) {
+      this.instances.set(
+        cacheKey,
+        new ChatOpenAI({
+          modelName,
+          temperature,
+        })
+      );
+    }
+    return this.instances.get(cacheKey)!;
+  }
+
+  /**
+   * 🔑 BYOK (Bring Your Own Key) Resolver
+   * Fetches the decrypted key for an organization and returns a provider-specific client.
+   */
+  static async getBYOKModel(orgId: string, provider: string, temperature: number = 0) {
+    const cacheKey = `byok-${orgId}-${provider}-${temperature}`;
+    if (this.instances.has(cacheKey)) return this.instances.get(cacheKey);
+
+    // Fetch decrypted key via SECURITY DEFINER RPC
+    const { data: apiKey, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
       p_org_id: orgId,
-      p_provider: "anthropic",
-      p_kms_key: kmsKey,
+      p_provider: provider,
     });
 
-    if (error || !data) return null;
-    return data as string;
-  } catch {
-    // Never let BYOK failure crash the agent — fall back to platform key
-    return null;
+    if (error || !apiKey) {
+      console.warn(`[LLMFactory] No active BYOK key found for org ${orgId} / ${provider}. Falling back to system keys.`);
+      return this.getModel("gpt-4o", temperature);
+    }
+
+    let instance;
+    if (provider === "anthropic") {
+      instance = new ChatAnthropic({
+        apiKey,
+        modelName: "claude-3-5-sonnet-20240620",
+        temperature,
+      });
+    } else if (provider === "openai") {
+      instance = new ChatOpenAI({
+        apiKey,
+        modelName: "gpt-4o",
+        temperature,
+      });
+    } else if (provider === "google") {
+      instance = new ChatGoogleGenerativeAI({
+        apiKey,
+        model: "gemini-1.5-pro",
+        temperature,
+      });
+    } else {
+      return this.getModel("gpt-4o", temperature);
+    }
+
+    this.instances.set(cacheKey, instance);
+    return instance;
+  }
+
+  static async resolveModelClient(tier: ModelTier = "medium") {
+    return this.getModel(tier);
   }
 }
 
-// ---------------------------------------------------------------------------
-// resolveModelClient — async, BYOK-aware, tier-routed
-// ---------------------------------------------------------------------------
-export async function resolveModelClient(
-  orgId: string,
-  tier: ModelTier = "medium"
-): Promise<ChatAnthropic> {
-  const cacheKey = `${orgId}:${tier}`;
-  const cached = clientCache.get(cacheKey);
-  if (cached) return cached;
-
-  // 1. Try BYOK first; fall back to platform key
-  const byokKey = await fetchOrgApiKey(orgId);
-  const apiKey = byokKey ?? process.env.ANTHROPIC_API_KEY;
-
-  // 2. Guard: defer env check to call time (not module load)
-  if (!apiKey) {
-    throw new Error(
-      `[llm-factory] No Anthropic API key available for org "${orgId}". ` +
-        `Set ANTHROPIC_API_KEY in your environment or configure a BYOK key ` +
-        `in the llm_keys table.`
-    );
-  }
-
-  const client = new ChatAnthropic({
-    model: TIER_MODELS[tier],
-    apiKey,
-  });
-
-  clientCache.set(cacheKey, client);
-  return client;
-}
-
-// ---------------------------------------------------------------------------
-// Legacy synchronous helper — kept for backward compatibility with existing
-// node imports that call getModel(). Uses platform key only (no BYOK).
-// Callers should migrate to resolveModelClient(orgId, tier) when possible.
-// ---------------------------------------------------------------------------
-export function getModel(tier: ModelTier = "medium"): ChatAnthropic {
-  const cacheKey = `__platform__:${tier}`;
-  const cached = clientCache.get(cacheKey);
-  if (cached) return cached;
-
-  // Defer env check to first call, not module load
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "[llm-factory] ANTHROPIC_API_KEY is not set. " +
-        "Add it to your .env.local file or use resolveModelClient() for BYOK orgs."
-    );
-  }
-
-  const client = new ChatAnthropic({
-    model: TIER_MODELS[tier],
-    apiKey,
-  });
-
-  clientCache.set(cacheKey, client);
-  return client;
-}
+export const model = LLMFactory.getModel();
+export const getModel = LLMFactory.getModel.bind(LLMFactory);
+export const getBYOKModel = LLMFactory.getBYOKModel.bind(LLMFactory);
+export const resolveModelClient = LLMFactory.resolveModelClient.bind(LLMFactory);

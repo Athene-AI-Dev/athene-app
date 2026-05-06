@@ -1,67 +1,102 @@
 import { NextResponse } from 'next/server'
-import { verifyQStashSignature } from '@/lib/qstash/verify'
-import { redis } from '@/lib/redis/client'
+import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
+import { logger } from '@/lib/logger'
 import { getAgentGraph } from '@/lib/langgraph/graph'
-import { Command } from '@langchain/langgraph'
+import { ToolMessage } from '@langchain/core/messages'
 
-export async function POST(request: Request) {
+// ---- Payload type -------------------------------------------
+
+interface ToolResumePayload {
+  thread_id: string
+  tool_call_id: string
+  result: any
+  error?: string
+}
+
+// ---- POST handler -------------------------------------------
+
+export async function POST(request: Request): Promise<NextResponse> {
   // 1. Verify QStash signature
   const isValid = await verifyQStashSignature(request)
   if (!isValid) {
-    return NextResponse.json({ error: 'Invalid QStash signature' }, { status: 401 })
+    return NextResponse.json(
+      { error: 'Invalid QStash signature' },
+      { status: 401 },
+    )
   }
 
-  // Idempotency check using QStash job ID
-  const jobId = request.headers.get('upstash-message-id')
-  if (jobId) {
-    const isNew = await redis.set(`processed_job:${jobId}`, '1', { nx: true, ex: 86400 * 7 })
-    if (!isNew) {
-      console.log(`[tool-resume] Skipping duplicate job=${jobId}`)
-      return NextResponse.json({ status: 'already_processed', jobId })
-    }
+  // 2. Check idempotency
+  const isFirstTime = await checkIdempotency(request)
+  if (!isFirstTime) {
+    logger.info('[tool-resume] Skipping duplicate job (idempotency)')
+    return NextResponse.json({ status: 'ok', skipped: 'duplicate' })
   }
 
-  // 2. Parse payload
-  let payload: { threadId?: string; toolCallId?: string; result?: any }
+  // 3. Parse payload
+  let payload: ToolResumePayload
   try {
-    payload = await request.json()
+    payload = (await request.json()) as ToolResumePayload
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { threadId, toolCallId, result } = payload
+  const { thread_id, tool_call_id, result, error } = payload
 
-  if (!threadId || !toolCallId || result === undefined) {
+  if (!thread_id || !tool_call_id) {
     return NextResponse.json(
-      { error: 'Missing required fields: threadId, toolCallId, result' },
-      { status: 400 }
+      { error: 'Missing required fields: thread_id, tool_call_id' },
+      { status: 400 },
     )
   }
 
-  console.log(`[tool-resume] Processing resume for thread=${threadId}, toolCallId=${toolCallId}`)
+  logger.info(
+    { thread_id, tool_call_id },
+    "[tool-resume] Resuming tool result"
+  )
 
   try {
-    // 3. Write the result to Redis
-    const redisKey = `async_tool:${threadId}:${toolCallId}`
-    // If result is an object, JSON.stringify it. If already string, store as is.
-    const valueToStore = typeof result === 'string' ? result : JSON.stringify(result)
-    await redis.set(redisKey, valueToStore, { ex: 3600 }) // Store for 1 hour
-
-    // 4. Call LangGraph resume
+    // 4. Load the graph and update state with the tool result
     const graph = await getAgentGraph()
-    await graph.invoke(
-      new Command({ resume: result }),
-      { configurable: { thread_id: threadId } }
+    
+    // Construct the tool result message
+    const toolMessage = new ToolMessage({
+      tool_call_id: tool_call_id,
+      content: error ? `Error: ${error}` : JSON.stringify(result),
+    })
+
+    // Update the state on the specific thread
+    await graph.updateState(
+      { configurable: { thread_id } },
+      { messages: [toolMessage] }
     )
 
-    console.log(`[tool-resume] Successfully resumed thread=${threadId}`)
+    // 5. Resume execution
+    // In many cases, we want to kick off the next step of the graph automatically.
+    // This background worker route resumes the agent so it can finish its thought.
+    
+    // Fire-and-forget resume (don't wait for completion in this HTTP request to avoid timeout)
+    graph.invoke(null, { configurable: { thread_id } }).catch((err: any) => {
+      logger.error({ thread_id, err: err.message }, "[tool-resume] Async resume failed")
+    })
 
-    return NextResponse.json({ status: 'ok', threadId, toolCallId })
-  } catch (error) {
-    console.error('[tool-resume] Error processing job:', error)
+    logger.info(
+      { thread_id, tool_call_id },
+      "[tool-resume] State updated and graph execution resumed"
+    )
+
+    return NextResponse.json({
+      status: 'ok',
+      thread_id,
+      tool_call_id,
+    })
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error({ thread_id, err: message }, '[tool-resume] Fatal error')
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal error' },
-      { status: 500 }
+      { error: `Tool resume failed: ${message}` },
+      { status: 500 },
     )
   }
 }

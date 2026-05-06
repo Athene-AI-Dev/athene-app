@@ -35,13 +35,21 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
-          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <body
+          className="min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary"
+        >
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem={false}
+            disableTransitionOnChange
+          >
             {children}
-            <Toaster richColors position="top-right" />
+            <Toaster position="bottom-right" closeButton richColors />
           </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
   );
 }
+

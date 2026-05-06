@@ -14,6 +14,14 @@ export const AtheneState = Annotation.Root({
     reducer: (x, y) => x.concat(y),
     default: () => [],
   }),
+  user: Annotation<{
+    timezone: string;
+    id: string;
+    email?: string;
+  } | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
   // Approval gate fields
   awaiting_approval: Annotation<boolean>({
     reducer: (_x, y) => y,
@@ -60,6 +68,23 @@ export const AtheneState = Annotation.Root({
   is_cross_dept_query: Annotation<boolean>({
     reducer: (_x, y) => y,
     default: () => false,
+  }),
+  // Supervisor fields
+  hop_count: Annotation<number>({
+    reducer: (_x, y) => y,
+    default: () => 0,
+  }),
+  active_agent: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
+  complexity: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
+  reasoning: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
   }),
 });
 

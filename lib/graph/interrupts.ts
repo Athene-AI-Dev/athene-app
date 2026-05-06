@@ -25,8 +25,8 @@ import { z } from "zod";
 export const emailDraftSchema = z.object({
   to: z.array(z.string().email()).min(1, "At least one recipient is required"),
   cc: z.array(z.string().email()).default([]),
-  subject: z.string().min(1, "Subject is required"),
-  body: z.string().min(1, "Body is required"),
+  subject: z.string().trim().min(1, "Subject is required"),
+  body: z.string().trim().min(1, "Body is required"),
   _warning: z.string().optional(),
 });
 
@@ -65,8 +65,9 @@ export async function validatePayload(
       calendarEventSchema.parse(payload);
     }
   } catch (err: any) {
-    logger.warn({ tool, err: err.message }, "Payload validation failed");
-    throw err;
+    const detail = err instanceof z.ZodError ? err.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') : err.message;
+    logger.warn({ tool, detail }, "Payload validation failed");
+    throw new Error(`Draft validation failed: ${detail}`);
   }
 }
 
@@ -118,9 +119,17 @@ export function processDecision(
       if (!request.edits || Object.keys(request.edits).length === 0) {
         throw new Error("Edit action requires non-empty edits object");
       }
+      // Only merge fields that are present in the original payload to prevent injection of unknown keys
+      const filteredEdits: Record<string, unknown> = {};
+      for (const key of Object.keys(request.edits)) {
+        if (key in pendingAction.payload) {
+          filteredEdits[key] = request.edits[key];
+        }
+      }
+
       return {
         approved: true,
-        payload: { ...pendingAction.payload, ...request.edits },
+        payload: { ...pendingAction.payload, ...filteredEdits },
       };
 
     case "reject":
@@ -150,7 +159,7 @@ export async function logHitlDecision(params: {
   editedPayload: Record<string, unknown> | null;
 }): Promise<void> {
   const { error } = await supabaseAdmin.from("hitl_decisions").insert({
-    org_id: params.orgId,
+    org_id: params.orgId, // Must be UUID
     thread_id: params.threadId,
     user_id: params.userId,
     action_type: params.actionType,

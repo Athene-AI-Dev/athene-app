@@ -1,27 +1,74 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import { mapRole } from '@/lib/auth/clerk'
-import { supabaseServer } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/server'
+import { getContextFromHeaders } from '@/lib/supabase/rls-client'
+import { assertAdminRole } from '@/lib/auth/rbac'
 
-export async function GET() {
-  const { userId, orgId, orgRole } = await auth()
-  
-  if (!userId || !orgId) {
-    return new Response('Unauthorized', { status: 401 })
+export async function GET(req: Request) {
+  const context = getContextFromHeaders(req.headers)
+  if (!context) return new Response('Unauthorized', { status: 401 })
+
+  // Role guard for GET (ATH-47 #5)
+  const isAdmin = await assertAdminRole(context.user_id, context.org_id)
+  if (!isAdmin) return new Response('Forbidden', { status: 403 })
+
+  const { searchParams } = new URL(req.url)
+  const page = parseInt(searchParams.get('page') || '0')
+  const limit = parseInt(searchParams.get('limit') || '100')
+
+  const { data, error } = await supabaseAdmin
+    .from('bi_accessible_grants')
+    .select('*')
+    .eq('org_id', context.org_id)
+    .range(page * limit, (page + 1) * limit - 1) // Pagination support (ATH-47 #11)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
+export async function POST(req: Request) {
+  const context = getContextFromHeaders(req.headers)
+  if (!context) return new Response('Unauthorized', { status: 401 })
+
+  // Centralized scoped role check (ATH-47 #1, #10)
+  const isAdmin = await assertAdminRole(context.user_id, context.org_id)
+  if (!isAdmin) {
+     return new Response('Forbidden: Only admin can grant BI access', { status: 403 })
   }
 
-  const role = mapRole(orgRole ?? undefined)
-  if (role !== 'admin') return new Response('Forbidden', { status: 403 })
-  
-  const { data, error } = await supabaseServer
-    .from('access_grants')
-    .select('*, user:org_members!user_id(email, display_name), granted_by_user:org_members!granted_by(email, display_name)')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false })
+  const body = await req.json()
+  const { resource_id, resource_type } = body
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  // Input validation (ATH-47 #2)
+  if (!resource_id || !resource_type) {
+    return NextResponse.json({ error: 'Missing resource_id or resource_type' }, { status: 400 })
   }
 
-  return NextResponse.json({ grants: data })
+  // Insert grant
+  const { data, error } = await supabaseAdmin.from('bi_accessible_grants').insert({
+    org_id: context.org_id,
+    resource_type,
+    resource_id,
+    granted_by: context.user_id
+  }).select().single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Update visibility with partial success handling (ATH-47 #6)
+  if (resource_type === 'document' || resource_type === 'folder') {
+    const { error: updateError } = await supabaseAdmin
+      .from('document_embeddings')
+      .update({ visibility: 'bi_accessible' })
+      .eq('document_id', resource_id)
+      .eq('org_id', context.org_id)
+      
+    if (updateError) {
+      console.error("Failed to update visibility:", updateError)
+      return NextResponse.json({ 
+        ...data, 
+        warning: "Grant created but document visibility sync failed. Manual sync required." 
+      }, { status: 201 })
+    }
+  }
+
+  return NextResponse.json(data)
 }

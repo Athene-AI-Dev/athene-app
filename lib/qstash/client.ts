@@ -2,8 +2,13 @@ import { Client } from '@upstash/qstash';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { incrWithExpire, redis } from '@/lib/redis/client';
 
+const qstashToken = process.env.QSTASH_TOKEN;
+if (!qstashToken) {
+  throw new Error("Missing QSTASH_TOKEN environment variable");
+}
+
 export const qstash = new Client({
-  token: process.env.QSTASH_TOKEN || '',
+  token: qstashToken,
 });
 
 

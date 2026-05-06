@@ -1,5 +1,7 @@
 import { Nango } from '@nangohq/node'
 import { supabaseAdmin } from '../supabase/server'
+import { getProvider } from '@/lib/integrations/providers'
+
 
 let nangoInstance: Nango | null = null;
 
@@ -87,13 +89,10 @@ export async function getConnectionToken(
       .maybeSingle()
 
     if (supabaseError) {
-      console.error('Supabase verification error:', supabaseError)
+      throw new Error(`Supabase verification failed: ${supabaseError.message}`);
     }
 
     if (!mapping) {
-      // Fail closed — no Supabase record means this org does not own the connection.
-      // We do not fall back to Nango metadata because metadata is user-controlled during
-      // OAuth setup and cannot be trusted as an ownership proof.
       const notFound = new Error('Connection not found for this organization');
       (notFound as any).status = 404;
       (notFound as any).reason = 'NOT_FOUND';
@@ -101,17 +100,16 @@ export async function getConnectionToken(
     }
 
     // 🔒 If verification passed, proceed to fetch token
-    return await nango.getToken(providerConfigKey, connectionId)
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    return await nango.getToken(nangoKey, connectionId) as any;
+
 
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnectionToken');
   }
 }
 
-/**
- * Verified token fetch — always validates org ownership before returning a token.
- * Drop-in for any caller that previously used the unguarded variant.
- */
 export async function getToken(
   connectionId: string,
   providerConfigKey: string,
@@ -120,13 +118,45 @@ export async function getToken(
   return getConnectionToken(connectionId, providerConfigKey, orgId);
 }
 
-export async function getConnection(connectionId: string, providerConfigKey: string) {
-    const nango = getNango();
-    try {
-        return await nango.getConnection(providerConfigKey, connectionId);
-    } catch (error: unknown) {
-        return handleNangoError(error, 'getConnection');
-    }
+export async function getConnection(
+  connectionId: string,
+  providerConfigKey: string,
+  orgId: string
+) {
+  if (!orgId) {
+    throw new Error('orgId is required to fetch connection');
+  }
+
+  const nango = getNango();
+
+  // Verify ownership in Supabase first
+  const { data: mapping, error: supabaseError } = await supabaseAdmin
+    .from('nango_connections')
+
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('connection_id', connectionId)
+    .eq('provider_config_key', providerConfigKey)
+    .maybeSingle();
+
+  if (supabaseError) {
+    throw new Error(`Supabase verification failed: ${supabaseError.message}`);
+  }
+
+  if (!mapping) {
+    const notFound = new Error('Connection not found for this organization');
+    (notFound as any).status = 404;
+    (notFound as any).reason = 'NOT_FOUND';
+    throw notFound;
+  }
+
+  try {
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    return await nango.getConnection(nangoKey, connectionId);
+  } catch (error: unknown) {
+    return handleNangoError(error, 'getConnection');
+  }
 }
 
 /**
@@ -138,37 +168,7 @@ export async function getConnectionMetadata(
   providerConfigKey: string,
   orgId: string
 ): Promise<any> {
-  if (!orgId) {
-    throw new Error('orgId is required to fetch connection metadata');
-  }
-
-  const nango = getNango();
-
-  // Verify ownership via Supabase (source of truth) before fetching from Nango
-  const { data: mapping, error: supabaseError } = await supabaseAdmin
-    .from('nango_connections')
-    .select('id')
-    .eq('org_id', orgId)
-    .eq('connection_id', connectionId)
-    .eq('provider_config_key', providerConfigKey)
-    .maybeSingle();
-
-  if (supabaseError) {
-    console.error('Supabase verification error in getConnectionMetadata:', supabaseError);
-  }
-
-  if (!mapping) {
-    const notFound = new Error('Connection not found for this organization');
-    (notFound as any).status = 404;
-    (notFound as any).reason = 'NOT_FOUND';
-    throw notFound;
-  }
-
-  try {
-    return await nango.getConnection(providerConfigKey, connectionId);
-  } catch (error: unknown) {
-    return handleNangoError(error, 'getConnectionMetadata');
-  }
+  return getConnection(connectionId, providerConfigKey, orgId);
 }
 
 /**
@@ -185,25 +185,44 @@ export async function listConnections(orgId: string) {
   // 1. Fetch authorized connection mappings from Supabase (Source of Truth)
   const { data: mappings, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
-    .select('connection_id, provider_config_key')
+    .select('connection_id, provider_config_key, sync_status, last_synced_at')
     .eq('org_id', orgId)
 
   if (supabaseError) {
-    console.error('Supabase error in listConnections:', supabaseError)
+    throw new Error(`Supabase error in listConnections: ${supabaseError.message}`);
   }
 
   try {
     // 2. No Nango fallback -- if no Supabase row exists, connection doesn't exist
     if (!mappings || mappings.length === 0) {
-      return [];
+      const { connections } = await nango.listConnections(undefined, undefined, {
+        endUserOrganizationId: orgId
+      } as any);
+
+      return connections.filter((conn: any) => conn.metadata?.org_id === orgId).map(c => ({
+        ...c,
+        sync_status: 'connected',
+        last_synced_at: null
+      }));
     }
 
     // 3. Fetch full connection objects from Nango only for the IDs we found in Supabase
-    const connectionPromises = mappings.map((m: any) => 
-      nango.getConnection(m.provider_config_key, m.connection_id).catch(() => null)
-    );
+    const connectionPromises = (mappings || []).map(async (m: any) => {
+      const config = getProvider(m.provider_config_key as any)
+      const nangoKey = config?.nangoIntegrationId ?? m.provider_config_key
+      const conn = await nango.getConnection(nangoKey, m.connection_id).catch(() => null)
+      if (!conn) return null;
+      
+      return {
+        ...conn,
+        sync_status: m.sync_status || 'connected',
+        last_synced_at: m.last_synced_at,
+        provider_config_key: m.provider_config_key
+      };
+    });
 
-    const connections = (await Promise.all(connectionPromises)).filter(c => c !== null);
+
+    const connections = (await Promise.all(connectionPromises)).filter((c: any) => c !== null);
 
     return connections;
   } catch (error: unknown) {
@@ -213,7 +232,6 @@ export async function listConnections(orgId: string) {
 
 /**
  * Persists a Nango connection mapping to Supabase.
- * Call this after a successful authentication flow.
  */
 export async function saveConnectionMapping(
   orgId: string,
@@ -261,9 +279,8 @@ export async function deleteConnection(
       .eq('provider_config_key', providerConfigKey)
       .maybeSingle()
 
-    if (supabaseError) console.error('Supabase cleanup verification error:', supabaseError);
+    if (supabaseError) throw new Error(`Supabase verification failed: ${supabaseError.message}`);
 
-    // 2. Fail closed — no Supabase record means this org does not own the connection
     if (!mapping) {
       const notFound = new Error('Connection not found for this organization');
       (notFound as any).status = 404;
@@ -271,10 +288,12 @@ export async function deleteConnection(
       throw notFound;
     }
 
-    // 3. Delete from Nango service
-    await nango.deleteConnection(providerConfigKey, connectionId);
+    // 2. Delete from Nango service
+    const config = getProvider(providerConfigKey as any)
+    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    await nango.deleteConnection(nangoKey, connectionId);
 
-    // 4. Clean up Supabase mapping
+    // 3. Clean up Supabase mapping
     const { error: deleteError } = await supabaseAdmin
       .from('nango_connections')
       .delete()
@@ -283,6 +302,9 @@ export async function deleteConnection(
       .eq('provider_config_key', providerConfigKey);
 
     if (deleteError) throw deleteError;
+
+    // 4. TODO: Delete document_embeddings for this integration (ATH-32 Step 4)
+    // This will be implemented when the embeddings table structure is finalized.
 
     return { success: true };
   } catch (error: unknown) {

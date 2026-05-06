@@ -1,92 +1,79 @@
-import { StateGraph, START, END, CompiledStateGraph } from "@langchain/langgraph";
-import { AtheneState, AtheneStateType } from "./state";
+import { StateGraph, START, END } from "@langchain/langgraph";
+import { AtheneState } from "./state";
 import { supervisor } from "./nodes/supervisor";
 import { retrievalAgent } from "./nodes/retrieval-agent";
 import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
 import { emailAgentNode } from "./nodes/email-agent";
 import { calendarAgentNode } from "./nodes/calendar-agent";
-import { actionExecutorNode } from "./nodes/action-executor";
 import { synthesisAgentNode } from "./nodes/synthesis-agent";
-import { approvalNode } from "./nodes/async-tool-node";
+import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
-// Cached compiled graph — lazily initialized on first call to getAgentGraph()
-let compiledGraph: CompiledStateGraph<AtheneStateType, any, any> | null = null;
+// Shared compilation promise to prevent race conditions during cold starts
+let _compilingPromise: Promise<any> | null = null;
 
-export async function getAgentGraph(): Promise<CompiledStateGraph<AtheneStateType, any, any>> {
-  if (compiledGraph) return compiledGraph;
+export async function getAgentGraph(): Promise<any> {
+  if (_compilingPromise) return _compilingPromise;
 
-  const checkpointer = await getCheckpointer();
+  _compilingPromise = (async () => {
+    try {
+      const checkpointer = await getCheckpointer();
 
-  const workflow = new StateGraph(AtheneState)
-    // Router
-    .addNode("supervisor", supervisor)
-    // Worker nodes
-    .addNode("retrieval", retrievalAgent)
-    .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
-<<<<<<< HEAD
-    // Write-action executor (requires prior approval)
-    .addNode("action_executor", actionExecutorNode)
-    .addNode("synthesis", synthesisAgentNode)
-    .addNode("approval_gate", approvalNode);
-=======
-    // Email and Calendar agents (propose actions)
-    .addNode("email_agent", emailAgentNode)
-    .addNode("calendar_agent", calendarAgentNode)
-    // Write-action executors (paused by interrupt_before for HITL approval)
-    .addNode("email_send", actionExecutorNode)
-    .addNode("calendar_create", actionExecutorNode);
->>>>>>> e4468dfbf5c9fbe7df5c7f6aacdac14f08dd7d09
+      const workflow = new StateGraph(AtheneState)
+        // Router
+        .addNode("supervisor", supervisor)
+        // Worker nodes
+        .addNode("retrieval", retrievalAgent)
+        .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
+        .addNode("email_agent", emailAgentNode)
+        .addNode("calendar_agent", calendarAgentNode)
+        .addNode("synthesis", synthesisAgentNode)
+        // Write-action executor (paused by interrupt_before for HITL approval)
+        .addNode("action_executor", actionExecutorNode);
 
-  // Edges
-  workflow.addEdge(START, "supervisor");
+      // Edges
+      workflow.addEdge(START, "supervisor");
 
-  // Workers always return to the supervisor after completion
-  workflow.addEdge("retrieval", "supervisor");
-  workflow.addEdge("cross_dept_retrieval", "supervisor");
-  
-  // Transition from agent to executor node (paused by interrupt_before)
-  workflow.addEdge("email_agent", "email_send");
-  workflow.addEdge("calendar_agent", "calendar_create");
+      // Workers always return to the supervisor after completion
+      workflow.addEdge("retrieval", "supervisor");
+      workflow.addEdge("cross_dept_retrieval", "supervisor");
+      workflow.addEdge("email_agent", "supervisor");
+      workflow.addEdge("calendar_agent", "supervisor");
+      workflow.addEdge("action_executor", "supervisor");
 
-  // Executors return to supervisor
-  workflow.addEdge("email_send", "supervisor");
-  workflow.addEdge("calendar_create", "supervisor");
+      // Synthesis is the terminal node for answers
+      workflow.addEdge("synthesis", END);
 
-  // The supervisor routes to a worker, action executor, or FINISH
-  // FINISH now maps to "synthesis" instead of END
-  workflow.addConditionalEdges(
-    "supervisor",
-    (state) => state.next || "FINISH",
-    {
-      retrieval: "retrieval",
-      cross_dept_retrieval: "cross_dept_retrieval",
-<<<<<<< HEAD
-      action_executor: "action_executor",
-      FINISH: "synthesis",
+      // The supervisor routes to a worker, synthesis, or END
+      workflow.addConditionalEdges(
+        "supervisor",
+        (state) => state.next || "END",
+        {
+          retrieval: "retrieval",
+          cross_dept_retrieval: "cross_dept_retrieval",
+          email_agent: "email_agent",
+          calendar_agent: "calendar_agent",
+          synthesis: "synthesis",
+          action_executor: "action_executor",
+          END: END,
+        }
+      );
+
+      // ATH-43: The interrupt_before: ["action_executor"] halts execution
+      // whenever the graph is about to run the action_executor node.
+      // This gives the user a chance to review the pending_write_action
+      // (set by email_agent or calendar_agent) before it actually executes.
+      return workflow.compile({
+        checkpointer,
+        interruptBefore: ["action_executor"],
+      });
+    } catch (err) {
+      _compilingPromise = null; // Allow retry on failure
+      throw err;
     }
-  );
+  })();
 
-  // After synthesis, go to the approval gate
-  workflow.addEdge("synthesis", "approval_gate");
-
-  compiledGraph = workflow.compile({
-    checkpointer,
-    interruptBefore: ['approval_gate'],
-  });
-  
-=======
-      email_agent: "email_agent",
-      calendar_agent: "calendar_agent",
-      FINISH: END,
-    }
-  );
-
-  compiledGraph = workflow.compile({ 
-    checkpointer,
-    interruptBefore: ["email_send", "calendar_create"],
-  });
->>>>>>> e4468dfbf5c9fbe7df5c7f6aacdac14f08dd7d09
-  return compiledGraph;
+  return _compilingPromise;
 }
+
 

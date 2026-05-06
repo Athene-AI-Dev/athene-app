@@ -34,8 +34,8 @@ export async function POST(req: NextRequest) {
   if (state.userId !== userId) {
     return new NextResponse('Forbidden', { status: 403 })
   }
-  if (state.run_status !== 'paused') {
-    return NextResponse.json({ error: 'Thread is not paused' }, { status: 409 })
+  if (state.run_status !== 'paused' && state.run_status !== 'awaiting_approval') {
+    return NextResponse.json({ error: 'Thread is not in a resumable state (paused or awaiting_approval)' }, { status: 409 })
   }
 
   // If user provided additional input, append it to state before resuming

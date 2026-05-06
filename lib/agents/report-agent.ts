@@ -1,13 +1,12 @@
 import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import { ChatOpenAI } from "@langchain/openai";
-import type { MessageContentComplex } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, type MessageContent } from "@langchain/core/messages";
+import { getModel } from "../langgraph/llm-factory";
 
 // Lightweight model for the planning step — only produces a JSON array of titles.
-const plannerModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
+const plannerModel = getModel("simple", 0);
 // Slightly higher temperature for prose generation
-const synthesisModel = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2 });
+const synthesisModel = getModel("simple", 0.2);
 
 // Inlined prompt template — avoids fs.readFileSync which crashes in Edge Runtime.
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
@@ -31,7 +30,7 @@ Example Output:
  * infamous "[object Object]" string, so we normalise here instead.
  */
 function extractText(
-  content: string | MessageContentComplex[],
+  content: MessageContent,
   fallback = "Generate a report"
 ): string {
   if (typeof content === "string") return content || fallback;
@@ -65,7 +64,7 @@ export async function reportAgent(
     messages && messages.length > 0 ? messages[messages.length - 1] : null;
   const query: string = lastMessage
     ? extractText(
-        lastMessage.content as string | MessageContentComplex[]
+        lastMessage.content as MessageContent
       )
     : "Generate a report";
 
@@ -79,7 +78,7 @@ export async function reportAgent(
   let sections: string[] = [];
   try {
     let rawContent = extractText(
-      planResponse.content as string | MessageContentComplex[]
+      planResponse.content as MessageContent
     );
     // Strip markdown code fences if the model wrapped the JSON
     if (rawContent.startsWith("```json")) {
@@ -152,7 +151,7 @@ INSTRUCTIONS:
       ]);
 
       const sectionContent = extractText(
-        synthesizeResponse.content as string | MessageContentComplex[]
+        synthesizeResponse.content as MessageContent
       );
       return `## ${section}\n\n${sectionContent}`;
     })

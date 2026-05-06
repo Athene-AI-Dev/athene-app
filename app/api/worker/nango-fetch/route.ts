@@ -21,7 +21,6 @@ import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { releaseSlot, qstash } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { logger } from '@/lib/logger'
-import { redis } from '@/lib/redis/client'
 import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
 import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetcher'
@@ -63,19 +62,53 @@ type FetcherFn = (
  * Each fetcher returns FetchedChunk[] for indexing.
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
-  slack: [
-    async (connectionId, orgId) => fetchSlackMessages(connectionId, orgId),
-  ],
+  // --- Google Workspace (Granular) ---
+  google_drive: [(cid, oid) => fetchDriveChunks(cid, oid)],
+  gmail: [(cid, oid, opts) => searchEmailChunks(cid, oid, '*', opts?.limit ?? 10)],
+  google_calendar: [(cid, oid) => {
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + 30);
+    return fetchCalendarChunks(cid, oid, now, future);
+  }],
 
+  // --- Microsoft 365 (Granular) ---
+  sharepoint: [microsoftFetcher],
+  onedrive: [microsoftFetcher],
+  outlook: [microsoftFetcher],
+  ms_calendar: [microsoftFetcher],
+
+  // --- Productivity & CRM ---
+  slack: [fetchSlackMessages],
+  notion: [fetchAllDatabases, fetchAllPages],
+  hubspot: [
+    fetchHubSpotCompanies,
+    fetchHubSpotContacts,
+    fetchHubSpotDeals,
+    fetchHubSpotNotes,
+  ],
+  salesforce: [
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'salesforce', orgId)
+      const instanceUrl = metadata.instance_url
+      if (!instanceUrl) {
+        throw new Error(`Salesforce instance_url not found for connection ${connectionId}`)
+      }
+      const [accounts, cases, opportunities] = await Promise.all([
+        fetchSalesforceAccounts(connectionId, instanceUrl, orgId),
+        fetchSalesforceCases(connectionId, instanceUrl, orgId),
+        fetchSalesforceOpportunities(connectionId, instanceUrl, orgId),
+      ])
+      return [...accounts, ...cases, ...opportunities]
+    },
+  ],
   zendesk: [
     async (connectionId, orgId) => {
       const metadata = await getProviderMetadata(connectionId, 'zendesk', orgId)
       const subdomain = metadata.subdomain
-
       if (!subdomain) {
         throw new Error(`Zendesk subdomain not found for connection ${connectionId}`)
       }
-
       const [tickets, articles] = await Promise.all([
         fetchZendeskTickets(connectionId, orgId, subdomain),
         fetchZendeskArticles(connectionId, orgId, subdomain),
@@ -84,11 +117,48 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
     },
   ],
 
-  'microsoft-graph': [microsoftFetcher],
-
+  // --- Dev Tools ---
+  github: [
+    async (connectionId, orgId) => {
+      const metadata = await getProviderMetadata(connectionId, 'github', orgId)
+      const { owner, repo } = metadata
+      if (!owner || !repo) {
+        throw new Error(`GitHub owner or repo not found for connection ${connectionId}`)
+      }
+      const [issues, prs, wiki] = await Promise.all([
+        githubIssuesFetcher(connectionId, orgId, owner, repo),
+        githubPrsFetcher(connectionId, orgId, owner, repo),
+        githubWikiFetcher(connectionId, orgId, owner, repo),
+      ])
+      return [...issues, ...prs, ...wiki]
+    },
+  ],
+  linear: [
+    async (connectionId, orgId) => {
+      // Linear fetchers might need specific metadata or just use the connection
+      // Assuming they handle their own logic or need a workspace ID
+      return [...await linearIssuesFetcher(connectionId, orgId), ...await linearCyclesFetcher(connectionId, orgId), ...await linearProjectsFetcher(connectionId, orgId)]
+    }
+  ],
   jira: [fetchJiraIssues],
-
   confluence: [fetchConfluencePages],
+
+  // --- Data ---
+  snowflake: [fetchSnowflakeSamples],
+
+  // --- Legacy Umbrella Keys (Backwards Compatibility) ---
+  google: [
+    (cid, oid) => fetchDriveChunks(cid, oid),
+    (cid, oid, opts) => searchEmailChunks(cid, oid, '*', opts?.limit ?? 10),
+    (cid, oid) => {
+      const now = new Date();
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+      return fetchCalendarChunks(cid, oid, now, future);
+    }
+  ],
+  microsoft: [microsoftFetcher],
+  'microsoft-graph': [microsoftFetcher],
 }
 
 // ---- Request body type ------------------------------------------
@@ -109,16 +179,6 @@ export async function POST(request: Request): Promise<Response> {
   const isValid = await verifyQStashSignature(request)
   if (!isValid) {
     return new Response('Invalid QStash signature', { status: 401 })
-  }
-
-  // Idempotency check using QStash job ID
-  const jobId = request.headers.get('upstash-message-id')
-  if (jobId) {
-    const isNew = await redis.set(`processed_job:${jobId}`, '1', { nx: true, ex: 86400 * 7 })
-    if (!isNew) {
-      console.log(`[nango-fetch] Skipping duplicate job=${jobId}`)
-      return NextResponse.json({ status: 'already_processed', jobId })
-    }
   }
 
   let body: NangoFetchJobBody
@@ -166,30 +226,24 @@ export async function POST(request: Request): Promise<Response> {
 
     // 6. Enqueue graph-build job if any chunks were indexed (ATH-44)
     //    Fire-and-forget: graph build runs asynchronously after embedding.
-    if (result.indexed > 0) {
-      const docIds = [...new Set(allChunks.map((c) => c.chunk_id))]
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL
-      
-      if (!appUrl) {
-        console.error('[nango-fetch] NEXT_PUBLIC_APP_URL not set. Skipping graph-build enqueue.')
-      } else {
-        const graphBuildUrl = `${appUrl}/api/worker/graph-build`
-        try {
-          await qstash.publishJSON({
-            url: graphBuildUrl,
-            body: {
-              org_id: orgId,
-              document_ids: docIds,
-              job_type: 'incremental',
-            },
-          })
-          console.log(
-            `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${docIds.length}`,
-          )
-        } catch (gErr) {
-          // Non-fatal: graph build will be triggered on next sync if this fails
-          console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
-        }
+    if (result.indexed > 0 && result.documentIds.length > 0) {
+      const graphBuildUrl =
+        `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/worker/graph-build`
+      try {
+        await qstash.publishJSON({
+          url: graphBuildUrl,
+          body: {
+            org_id: orgId,
+            document_ids: result.documentIds,
+            job_type: 'incremental',
+          },
+        })
+        console.log(
+          `[nango-fetch] Enqueued graph-build for org=${orgId}, docs=${result.documentIds.length}`,
+        )
+      } catch (gErr) {
+        // Non-fatal: graph build will be triggered on next sync if this fails
+        console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
       }
     }
 

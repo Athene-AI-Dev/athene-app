@@ -1,19 +1,22 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { listConnections } from "@/lib/nango/client";
+import { mapRole } from "@/lib/auth/clerk";
 
 /**
  * 🔒 SECURE CONNECTIONS ENDPOINT (Final Clean Version)
- * Strictly enforces Clerk Organization membership to prevent any data exposure.
+ * Strictly enforces Clerk Organization membership and Admin role.
  */
 export async function GET() {
-  // ⚡ Await auth() as required by Next.js 15+ / Turbopack
-  const { userId, orgId } = await auth();
+  const { userId, orgId, orgRole } = await auth();
 
-  // 🛡️ AUDIT CHECK: Enforce strict multi-tenant isolation
-  // Users MUST belong to an organization to access integrations.
   if (!userId || !orgId) {
-    return new NextResponse("Unauthorized: Organization membership required", { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const role = mapRole(orgRole ?? undefined);
+  if (role !== "admin") {
+    return new NextResponse("Forbidden", { status: 403 });
   }
 
   try {

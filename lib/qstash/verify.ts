@@ -1,4 +1,5 @@
 import { Receiver } from '@upstash/qstash';
+import { redis } from '@/lib/redis/client';
 
 const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
 const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
@@ -37,5 +38,34 @@ export async function verifyQStashSignature(req: Request): Promise<boolean> {
   } catch (err) {
     console.error('[QStash] Signature verification failed:', err);
     return false;
+  }
+}
+
+/**
+ * Checks if a QStash message has already been processed using Redis.
+ * Returns true if this is the first time we see this message, false otherwise.
+ * 
+ * TTL: 24 hours (prevents infinite growth while covering standard retry windows)
+ */
+export async function checkIdempotency(req: Request): Promise<boolean> {
+  try {
+    const msgId = req.headers.get('upstash-message-id');
+    if (!msgId) {
+      // If there's no message ID, we can't reliably dedup. 
+      // In production workers, this header should always be present from QStash.
+      return true;
+    }
+
+    const key = `qstash_job:${msgId}`;
+    // NX: Set only if the key does not exist.
+    // EX: Set expiration to 24 hours.
+    const result = await redis.set(key, '1', { nx: true, ex: 86400 });
+
+    return result === 'OK';
+  } catch (err) {
+    console.error('[QStash] Idempotency check failed (Redis error):', err);
+    // Fail-open: if Redis is down, we allow the request but risk double-processing
+    // rather than blocking all background work.
+    return true;
   }
 }

@@ -22,6 +22,7 @@ import {
 import {
   listUnreadEmails,
   fetchEmailBody,
+  fetchGmailAttachment,
   sendEmail,
   gmailMetadataToChunk,
 } from '@/lib/integrations/google/gmail-fetcher'
@@ -70,19 +71,23 @@ describe('Google Drive Fetcher', () => {
   })
 
   it('fetchDriveFileContent routes Google Docs to export endpoint', async () => {
-    mockGoogleFetch.mockResolvedValue('Exported plain text content')
+    mockGoogleFetchRaw.mockResolvedValue({
+      text: () => Promise.resolve('Exported plain text content'),
+    })
     const result = await fetchDriveFileContent(CONN, ORG, 'doc-123', 'application/vnd.google-apps.document')
 
-    const [, , url] = mockGoogleFetch.mock.calls[0]
+    const [, , url] = mockGoogleFetchRaw.mock.calls[0]
     expect(url).toContain('/export?mimeType=text/plain')
     expect(result).toBe('Exported plain text content')
   })
 
   it('fetchDriveFileContent routes Google Sheets to CSV export', async () => {
-    mockGoogleFetch.mockResolvedValue('col1,col2\nval1,val2')
+    mockGoogleFetchRaw.mockResolvedValue({
+      text: () => Promise.resolve('col1,col2\nval1,val2'),
+    })
     await fetchDriveFileContent(CONN, ORG, 'sheet-123', 'application/vnd.google-apps.spreadsheet')
 
-    const [, , url] = mockGoogleFetch.mock.calls[0]
+    const [, , url] = mockGoogleFetchRaw.mock.calls[0]
     expect(url).toContain('/export?mimeType=text/csv')
   })
 
@@ -115,6 +120,18 @@ describe('Google Drive Fetcher', () => {
     expect(result.changes).toHaveLength(1)
     expect(result.changes[0].fileId).toBe('f1')
     expect(result.newPageToken).toBe('new-token-456')
+  })
+
+  it('fetchDriveFileContent uses googleFetchRaw and .text() for exports', async () => {
+    mockGoogleFetchRaw.mockResolvedValue({
+      text: () => Promise.resolve('Raw exported text'),
+    })
+    const result = await fetchDriveFileContent(CONN, ORG, 'doc-123', 'application/vnd.google-apps.document')
+
+    expect(mockGoogleFetchRaw).toHaveBeenCalledOnce()
+    const [, , url] = mockGoogleFetchRaw.mock.calls[0]
+    expect(url).toContain('/export?mimeType=text/plain')
+    expect(result).toBe('Raw exported text')
   })
 })
 
@@ -180,6 +197,19 @@ describe('Gmail Fetcher', () => {
 
     const body = await fetchEmailBody(CONN, ORG, 'msg-2')
     expect(body).toBe('Plain text version')
+  })
+
+  it('fetchGmailAttachment uses googleFetchRaw and decodes base64 data', async () => {
+    const attachmentData = Buffer.from('Binary content').toString('base64')
+    mockGoogleFetchRaw.mockResolvedValue({
+      json: () => Promise.resolve({ data: attachmentData, size: 14 }),
+    })
+
+    const result = await fetchGmailAttachment(CONN, ORG, 'msg-123', 'attach-456')
+    expect(result.toString()).toBe('Binary content')
+    
+    const [, , url] = mockGoogleFetchRaw.mock.calls[0]
+    expect(url).toContain('/attachments/attach-456')
   })
 
   it('sendEmail posts a raw base64 message', async () => {

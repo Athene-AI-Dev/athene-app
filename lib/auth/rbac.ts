@@ -8,11 +8,15 @@
 import { redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { mapRole } from "./clerk";
+import { logger } from "@/lib/logger";
+import { cache } from "react";
+
 
 export type UserRole = "admin" | "super_user" | "member" | null;
 
 export interface UserAccess {
   internal_user_id: string | null;
+  internal_org_id: string | null;
   role: UserRole;
   dept_id: string | null;
   accessible_dept_ids: string[] | null;
@@ -31,11 +35,13 @@ function makeCacheKey(userId: string, orgId: string) {
 
 /**
  * Resolves user access levels.
+ * @param clerkRole Optional pre-resolved role from Clerk (e.g. from auth() in middleware)
  */
-export async function resolveUserAccess(
+export const resolveUserAccess = cache(async (
   userId: string,
-  orgId: string
-): Promise<UserAccess> {
+  orgId: string,
+  clerkRole?: string | null
+): Promise<UserAccess> => {
   const cacheKey = makeCacheKey(userId, orgId);
 
   try {
@@ -87,6 +93,7 @@ export async function resolveUserAccess(
 
         result = {
           internal_user_id: data.id,
+          internal_org_id: orgData.id,
           role: data.role,
           dept_id: data.department_id,
           accessible_dept_ids: accessible_dept_ids.length ? accessible_dept_ids : null,
@@ -98,29 +105,29 @@ export async function resolveUserAccess(
     logger.error({ userId, orgId, err: (dbError as Error).message }, "[rbac] Supabase resolution fatal error");
   }
 
-  // 2. Fallback to Clerk role
+
+  // 2. Fallback to Clerk role ONLY if a user record was found but lacked a role
+  // ATH-23: If no record found at all, we return null to enforce deny-by-default.
   if (!result || !result.role) {
-    const mappedRole = mapRole(clerkRole || undefined);
-    
-    result = {
-      internal_user_id: result?.internal_user_id ?? null,
-      role: mappedRole,
-      dept_id: result?.dept_id ?? null,
-      accessible_dept_ids: result?.accessible_dept_ids ?? null,
-      bi_grant_id: result?.bi_grant_id ?? null,
-    };
+    if (result?.internal_user_id) {
+      // User exists in org but role is missing? Map from Clerk.
+      const mappedRole = mapRole(clerkRole || undefined);
+      result = { ...result!, role: mappedRole };
+    } else {
+      // No internal user record -> no access.
+      logger.warn({ userId, orgId }, "[RBAC] No org_members row");
+      result = {
+        internal_user_id: null,
+        internal_org_id: null,
+        role: null,
+        dept_id: null,
+        accessible_dept_ids: null,
+        bi_grant_id: null,
+      };
+    }
+
   }
 
-  // 3. Defaults
-  if (!result) {
-    result = {
-      internal_user_id: null,
-      role: null,
-      dept_id: null,
-      accessible_dept_ids: null,
-      bi_grant_id: null,
-    };
-  }
 
   // 4. Cache
   try {
@@ -131,7 +138,7 @@ export async function resolveUserAccess(
 
   logger.info({ userId, orgId, role: result.role }, "[rbac] Resolution complete");
   return result;
-}
+});
 
 /**
  * Manually invalidates the RBAC cache for a specific user/org pair.
@@ -146,4 +153,25 @@ export async function invalidateRBACCache(userId: string, orgId: string): Promis
   }
 }
 
+/**
+ * Asserts that a user has admin or super_user role within a specific organization.
+ * Throws an error or returns a boolean depending on implementation.
+ * For API routes, we'll return the role or null.
+ */
+export async function assertAdminRole(userId: string, orgId: string): Promise<UserRole | null> {
+  const { data: member, error } = await supabaseAdmin
+    .from("org_members")
+    .select("role")
+    .eq("id", userId)
+    .eq("org_id", orgId) // Critical scoping fix (ATH-47 #1, #3)
+    .single();
 
+  if (error || !member) return null;
+  
+  const role = member.role as UserRole;
+  if (role === "admin" || role === "super_user") {
+    return role;
+  }
+  
+  return null;
+}

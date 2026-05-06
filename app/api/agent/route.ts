@@ -4,13 +4,8 @@ import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
 import { rateLimit } from "@/lib/redis/client";
-import { z } from "zod";
-
-// Validate incoming body: message 1–4000 chars, optional UUID threadId
-const bodySchema = z.object({
-  message: z.string().min(1).max(4000),
-  threadId: z.string().uuid().optional(),
-});
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,55 +15,75 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    // --- Rate limit: 20 requests per user per 60 seconds ---
-    const { allowed } = await rateLimit(`agent:${userId}`, 20, 60);
+    const { message, threadId, task_type, is_cross_dept_query } = await req.json();
+
+    // 1. Validate Message
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return NextResponse.json({ error: "A non-empty message string is required." }, { status: 400 });
+    }
+    if (message.length > 10000) {
+      return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
+    }
+
+    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
+    if (!threadId) {
+      return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
+    }
+
+    const { allowed } = await rateLimit(`agent:${userId}`, 10, 60);
     if (!allowed) {
-      return NextResponse.json(
-        { error: "Too many requests. Please slow down." },
-        { status: 429 }
-      );
+      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
     }
 
-    // --- Input validation ---
-    const parsed = bodySchema.safeParse(await req.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.flatten() },
-        { status: 400 }
-      );
+    const effectiveThreadId = threadId;
+
+    // Resolve internal org and user for thread persistence
+    const { data: orgRow } = await supabaseAdmin
+      .from("organizations")
+      .select("id")
+      .eq("clerk_org_id", orgId)
+      .single();
+
+    if (!orgRow) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const { message, threadId } = parsed.data;
-    const effectiveThreadId = threadId || `user-${userId}`;
+    const { data: memberRow } = await supabaseAdmin
+      .from("org_members")
+      .select("id")
+      .eq("clerk_user_id", userId)
+      .eq("org_id", orgRow.id)
+      .single();
+
+    if (!memberRow) {
+      return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+    }
+
+    // 3. Ensure Thread Persistence (Required for HITL foreign keys)
+    const { error: threadError } = await supabaseAdmin
+      .from("threads")
+      .upsert({
+        id: effectiveThreadId,
+        org_id: orgRow.id,
+        user_id: memberRow.id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" });
+
+    if (threadError) {
+      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
+      // If it's not a valid UUID, this will fail here instead of crashing the graph later
+      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
+    }
 
     const graph = await getAgentGraph();
-
-    // --- Thread ownership verification (ATH-43 extension) ---
-    // Ensure the requesting user owns the thread they are trying to use.
-    const currentState = await graph.getState({
-      configurable: { thread_id: effectiveThreadId },
-    });
-
-    if (currentState?.values) {
-      // If the thread already has a userId stamped, verify it matches
-      const threadOwner = currentState.values.userId as string | undefined;
-      if (threadOwner && threadOwner !== userId) {
-        return NextResponse.json(
-          { error: "Thread not found." },
-          { status: 404 }
-        );
-      }
-
-      // Block concurrent messages if awaiting HITL approval
-      if (currentState.values.awaiting_approval) {
-        return NextResponse.json(
-          {
-            error:
-              "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages.",
-          },
-          { status: 409 }
-        );
-      }
+    
+    // ATH-43: Prevent concurrent messages if the thread is awaiting approval
+    const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
+    if (currentState?.values?.awaiting_approval) {
+      return NextResponse.json(
+        { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
+        { status: 409 }
+      );
     }
 
     const role = mapRole(orgRole ?? undefined) ?? "member";
@@ -78,6 +93,12 @@ export async function POST(req: NextRequest) {
       orgId,
       userId,
       role,
+      user: {
+        id: userId,
+        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
+      },
+      task_type: task_type || "general",
+      is_cross_dept_query: !!is_cross_dept_query,
     };
 
     const encoder = new TextEncoder();
@@ -121,8 +142,8 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    // Log the real error server-side but never leak internals to the client
-    console.error("[agent] API error:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("[agent] API error:", msg);
+    return new NextResponse(msg, { status: 500 });
   }
 }

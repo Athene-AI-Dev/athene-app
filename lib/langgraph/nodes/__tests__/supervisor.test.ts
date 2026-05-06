@@ -4,9 +4,11 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockInvoke = vi.hoisted(() => vi.fn());
 
 vi.mock("@langchain/openai", () => ({
-  ChatOpenAI: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockReturnValue({ invoke: mockInvoke }),
-  })),
+  ChatOpenAI: vi.fn().mockImplementation(function () {
+    return {
+      withStructuredOutput: vi.fn().mockReturnValue({ invoke: mockInvoke }),
+    };
+  }),
 }));
 
 import { supervisor } from "../supervisor";
@@ -16,14 +18,12 @@ import type { AtheneState } from "../../state";
 
 function makeState(overrides: Partial<AtheneState> = {}): AtheneState {
   return {
-    thread_id: "thread-1",
-    org_id: "org-1",
-    user_id: "user-1",
-    user_role: "member",
-    user_dept_id: null,
-    accessible_dept_ids: [],
-    bi_grant_id: null,
+    orgId: "org-1",
+    userId: "user-1",
+    role: "member",
+    next: "",
     messages: [{ role: "user", content: "test" }] as any,
+    retrievedDocs: [],
     active_agent: null,
     task_type: null,
     complexity: "simple",
@@ -36,6 +36,8 @@ function makeState(overrides: Partial<AtheneState> = {}): AtheneState {
     pending_write_action: null,
     final_answer: null,
     cited_sources: [],
+    action_result: null,
+    action_error: null,
     ...overrides,
   };
 }
@@ -75,7 +77,7 @@ describe("supervisor", () => {
     });
 
     const state = makeState({
-      user_role: "super_user",
+      role: "super_user",
       messages: [{ role: "user", content: "Show revenue trends across all teams" }] as any,
     });
     const result = await supervisor(state);
@@ -95,7 +97,7 @@ describe("supervisor", () => {
     });
 
     const state = makeState({
-      user_role: "member",
+      role: "member",
       messages: [{ role: "user", content: "Show revenue trends across all teams" }] as any,
     });
     const result = await supervisor(state);

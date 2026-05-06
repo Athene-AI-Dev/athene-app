@@ -23,7 +23,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server'
-import { verifyQStashSignature } from '@/lib/qstash/verify'
+import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
 import { buildGraphForDocuments, type BuildMode } from '@/lib/knowledge-graph/builder'
 import { qstash } from '@/lib/qstash/client'
 import { logger } from '@/lib/logger'
@@ -49,7 +49,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     )
   }
 
-  // 2. Parse payload
+  // 2. Check idempotency
+  const isFirstTime = await checkIdempotency(request)
+  if (!isFirstTime) {
+    console.log('[graph-build] Skipping duplicate job (idempotency)')
+    return NextResponse.json({ status: 'ok', skipped: 'duplicate' })
+  }
+
+  // 3. Parse payload
   let payload: GraphBuildPayload
   try {
     payload = (await request.json()) as GraphBuildPayload
@@ -62,7 +69,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { org_id, document_ids = [], job_type = 'incremental' } = payload
 
-  // 3. Validate required fields
+  // 4. Validate required fields
   if (!org_id) {
     return NextResponse.json(
       { error: 'Missing required field: org_id' },
@@ -84,16 +91,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     )
   }
 
-  // 4. Build the graph
+  // 5. Build the graph
   try {
-    console.log(
-      `[graph-build] Starting ${job_type} build for org=${org_id}, docs=${document_ids.length}`,
+    logger.info(
+      { org_id, job_type, docs: document_ids.length },
+      "[graph-build] Starting build"
     )
 
     const result = await buildGraphForDocuments(org_id, document_ids, job_type)
 
     logger.info(
-      { orgId, processed: result.processedDocs, skipped: result.skippedDocs, nodes: result.totalNodes, edges: result.totalEdges, errors: result.errors.length },
+      { org_id, processed: result.processedDocs, skipped: result.skippedDocs, nodes: result.totalNodes, edges: result.totalEdges, errors: result.errors.length },
       "[graph-build] Batch completed"
     )
 
@@ -104,18 +112,16 @@ export async function POST(request: Request): Promise<NextResponse> {
         await qstash.publishJSON({
           url: graphBuildUrl,
           body: {
-            org_id: orgId,
+            org_id,
             document_ids: result.remainingDocs,
             job_type: 'incremental',
           },
         })
-        logger.info({ orgId, remaining: result.remainingDocs.length }, "[graph-build] Re-enqueued remaining documents")
+        logger.info({ org_id, remaining: result.remainingDocs.length }, "[graph-build] Re-enqueued remaining documents")
       } catch (enqueueErr: any) {
-        logger.error({ orgId, err: enqueueErr.message }, "[graph-build] Failed to re-enqueue remaining documents")
+        logger.error({ org_id, err: enqueueErr.message }, "[graph-build] Failed to re-enqueue remaining documents")
       }
     }
-
-
     return NextResponse.json({
       status: 'ok',
       org_id,
@@ -128,7 +134,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error(`[graph-build] Fatal error for org=${org_id}:`, message)
+    logger.error({ org_id, err: message }, "[graph-build] Fatal error")
 
     return NextResponse.json(
       { error: `Graph build failed: ${message}` },

@@ -179,7 +179,7 @@ async function processDocument(
     visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
   }))
 
-  const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks)
+  const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks, supabaseAdmin)
 
   // BUG-12 FIX: Only update global counters after full success
   if (nodes.length > 0 || edges.length > 0) {

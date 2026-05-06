@@ -410,19 +410,27 @@ function arraysEqual(a: string[], b: string[]): boolean {
 // (kg_nodes.visibility is `visibility_level` enum — we treat the DB
 // value as authoritative and never widen to "public" accidentally).
 const VISIBILITY_RANK: Record<string, number> = {
-  private: 0,
-  team: 1,
-  public: 2,
+  restricted: 0,
+  confidential: 1,
+  department: 2,
+  bi_accessible: 3,
+  org_wide: 4,
 };
 
 function maxVisibilityRaw(a: string, b: string): string {
-  if (!(a in VISIBILITY_RANK)) {
-    throw new Error(`Unrecognised visibility value: "${a}"`);
+  // Gracefully handle potentially null/undefined values from DB
+  const valA = a || "restricted";
+  const valB = b || "restricted";
+
+  if (!(valA in VISIBILITY_RANK)) {
+    console.warn(`[maxVisibilityRaw] Unrecognised visibility value: "${valA}" - falling back to restricted`);
+    return valB;
   }
-  if (!(b in VISIBILITY_RANK)) {
-    throw new Error(`Unrecognised visibility value: "${b}"`);
+  if (!(valB in VISIBILITY_RANK)) {
+    console.warn(`[maxVisibilityRaw] Unrecognised visibility value: "${valB}" - falling back to restricted`);
+    return valA;
   }
-  return VISIBILITY_RANK[a] >= VISIBILITY_RANK[b] ? a : b;
+  return VISIBILITY_RANK[valA] >= VISIBILITY_RANK[valB] ? valA : valB;
 }
 
 // Export a suitable supabase client type for tests that want it

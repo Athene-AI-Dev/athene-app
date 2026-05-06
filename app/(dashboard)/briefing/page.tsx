@@ -18,10 +18,28 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+interface BriefingContent {
+  calendar?: string;
+  emails?: string;
+  docs?: string;
+  knowledge?: string;
+  summary?: string;
+  [key: string]: string | undefined;
+}
+
+interface Briefing {
+  id: string;
+  org_id: string;
+  user_id: string;
+  content: BriefingContent;
+  summary: string;
+  generated_at: string;
+}
+
 export default function BriefingPage() {
   const [loading, setLoading] = useState(true);
-  const [briefing, setBriefing] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [history, setHistory] = useState<Briefing[]>([]);
   const [enqueuing, setEnqueuing] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -235,6 +253,11 @@ export default function BriefingPage() {
             type="docs" 
             title="Document Updates" 
             content={briefing.content?.docs} 
+          />
+          <BriefingSection 
+            type="knowledge" 
+            title="Knowledge Highlights" 
+            content={briefing.content?.knowledge} 
           />
         </div>
       )}

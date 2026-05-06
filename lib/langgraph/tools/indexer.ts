@@ -83,6 +83,19 @@ export async function indexDocument(
   // Fail-fast if caller passed the body into metadata
   assertNoContentInMetadata(metadata);
 
+  // ---- 0. Acquire Lock (V-04 Fix) ----------------------------
+  // Prevents race conditions during concurrent indexing
+  const { data: locked, error: lockErr } = await supabaseAdmin.rpc("acquire_document_lock", {
+    p_document_id: documentId,
+  });
+
+  if (lockErr || !locked) {
+    console.warn(`[indexer] Could not acquire lock for document ${documentId} - another job may be running.`);
+    // We don't throw here to avoid failing the whole worker, but we skip graph pass
+  }
+
+  try {
+
   // ---- 1. Chunk in RAM --------------------------------------
   const chunks = chunkText(content);
   if (chunks.length === 0) return emptyResult();
@@ -198,7 +211,7 @@ export async function indexDocument(
 
       // BUG-02 FIX: Wrap KG pass in try/catch and ensure awaits
       try {
-        const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks);
+        const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks, supabaseAdmin);
 
         if (nodes.length > 0) {
           const idMap = await upsertNodes(rlsContext, nodes);
@@ -214,6 +227,15 @@ export async function indexDocument(
         // Propagate error to QStash job if this is a critical failure
         throw new Error(`KG pass failed: ${msg}`);
       }
+    }
+  }
+
+  } finally {
+    // ---- 9. Release Lock -------------------------------------
+    if (locked) {
+      await supabaseAdmin.rpc("release_document_lock", {
+        p_document_id: documentId,
+      });
     }
   }
 
@@ -276,13 +298,20 @@ function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K
  * means a lazy caller could smuggle body text into it. Reject any
  * key that looks like content.
  */
-function assertNoContentInMetadata(metadata: Record<string, unknown>): void {
+function assertNoContentInMetadata(metadata: any, path = "metadata"): void {
+  if (!metadata || typeof metadata !== "object") return;
+
   const forbidden = ["content", "body", "text", "raw", "html", "markdown", "plaintext"];
-  for (const key of Object.keys(metadata)) {
+
+  for (const [key, value] of Object.entries(metadata)) {
+    const currentPath = `${path}.${key}`;
     if (forbidden.includes(key.toLowerCase())) {
       throw new Error(
-        `Rule #2 violation: metadata key "${key}" is reserved — document body must not be persisted`
+        `Rule #2 violation: metadata key "${currentPath}" is reserved — document body must not be persisted`
       );
+    }
+    if (value && typeof value === "object") {
+      assertNoContentInMetadata(value, currentPath);
     }
   }
 }

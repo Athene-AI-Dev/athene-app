@@ -159,7 +159,7 @@ export default function IntegrationsPage() {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          connectionId: disconnecting.connectionId,
+          connectionId: disconnecting.connectionId as string,
           provider: disconnecting.provider,
         })
       });

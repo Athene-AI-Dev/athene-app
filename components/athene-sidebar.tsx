@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Bot,
   Database,
+  Network
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/auth/rbac";
@@ -48,6 +49,7 @@ export function AppSidebar({ role, className }: { role: UserRole; className?: st
   const primaryItems = [
     { icon: LayoutDashboard, label: "Command Center", href: "/dashboard" },
     { icon: MessageSquare, label: "Chat", href: "/chat" },
+    { icon: Network, label: "Knowledge Graph", href: "/graph" },
     { icon: BarChart3, label: "Insights", href: "/insights" },
     { icon: Newspaper, label: "Briefing", href: "/briefing" },
   ];

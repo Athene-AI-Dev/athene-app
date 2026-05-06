@@ -73,6 +73,11 @@ export async function GET(request: NextRequest) {
         awaiting_approval: values.awaiting_approval || false,
         pending_write_action: values.pending_write_action || null,
         cited_sources: values.cited_sources || [],
+        messages: (values.messages || []).map((msg: any) => ({
+          type: msg.type,
+          content: msg.content,
+          id: msg.id,
+        })),
       },
     });
   } catch (error: any) {

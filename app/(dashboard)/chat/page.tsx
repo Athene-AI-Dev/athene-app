@@ -1,37 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react";
-import { 
-  Send, 
-  User, 
-  Paperclip, 
-  Mic, 
-  RefreshCcw,
-  ShieldCheck,
-  BrainCircuit,
-  Zap,
-  Layout,
-  Search,
-  Database,
-  Loader2,
-  ExternalLink,
-  ChevronRight,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card } from "@/components/ui/card";
-import { 
-  Tabs, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Plus, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HitlModal } from "@/components/chat/hitl-modal";
 import { toast } from "sonner";
@@ -69,10 +41,8 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }
-  }, [messages]);
+    fetchThreads();
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -152,13 +122,7 @@ export default function ChatPage() {
         }
       }
     } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: err instanceof Error ? `Error: ${err.message}` : "An unexpected error occurred." }
-            : m
-        )
-      );
+      console.error("Failed to fetch threads:", err);
     } finally {
       setIsLoading(false);
     }

@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
-import { reportAgent } from '@/lib/agents/report-agent'
-import { HumanMessage } from '@langchain/core/messages'
+import { generateMorningBriefing } from '@/lib/automations/morning-briefing'
 
 export const maxDuration = 300 // 5 minutes for AI briefing generation
 
@@ -57,39 +56,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   )
 
   try {
-    // 4. Run the report agent to generate briefing content
-    // We construct a synthetic state for the agent
-    const agentState: any = {
-      orgId: org_id,
-      userId: user_id,
-      role: 'admin', // System-triggered briefings run with admin context
-      next: 'synthesis', // Direct to synthesis for the final briefing output
-      messages: [
-        new HumanMessage("Generate my morning briefing for today. Focus on calendar events, urgent emails, and recent document updates.")
-      ],
+    // 4. Run the briefing generation utility
+    const result = await generateMorningBriefing(user_id, org_id, automation_id);
+
+    if (!result.success) {
+      throw new Error('Briefing generation failed');
     }
 
-    const result = await reportAgent(agentState, {})
-
-    // 5. Extract content from agent result
-    // result.messages might contain the final answer
-    const lastMessage = result.messages ? result.messages[result.messages.length - 1] : null
-    const content = lastMessage ? lastMessage.content : 'Failed to generate briefing content.'
-
-    // 6. Store in briefings table
-    const { data: briefing, error: insertErr } = await supabaseAdmin
-      .from('briefings')
-      .insert({
-        org_id,
-        user_id,
-        automation_id: automation_id ?? null,
-        content: { text: content }, // Structured as JSONB
-        summary: typeof content === 'string' ? content.substring(0, 100) + '...' : 'Your morning briefing',
-      })
-      .select('id')
-      .single()
-
-    if (insertErr) throw insertErr
+    return NextResponse.json({
+      status: 'ok',
+    })
 
     // 7. Update automation last_run status
     if (automation_id) {

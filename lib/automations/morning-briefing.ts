@@ -38,6 +38,7 @@ export async function generateMorningBriefing(
         orgId,
         userId,
         role: "member",
+        sections: ["Calendar", "Emails", "Docs"],
         messages: [
           {
             content: MORNING_BRIEFING_PROMPT,
@@ -48,10 +49,10 @@ export async function generateMorningBriefing(
     );
 
     /**
-     * reportAgent returns final_answer.
-     * If for some reason it is missing, we use fallback text.
+     * reportAgent returns final_answer and content (structured).
      */
     const briefingText = result.final_answer || "No briefing generated.";
+    const briefingContent = (result as any).content || { text: briefingText };
 
     /**
      * Store the generated briefing in Supabase.
@@ -62,7 +63,7 @@ export async function generateMorningBriefing(
       user_id: userId,
       org_id: orgId,
       automation_id: automationId ?? null,
-      content: { text: briefingText },
+      content: briefingContent,
       summary: briefingText.slice(0, 160),
       delivery_method: deliveryMethod,
     });

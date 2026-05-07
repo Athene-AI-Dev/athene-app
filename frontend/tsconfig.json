@@ -19,8 +19,12 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/lib/*": ["../backend/lib/*"],
+      "@/types/*": ["../backend/types/*"],
+      "@/supabase/*": ["../backend/supabase/*"]
     }
+
   },
   "include": [
     "next-env.d.ts",

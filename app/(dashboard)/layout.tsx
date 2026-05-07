@@ -5,7 +5,7 @@ import { redirect, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/athene-sidebar";
 import { Header } from "@/components/header";
 import { resolveUserAccess } from "@/lib/auth/rbac";
-import { SidebarProvider } from "@/components/ui/sidebar-base";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
 
 export default function DashboardLayout({
@@ -30,9 +30,9 @@ export default function DashboardLayout({
 
   if (!isLoaded || !mounted || !userAccess) {
     return (
-        <div className="flex h-screen w-full items-center justify-center bg-[#0b0e14]">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#66ADE4] border-t-transparent" />
-        </div>
+      <div className="flex h-screen w-full items-center justify-center bg-[#0b0e14]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#66ADE4] border-t-transparent" />
+      </div>
     );
   }
 

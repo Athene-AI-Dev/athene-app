@@ -53,15 +53,30 @@ test.describe("Scenario A — Admin onboarding", () => {
         .waitFor({ state: "visible", timeout: 2_000 })
         .then(() => true)
         .catch(() => false);
-      if (skipVisible) await skipBtn.click();
+      if (skipVisible) {
+        await skipBtn.click();
+      } else {
+        // FIX: if Skip is not available, enter OTP from env var (set by Clerk
+        // test-mode webhooks). Skip the entire test if the env var is absent
+        // rather than hanging until the 30-second timeout fires.
+        const otp = process.env.E2E_CLERK_OTP;
+        if (!otp) {
+          test.skip(true, "OTP skip button not visible and E2E_CLERK_OTP env var is not set");
+          return;
+        }
+        await otpInput.fill(otp);
+        await page
+          .locator('button[type="submit"], button:has-text("Continue"), button:has-text("Verify")')
+          .first()
+          .click();
+      }
     }
 
-    // FIX: Idempotency — on 2nd+ CI run the test-account already exists in Clerk.
-    // Detect this by checking if we're still on /sign-up after submit
-    // (Clerk shows an error like "email already in use") and fall back to /sign-in.
-    // FIX 2: Wait for navigation to settle first — page.url() checked immediately
-    // after OTP skip may still show a sign-up transition URL.
+    // FIX: Wait for navigation to settle before reading URL — page.url() checked
+    // immediately after OTP skip may still show a sign-up transition URL even
+    // after a successful sign-up. Use networkidle + a 3s minimum guard.
     await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(3_000);
     const stillOnSignUp = page.url().includes("sign-up");
     if (stillOnSignUp) {
       await page.goto("/sign-in");
@@ -119,10 +134,13 @@ test.describe("Scenario A — Admin onboarding", () => {
     /* ── 7. Assert indexing indicator becomes visible ─────────────────── */
     // After connection the app fires a /api/worker/nango-fetch job.
     // The UI should show a "Syncing…" or "Indexing…" badge.
+    // FIX: *:has-text() is ancestor-matching and can return <body> if any descendant
+    // contains the text. Tighten to inline/badge-level elements (span, badge, [data-testid]).
     const indexingBadge = page.locator(
-      '[data-testid="indexing-status"], [aria-label*="index"], *:has-text("Syncing"), *:has-text("Indexing")'
+      '[data-testid="indexing-status"], span:has-text("Syncing"), span:has-text("Indexing"), badge:has-text("Indexing")'
     );
-    await expect(indexingBadge.first()).toBeVisible({ timeout: 20_000 });
+    const badgeVisible = await indexingBadge.first().isVisible({ timeout: 20_000 }).catch(() => false);
+    expect(badgeVisible, "Indexing/Syncing badge should be visible after Nango connection").toBeTruthy();
 
     // Seed reference just keeps TypeScript happy – no runtime use needed here
     void seed;

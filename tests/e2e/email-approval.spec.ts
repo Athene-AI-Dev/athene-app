@@ -60,14 +60,16 @@ test.describe("Scenario C — Email approval", () => {
      * request to fire rather than sleeping for an arbitrary duration.
      */
     let capturedEmailBody: string | null = null;
-    // eslint-disable-next-line prefer-const
-    let resolveCapture!: () => void; // definite-assignment: Promise constructor runs sync
+    // FIX: replaced non-null assertion (!) with undefined union + runtime null-check.
+    // The ! suppresses TS errors but doesn't guarantee runtime safety if the
+    // Promise constructor is ever refactored to be async.
+    let resolveCapture: (() => void) | undefined;
     const capturePromise = new Promise<void>((res) => { resolveCapture = res; });
 
     await page.route("**/api/agent/approve**", async (route) => {
       const body = route.request().postData();
       capturedEmailBody = body;
-      resolveCapture();
+      if (resolveCapture) resolveCapture();
       // Let the real request proceed so the UI updates normally
       await route.continue();
     });
@@ -75,7 +77,7 @@ test.describe("Scenario C — Email approval", () => {
     // Also intercept any external mail provider calls (fallback)
     await page.route("**/send-email**", async (route) => {
       const body = route.request().postData();
-      if (!capturedEmailBody) { capturedEmailBody = body; resolveCapture(); }
+      if (!capturedEmailBody) { capturedEmailBody = body; if (resolveCapture) resolveCapture(); }
       await route.fulfill({ status: 200, body: JSON.stringify({ ok: true }) });
     });
 
@@ -96,9 +98,12 @@ test.describe("Scenario C — Email approval", () => {
     // up the DOM and can return the outermost container (e.g. the page body)
     // which contains every word on the page. Use :has(button) to scope to
     // the smallest element that *contains* an Approve button as a descendant.
+    // FIX: use article/section to avoid matching a wrapper div that spans the
+    // full page. 'div:has(button:has-text("Approve"))' can return any ancestor
+    // div, including outermost containers, making textContent() read the entire page.
     const approvalCard = page.locator(
       '[data-testid="approval-card"], [data-testid="pending-action"], ' +
-      'div:has(button:has-text("Approve"))'
+      'article:has(button:has-text("Approve")), section:has(button:has-text("Approve"))'
     );
     await expect(approvalCard.first()).toBeVisible({ timeout: 60_000 });
 
@@ -127,22 +132,26 @@ test.describe("Scenario C — Email approval", () => {
     /* ── 9. Assert the captured body is correct ──────────────────────── */
     expect(capturedEmailBody, "Approve endpoint should have been called").not.toBeNull();
 
-    // FIX: wrap JSON.parse — body could be form-encoded or malformed;
-    // an unguarded parse throws a SyntaxError that obscures the real failure.
-    let parsed: unknown = {};
+    // FIX: when JSON.parse fails the fallback now directly lowercases the raw
+    // string instead of going through JSON.stringify (which adds wrapping quotes,
+    // turning 'alice' into '"alice"' — accidental correctness).
+    let bodyStr: string;
     try {
-      parsed = JSON.parse(capturedEmailBody!);
+      const parsed = JSON.parse(capturedEmailBody!);
+      bodyStr = JSON.stringify(parsed).toLowerCase();
     } catch {
       // If body isn't JSON, fall back to raw string matching
-      parsed = capturedEmailBody;
+      bodyStr = (capturedEmailBody ?? "").toLowerCase();
     }
-    const bodyStr = JSON.stringify(parsed).toLowerCase();
     expect(bodyStr, "Approve body must reference Alice").toMatch(/alice/);
     expect(bodyStr, "Approve body must reference the demo").toMatch(/demo/);
 
-    /* ── 10. Confirm UI returns to normal (no more approval card) ─────── */
+    /* ── 10. Confirm UI returns to normal (no more approval card) ───── */
+    // FIX: scope to the approvalCard's own Approve button, not any button on the
+    // page. The chat Send button's parent div may contain 'Approve' text from a
+    // previous message, causing this to fail even after the card is dismissed.
     await expect(
-      page.locator('button:has-text("Approve")').first()
+      approvalCard.first().locator('button:has-text("Approve")')
     ).not.toBeVisible({ timeout: 10_000 });
   });
 });

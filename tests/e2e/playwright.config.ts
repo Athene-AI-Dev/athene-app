@@ -14,7 +14,10 @@ export default defineConfig({
 
   /* Fail fast in CI – no retries locally */
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : 4,
+  // FIX: 4 workers matches the ubuntu-latest runner core count (4 vCPUs).
+  // With 5 scenarios and a 5-minute total budget, fewer workers risk breaching
+  // the time budget. Keep 4 for both CI and local.
+  workers: 4,
 
   /* Reporter: list in dev, GitHub-annotated + HTML in CI */
   reporter: process.env.CI

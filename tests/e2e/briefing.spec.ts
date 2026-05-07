@@ -67,14 +67,30 @@ test.describe("Scenario E — Morning briefing", () => {
         failOnStatusCode: false,
       });
       console.log(`[briefing spec] Worker endpoint status: ${resp.status()}`);
+      // FIX: log a warning annotation if the endpoint returned an error status.
+      // Previously a 401/403/500 silently proceeded and no briefing was generated.
+      if (resp.status() >= 400) {
+        test.info().annotations.push({
+          type: "warning",
+          description: `Worker briefing endpoint returned ${resp.status()} — briefing may not have been generated`,
+        });
+      }
+      // Give the async worker time to begin processing before navigating.
+      await page.waitForTimeout(3_000);
     }
 
     /* ── 3. Navigate to /briefing ─────────────────────────────────────── */
     await page.goto("/briefing");
     await page.waitForLoadState("networkidle");
 
-    /* ── 4. Assert heading renders ────────────────────────────────────── */
-    const briefingHeading = page.locator("h1, h2, h3").first();
+    /* ── 4. Assert heading renders ──────────────────────────────── */
+    // FIX: was 'h1, h2, h3'.first() which could match the site nav header
+    // ('Athene', 'Dashboard', etc.) rather than the briefing content heading.
+    // Scoped to main content area and filtered to briefing-related text.
+    const briefingHeading = page
+      .locator('main h1, main h2, [data-testid="briefing-heading"]')
+      .filter({ hasText: /briefing|morning|update/i })
+      .first();
     await expect(briefingHeading).toBeVisible({ timeout: 20_000 });
 
     const headingText = await briefingHeading.textContent();
@@ -97,11 +113,16 @@ test.describe("Scenario E — Morning briefing", () => {
       "Briefing content block should not be empty"
     ).toBeGreaterThan(10);
 
-    /* ── 6. Verify no error state is shown ───────────────────────────── */
+    /* ── 6. Verify no error state is shown ─────────────────────── */
     // FIX: removed .catch(()=>{}) — that silently swallowed assertion failures,
     // making this check always pass even when an error message was visible.
+    // Also tightened selector to span/p/[role=alert] elements to avoid
+    // ancestor-matching *:has-text() returning <body> or <main>.
     const errorMsg = page.locator(
-      '*:has-text("Something went wrong"), *:has-text("Failed to load")'
+      'span:has-text("Something went wrong"), p:has-text("Something went wrong"), ' +
+      '[role="alert"]:has-text("Something went wrong"), ' +
+      'span:has-text("Failed to load"), p:has-text("Failed to load"), ' +
+      '[role="alert"]:has-text("Failed to load")'
     );
     await expect(errorMsg.first()).not.toBeVisible({ timeout: 3_000 });
   });

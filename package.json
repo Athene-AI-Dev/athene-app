@@ -32,6 +32,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "^2.103.0",
+    "@teispace/next-themes": "^0.4.2",
     "@upstash/qstash": "^2.10.1",
     "@upstash/redis": "^1.37.0",
     "@xyflow/react": "^12.10.2",

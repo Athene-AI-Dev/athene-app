@@ -4,14 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { 
   Users, 
   UserPlus, 
-  MoreHorizontal, 
-  Shield, 
-  ShieldAlert, 
+  Shield,
+  ShieldAlert,
   ShieldCheck, 
   Building2, 
   Circle,
   Search,
-  Filter,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -19,6 +17,8 @@ import {
   UserCheck,
   MoreVertical
 } from "lucide-react";
+
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,13 @@ interface UserMember {
   departments?: Department;
 }
 
+interface UserUpdates {
+  role?: "admin" | "super_user" | "member";
+  departmentId?: string;
+  active?: boolean;
+}
+
+
 export default function UsersPage() {
   const [users, setUsers] = useState<UserMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -72,7 +79,7 @@ export default function UsersPage() {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/users?page=${page}&limit=${limit}`);
+      const res = await fetch(`/api/admin/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
       const data = await res.json();
       if (res.ok) {
         setUsers(data.users);
@@ -83,7 +90,8 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, search]);
+
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -95,12 +103,21 @@ export default function UsersPage() {
     }
   }, []);
 
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     fetchUsers();
     fetchDepartments();
   }, [fetchUsers, fetchDepartments]);
 
-  const handleUpdateUser = async (userId: string, updates: any) => {
+
+  const handleUpdateUser = async (userId: string, updates: UserUpdates) => {
+    if (updates.active === false) {
+      const confirm = window.confirm("Are you sure you want to deactivate this account? This will immediately revoke their access.");
+      if (!confirm) return;
+    }
+
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
         method: "PATCH",
@@ -120,10 +137,10 @@ export default function UsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.full_name?.toLowerCase().includes(search.toLowerCase()) || 
-    u.email?.toLowerCase().includes(search.toLowerCase())
-  );
+
+  // Server-side search implemented in fetchUsers
+  const filteredUsers = users;
+
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -186,16 +203,16 @@ export default function UsersPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 transition-colors group-focus-within:text-[#66ADE4]" />
             <input 
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1); // Reset to page 1 on search
+              }}
               placeholder="Search by name or email..." 
               className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-medium text-white placeholder:text-slate-600"
             />
          </div>
-         <Button variant="ghost" className="h-12 px-6 rounded-xl gap-2 text-slate-500 font-bold hover:bg-white/5">
-            <Filter className="w-4 h-4" />
-            Roles
-         </Button>
       </div>
+
 
       {/* Users Table */}
       <div className="rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden backdrop-blur-sm">
@@ -258,8 +275,9 @@ export default function UsersPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-xs font-bold text-slate-500">
-                    {user.last_active_at ? new Date(user.last_active_at).toLocaleDateString() : "Never"}
+                    {user.last_active_at && mounted ? new Date(user.last_active_at).toLocaleDateString() : "Never"}
                   </TableCell>
+
                   <TableCell className="text-right py-6 px-8">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -322,8 +340,9 @@ export default function UsersPage() {
         {/* Pagination */}
         <div className="bg-white/[0.03] border-t border-white/5 px-8 py-4 flex items-center justify-between">
           <span className="text-xs font-bold text-slate-600">
-            Showing {filteredUsers.length} of {total} results
+            {search ? `Found ${total} matches` : `Showing ${users.length} of ${total} members`}
           </span>
+
           <div className="flex gap-2">
             <Button 
               variant="outline" 

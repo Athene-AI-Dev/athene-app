@@ -1,9 +1,9 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { mapRole } from "@/lib/auth/clerk";
 import { logger } from "@/lib/logger";
 import { resolveUserAccess } from "@/lib/auth/rbac";
+
 
 /**
  * GET /api/admin/users
@@ -16,19 +16,23 @@ export async function GET(request: Request) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  // 2. Resolve internal access (respects 'active' flag)
+  // 1. Resolve internal access (respects 'active' flag)
   const access = await resolveUserAccess(userId, orgId, orgRole);
   if (access.role !== "admin") {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
+
   const { searchParams } = new URL(request.url);
+  const search = searchParams.get("search") || "";
+
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "50");
   const offset = (page - 1) * limit;
 
+
   try {
-    // 1. Resolve internal org UUID
+    // 2. Resolve internal org UUID
     const { data: orgData } = await supabaseAdmin
       .from("organizations")
       .select("id")
@@ -39,8 +43,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // 2. Fetch members with department info
-    const { data: members, error, count } = await supabaseAdmin
+
+    // 3. Fetch members with department info
+    let query = supabaseAdmin
       .from("org_members")
       .select(`
         id,
@@ -56,18 +61,26 @@ export async function GET(request: Request) {
           name
         )
       `, { count: "exact" })
-      .eq("org_id", orgData.id)
+      .eq("org_id", orgData.id);
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+    }
+
+    const { data: members, error, count } = await query
       .range(offset, offset + limit - 1)
       .order("created_at", { ascending: false });
+
 
     if (error) throw error;
 
     return NextResponse.json({
       users: members,
-      total: count,
+      total: count ?? 0,
       page,
       limit
     });
+
 
   } catch (err: any) {
     logger.error({ err: err.message, orgId }, "[admin-users] GET failed");
@@ -86,11 +99,12 @@ export async function POST(request: Request) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  // 2. Resolve internal access (respects 'active' flag)
+  // 1. Resolve internal access (respects 'active' flag)
   const access = await resolveUserAccess(userId, orgId, orgRole);
   if (access.role !== "admin") {
     return new NextResponse("Forbidden", { status: 403 });
   }
+
 
   try {
     const { email, role: targetRole, departmentId } = await request.json();
@@ -99,7 +113,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // 1. Resolve internal org UUID
+    // Email validation before Clerk call
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+    }
+
+
+    // 2. Resolve internal org UUID
     const { data: orgData } = await supabaseAdmin
       .from("organizations")
       .select("id")
@@ -110,7 +131,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // 2. Send invitation via Clerk
+
+    // 3. Send invitation via Clerk
+
     const client = await clerkClient();
     const invitation = await client.organizations.createOrganizationInvitation({
       organizationId: orgId,
@@ -119,7 +142,8 @@ export async function POST(request: Request) {
       inviterUserId: userId,
     });
 
-    // 3. Create placeholder in org_members
+    // 4. Create placeholder in org_members
+
     // We don't have a clerk_user_id yet, but we have the email.
     // The user will be linked when they accept the invite.
     // However, the request says "inserts row in org_members with department + role".
@@ -138,7 +162,8 @@ export async function POST(request: Request) {
 
     if (memberError) throw memberError;
     
-    // 4. Resolve internal UUID for the admin performing the action
+    // 5. Resolve internal UUID for the admin performing the action
+
     const { data: adminMember } = await supabaseAdmin
       .from("org_members")
       .select("id")
@@ -146,7 +171,8 @@ export async function POST(request: Request) {
       .eq("org_id", orgData.id)
       .single();
 
-    // 5. Audit Log
+    // 6. Audit Log
+
     if (adminMember) {
       await supabaseAdmin.from("admin_actions").insert({
         org_id: orgData.id,
@@ -161,6 +187,7 @@ export async function POST(request: Request) {
 
   } catch (err: any) {
     logger.error({ err: err.message, orgId }, "[admin-users] POST failed");
-    return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
+
 }

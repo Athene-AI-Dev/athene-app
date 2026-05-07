@@ -26,9 +26,12 @@ export default function AuditPage() {
     const [adminLogs, setAdminLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
         const fetchAll = async () => {
+
             setLoading(true);
             try {
                 const [biRes, adminRes] = await Promise.all([
@@ -142,9 +145,10 @@ export default function AuditPage() {
                             <tr key={log.id} className="hover:bg-white/[0.02] transition-colors group">
                               <td className="py-6 px-8 whitespace-nowrap">
                                 <div className="flex flex-col">
-                                  <span className="text-xs font-black text-white">{new Date(log.performed_at).toLocaleDateString()}</span>
-                                  <span className="text-[10px] text-slate-500 font-bold">{new Date(log.performed_at).toLocaleTimeString()}</span>
+                                  <span className="text-xs font-black text-white">{mounted ? new Date(log.performed_at).toLocaleDateString() : '---'}</span>
+                                  <span className="text-[10px] text-slate-500 font-bold">{mounted ? new Date(log.performed_at).toLocaleTimeString() : '---'}</span>
                                 </div>
+
                               </td>
                               <td className="py-6">
                                 <div className="flex items-center gap-3">
@@ -229,9 +233,10 @@ export default function AuditPage() {
                             <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
                               <td className="py-6 px-8 whitespace-nowrap">
                                 <div className="flex flex-col">
-                                  <span className="text-xs font-black text-white">{new Date(log.created_at || log.timestamp).toLocaleDateString()}</span>
-                                  <span className="text-[10px] text-slate-500 font-bold">{new Date(log.created_at || log.timestamp).toLocaleTimeString()}</span>
+                                  <span className="text-xs font-black text-white">{mounted ? new Date(log.created_at || log.timestamp).toLocaleDateString() : '---'}</span>
+                                  <span className="text-[10px] text-slate-500 font-bold">{mounted ? new Date(log.created_at || log.timestamp).toLocaleTimeString() : '---'}</span>
                                 </div>
+
                               </td>
                               <td className="py-6">
                                 <div className="flex items-center gap-2 font-mono text-[10px] text-blue-400 bg-blue-400/5 px-2 py-1 rounded-lg border border-blue-400/10 w-fit">

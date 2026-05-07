@@ -23,8 +23,10 @@ export default function BriefingPage() {
   const [briefing, setBriefing] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [enqueuing, setEnqueuing] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchTodayBriefing();
     fetchHistory();
   }, []);
@@ -120,7 +122,7 @@ export default function BriefingPage() {
               Intelligence <span className="text-primary">Briefing</span>
             </h1>
             <p className="text-muted-foreground text-base max-w-xl leading-relaxed">
-              {briefing 
+              {briefing && mounted
                 ? `Generated at ${new Date(briefing.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                 : "Synthesized updates tailored to your role and current initiatives. Stay informed with automated executive summaries."
               }
@@ -133,7 +135,7 @@ export default function BriefingPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.2em] font-black text-muted-foreground/60 leading-none mb-1">Current Cycle</p>
                 <p className="text-sm font-bold text-foreground leading-none">
-                  {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {mounted ? new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '---'}
                 </p>
               </div>
             </div>
@@ -158,7 +160,7 @@ export default function BriefingPage() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-sm">
-                            {new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {mounted ? new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '---'}
                           </span>
                           <span className="text-[10px] uppercase tracking-wider text-muted-foreground bg-background px-1.5 py-0.5 rounded border">
                             {item.id === briefing?.id ? 'Viewing' : 'View'}
@@ -230,4 +232,5 @@ export default function BriefingPage() {
     </div>
   );
 }
+
 

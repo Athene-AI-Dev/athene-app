@@ -49,7 +49,7 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
       const data = await res.json();
       if (res.ok) {
         setDepartments(data.departments);
-        if (data.departments.length > 0) {
+        if (data.departments.length > 0 && !departmentId) {
           setDepartmentId(data.departments[0].id);
         }
       }
@@ -60,9 +60,22 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
     }
   };
 
+  const resetForm = () => {
+    setEmail("");
+    setRole("member");
+    setDepartmentId(departments[0]?.id || "");
+  };
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Please enter a valid email address");
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/admin/users", {
@@ -75,7 +88,7 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
 
       if (res.ok) {
         toast.success("Invitation sent successfully!");
-        setEmail("");
+        resetForm();
         onSuccess();
         onClose();
       } else {
@@ -87,6 +100,7 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
       setLoading(false);
     }
   };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -138,9 +152,9 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
                 <Building2 className="w-3 h-3" />
                 Department
               </Label>
-              <Select value={departmentId} onValueChange={setDepartmentId} disabled={fetchingDepts}>
+              <Select value={departmentId} onValueChange={setDepartmentId} disabled={fetchingDepts || departments.length === 0}>
                 <SelectTrigger className="h-12 bg-white/5 border-white/10 rounded-xl">
-                  <SelectValue placeholder="Select dept" />
+                  <SelectValue placeholder={fetchingDepts ? "Loading..." : departments.length === 0 ? "No depts" : "Select dept"} />
                 </SelectTrigger>
                 <SelectContent className="bg-[#0c1015] border-white/10 text-white">
                   {departments.map((dept) => (
@@ -150,6 +164,10 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {departments.length === 0 && !fetchingDepts && (
+                <p className="text-[9px] text-rose-400 font-bold mt-1">Setup departments first.</p>
+              )}
+
             </div>
           </div>
 
@@ -164,9 +182,10 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
             </Button>
             <Button 
               type="submit" 
-              disabled={loading}
+              disabled={loading || fetchingDepts || !departmentId || !email}
               className="bg-[#66ADE4] hover:bg-[#599bc9] text-black font-black uppercase tracking-widest text-[10px] rounded-xl px-8 shadow-lg shadow-blue-500/20"
             >
+
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

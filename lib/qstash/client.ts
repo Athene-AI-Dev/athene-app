@@ -2,7 +2,9 @@ import { Client } from '@upstash/qstash';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { incrWithExpire, redis } from '@/lib/redis/client';
 
-
+export const qstash = new Client({
+  token: process.env.QSTASH_TOKEN!,
+});
 
 export type DispatchOptions = {
   orgId: string;

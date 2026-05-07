@@ -8,10 +8,13 @@ export default function GrantsPage() {
     const [resourceId, setResourceId] = useState('');
     const [resourceType, setResourceType] = useState('document');
     const [loading, setLoading] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
         fetchGrants();
     }, []);
+
 
     const fetchGrants = async () => {
         try {
@@ -138,7 +141,10 @@ export default function GrantsPage() {
                                         <tr key={g.grant_id} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="px-6 py-4 text-sm text-slate-900 capitalize">{g.resource_type}</td>
                                             <td className="px-6 py-4 text-sm font-mono text-slate-600">{g.resource_id}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-600">{new Date(g.granted_at).toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-600">
+                                                {mounted ? new Date(g.granted_at).toLocaleString() : '---'}
+                                            </td>
+
                                             <td className="px-6 py-4 text-right">
                                                 <button
                                                     onClick={() => revokeGrant(g.grant_id)}

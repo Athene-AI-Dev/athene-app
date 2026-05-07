@@ -42,6 +42,12 @@ export default function KeysPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
   const [isRotating, setIsRotating] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   
   const [newKey, setNewKey] = useState({ provider: 'anthropic', key: '', label: '' })
 
@@ -262,8 +268,9 @@ export default function KeysPage() {
                         <div className="space-y-1">
                           <div className="text-[10px] text-[var(--sidebar-text-secondary)] uppercase font-medium">Last Used</div>
                           <div className="text-xs text-[var(--foreground)]">
-                            {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}
+                            {k.last_used_at && mounted ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}
                           </div>
+
                         </div>
                       </td>
                       <td className="p-4">

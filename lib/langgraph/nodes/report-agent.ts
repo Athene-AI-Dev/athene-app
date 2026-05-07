@@ -18,10 +18,11 @@ Given the user's query, your job is to outline a structured report by breaking i
 Return a JSON array containing 3 to 6 section titles.
 Each section title should be a concise string representing a distinct topic to be covered in the report.
 
-Query: {{query}}
+Query: __USER_QUERY__
 
 Example Output:
 ["Executive Summary", "Key Metrics", "Recent Developments", "Challenges & Risks", "Conclusion"]`;
+
 
 /**
  * Extract plain text from a LangChain message content value.
@@ -77,7 +78,11 @@ export async function reportAgent(
     : "Generate a report";
 
   // 1. Plan sections using LLM
-  const planPrompt = PLAN_PROMPT_TEMPLATE.replace("{{query}}", query);
+  const planPrompt = PLAN_PROMPT_TEMPLATE.replace(
+    "__USER_QUERY__",
+    query.replace(/__USER_QUERY__/g, "")
+  );
+
 
   const planResponse = await plannerModel.invoke([
     new SystemMessage(planPrompt),
@@ -93,8 +98,14 @@ export async function reportAgent(
         .replace(/^```json\n?/, "")
         .replace(/\n?```$/, "");
     }
-    sections = JSON.parse(rawContent);
-    if (!Array.isArray(sections)) {
+    const parsed = JSON.parse(rawContent);
+    sections = Array.isArray(parsed)
+      ? parsed.filter(
+          (s): s is string => typeof s === "string" && s.trim().length > 0
+        )
+      : [];
+
+    if (sections.length === 0) {
       sections = ["Introduction", "Key Findings", "Conclusion"];
     }
   } catch (error) {
@@ -102,38 +113,60 @@ export async function reportAgent(
     sections = ["Introduction", "Key Findings", "Conclusion"];
   }
 
+
   sections = sections.slice(0, 6);
 
   // 2. Process sections in chunks (concurrency control)
   const CONCURRENCY_LIMIT = 3;
   const compiledSections: string[] = [];
+
+  interface GraphTool {
+    func: (
+      args: { question: string; maxHops: number },
+      b: unknown,
+      cfg: { configurable: { orgId: string; role: string } }
+    ) => Promise<string>;
+  }
+  const typedTool = graphQueryTool as GraphTool;
+
   
   for (let i = 0; i < sections.length; i += CONCURRENCY_LIMIT) {
     const batch = sections.slice(i, i + CONCURRENCY_LIMIT);
     const batchResults = await Promise.all(
       batch.map(async (section) => {
-        // a. Vector Search
-        const results = await vectorSearch({
-        orgId,
-        userId,
-        user_role: role as "member" | "super_user" | "admin",
-        query: `${query} - ${section}`,
-        topK: 5,
-      });
+        // a. Run Vector Search and Graph Search concurrently
+        const [results, graphResult] = await Promise.all([
+          vectorSearch({
+            orgId,
+            userId,
+            user_role: role as "member" | "super_user" | "admin",
+            query: `${query} - ${section}`,
+            topK: 5,
+          }),
+          typedTool.func(
+            { question: section, maxHops: 2 },
+            undefined,
+            { configurable: { orgId, role } }
+          ).catch(err => {
+            console.warn(`[report-agent] Graph query failed for section "${section}":`, err);
+            return null;
+          })
+        ]);
 
-      const sourceDocs = results.map((r: any, i: number) => ({
-        index: i + 1,
-        chunk_id: r.chunk_id ?? r.id ?? `chunk_${i}`,
-        document_id: r.document_id ?? "unknown",
-        content:
-          r.content_preview ??
-          r.metadata?.text_preview ??
-          r.metadata?.content ??
-          r.metadata?.text ??
-          (typeof r.metadata === "object"
-            ? JSON.stringify(r.metadata)
-            : String(r.metadata ?? "")),
-      }));
+        const sourceDocs = results.map((r: any, idx: number) => ({
+          index: idx + 1,
+          chunk_id: r.chunk_id ?? r.id ?? `chunk_${idx}`,
+          document_id: r.document_id ?? "unknown",
+          content:
+            r.content_preview ??
+            r.metadata?.text_preview ??
+            r.metadata?.content ??
+            r.metadata?.text ??
+            (typeof r.metadata === "object"
+              ? JSON.stringify(r.metadata)
+              : String(r.metadata ?? "")),
+        }));
+
 
       const sourceBlock = sourceDocs
         .map(
@@ -142,28 +175,21 @@ export async function reportAgent(
         )
         .join("\n\n");
 
-      // b. Graph Search for Connected Concepts
+      // b. Process Graph Results for Connected Concepts
       let connectedConcepts = "";
-      try {
-        const graphResult = await (graphQueryTool as any).func(
-          { question: section, maxHops: 2 },
-          undefined,
-          { configurable: { orgId, role } }
-        );
-
-        if (graphResult && !graphResult.includes("No knowledge graph data")) {
-          // Use regex to find relationship patterns: Entity -> RELATION -> Entity
-          const relRegex = /([^\n→]+) → ([^\n→]+) → ([^\n→\s\[]+)/g;
-          const matches = [...graphResult.matchAll(relRegex)];
-          
-          if (matches.length > 0) {
-            const relLines = matches.slice(0, 5).map(m => m[0].trim());
-            connectedConcepts = `\n\n**Connected concepts:** ${relLines.join(" | ")}`;
-          }
+      if (graphResult && !graphResult.includes("No knowledge graph data")) {
+        // IMPORTANT: graphQueryTool must output relationships
+        // in the format: "Entity → RELATION → Entity"
+        // See graphQueryTool README for output schema.
+        const GRAPH_REL_PATTERN = /([^\n→]+) → ([^\n→]+) → ([^\n→\s\[]+)/g;
+        const matches = [...graphResult.matchAll(GRAPH_REL_PATTERN)];
+        
+        if (matches.length > 0) {
+          const relLines = matches.slice(0, 5).map(m => m[0].trim());
+          connectedConcepts = `\n\n**Connected concepts:** ${relLines.join(" | ")}`;
         }
-      } catch (err) {
-        console.warn(`[report-agent] Graph query failed for section "${section}":`, err);
       }
+
 
       // c. Synthesize
       const synthesizePrompt = `You are a helpful analyst writing a section for a report.

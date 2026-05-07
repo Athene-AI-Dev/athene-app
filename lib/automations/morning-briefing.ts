@@ -1,6 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { reportAgent } from "../langgraph/nodes/report-agent";
 import { getNeighbors } from "../knowledge-graph/query";
+import { HumanMessage } from "@langchain/core/messages";
+import type { AtheneStateType } from "../langgraph/state";
+
+
+
 
 /**
  * This is the prompt we send to the report agent.
@@ -39,6 +44,16 @@ function parseBriefingSections(text: string) {
 }
 
 /**
+ * Word-boundary-aware truncation for summaries.
+ */
+function truncateSummary(text: string, max = 160): string {
+  if (text.length <= max) return text;
+  const cut = text.lastIndexOf(" ", max);
+  return (cut > 0 ? text.slice(0, cut) : text.slice(0, max)) + "\u2026";
+}
+
+
+/**
  * Generates a morning briefing for one user.
  */
 export async function generateMorningBriefing(
@@ -48,39 +63,68 @@ export async function generateMorningBriefing(
   deliveryMethod = "in_app"
 ) {
   try {
-    const ctx = { org_id: orgId, user_id: userId, user_role: "member" as const };
+    // 1. Fetch the real role first to ensure correct data scoping
+    const { data: member, error: roleErr } = await supabaseAdmin
+      .from("org_members")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("org_id", orgId)
+      .maybeSingle();
 
-    // 1. Call the report agent to generate core sections
-    const result = await reportAgent(
-      {
-        orgId,
-        userId,
-        role: "member",
-        messages: [{ content: MORNING_BRIEFING_PROMPT }],
-      } as any, // lightweight state for automation
-      {}
-    );
+    if (roleErr) {
+      console.error("[morning-briefing] Failed to fetch user role:", roleErr);
+    }
+
+    const role = member?.role ?? "member";
+    const ctx = { org_id: orgId, user_id: userId, user_role: role as any };
+
+    // 2. Call the report agent to generate core sections
+    // Use a safe partial type that still enforces the fields you provide
+    type BriefingAgentState = Pick<AtheneStateType,
+      "orgId" | "userId" | "role" | "messages"
+    >;
+    const state: BriefingAgentState = {
+      orgId,
+      userId,
+      role,
+      messages: [new HumanMessage(MORNING_BRIEFING_PROMPT)],
+    };
+
+
+    const result = await reportAgent(state as AtheneStateType, {});
 
     const briefingText = result.final_answer || "No briefing generated.";
     const structuredContent = parseBriefingSections(briefingText);
 
+    // Graph block is authoritative — remove any LLM-generated knowledge section
+    delete structuredContent.knowledge;
+
+
     // 2. Fetch Knowledge Highlights (Recent Graph Changes)
     try {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const yesterdayMs = Date.now() - 24 * 60 * 60 * 1000;
+      const yesterdayIso = new Date(yesterdayMs).toISOString();
       const { data: recentNodes, error: nodeErr } = await supabaseAdmin
         .from("kg_nodes")
         .select("id, label")
         .eq("org_id", orgId)
-        .gt("updated_at", yesterday)
+        .gt("updated_at", yesterdayIso)
         .limit(5);
 
       if (!nodeErr && recentNodes && recentNodes.length > 0) {
         const highlights: string[] = [];
-        for (const node of recentNodes) {
-          const { nodes: neighbors, edges } = await getNeighbors(ctx, node.id);
+        
+        // Fetch neighbors in parallel to reduce latency
+        const neighborResults = await Promise.all(
+          recentNodes.map(node => getNeighbors(ctx, node.id))
+        );
+
+        for (let i = 0; i < recentNodes.length; i++) {
+          const node = recentNodes[i];
+          const { nodes: neighbors, edges } = neighborResults[i];
           
-          // Filter for edges added/updated in the last 24h
-          const newEdges = edges.filter(e => e.updated_at && e.updated_at > yesterday);
+          // Filter for edges added/updated in the last 24h (timezone-safe comparison)
+          const newEdges = edges.filter(e => e.updated_at && new Date(e.updated_at).getTime() > yesterdayMs);
           
           if (newEdges.length > 0) {
             const relNames = newEdges.map(e => {
@@ -98,7 +142,10 @@ export async function generateMorningBriefing(
       }
     } catch (err) {
       console.warn("[morning-briefing] Failed to fetch knowledge highlights:", err);
+      // Surface failure in stored content for UI to display
+      structuredContent.knowledgeError = "Knowledge highlights temporarily unavailable.";
     }
+
 
     // 3. Store the generated briefing
     const { error } = await supabaseAdmin.from("briefings").insert({
@@ -106,12 +153,13 @@ export async function generateMorningBriefing(
       org_id: orgId,
       automation_id: automationId ?? null,
       content: structuredContent,
-      summary: briefingText.slice(0, 160),
+      summary: truncateSummary(briefingText),
       delivery_method: deliveryMethod,
-      calendar_items: structuredContent.calendar ? 1 : 0,
-      email_items: structuredContent.emails ? 1 : 0,
-      doc_items: structuredContent.docs ? 1 : 0,
+      calendar_items: (structuredContent.calendar?.match(/^-\s/gm) ?? []).length,
+      email_items: (structuredContent.emails?.match(/^-\s/gm) ?? []).length,
+      doc_items: (structuredContent.docs?.match(/^-\s/gm) ?? []).length,
     });
+
 
     if (error) throw error;
 

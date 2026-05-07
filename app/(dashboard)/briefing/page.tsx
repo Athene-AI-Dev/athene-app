@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
 import { BriefingSection } from '@/components/briefing/section';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +17,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BRIEFING_HOUR_LOCAL } from '@/lib/automations/constants';
 import { cn } from '@/lib/utils';
 
 interface BriefingContent {
@@ -41,54 +43,64 @@ export default function BriefingPage() {
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [history, setHistory] = useState<Briefing[]>([]);
   const [enqueuing, setEnqueuing] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     fetchTodayBriefing();
     fetchHistory();
-  }, []);
+  }, []); // Mount-only fetches
 
-  const fetchTodayBriefing = async () => {
+  const fetchTodayBriefing = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch('/api/briefing?type=today');
-      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
-        console.error('[briefing] today fetch failed', res.status);
+      
+      if (!res.ok) {
+        toast.error(`Failed to load briefing (${res.status})`);
         return;
       }
+
       const data = await res.json();
-      if (!data.error) {
-        setBriefing(data);
-      }
+      setBriefing(data.error ? null : data);
     } catch (err) {
       console.error('Failed to fetch briefing', err);
+      toast.error('An unexpected error occurred while loading briefing');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
+      setHistoryError(false);
       const res = await fetch('/api/briefing?type=history');
-      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return;
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
       const data = await res.json();
       if (!data.error) {
         setHistory(data);
       }
     } catch (err) {
+      setHistoryError(true);
       console.error('Failed to fetch history', err);
     }
-  };
+  }, []);
 
-  const handleHistoryItemClick = async (item: any) => {
+  const handleHistoryItemClick = useCallback(async (item: Briefing) => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/briefing?id=${item.id}`);
-      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
-        toast.error('Failed to load past briefing');
+      const res = await fetch(`/api/briefing?id=${encodeURIComponent(item.id)}`);
+      
+      if (!res.ok) {
+        toast.error(`Failed to load past briefing (${res.status})`);
         return;
       }
+
       const data = await res.json();
       if (!data.error) {
         setBriefing(data);
@@ -98,9 +110,9 @@ export default function BriefingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleGenerateNow = async () => {
+  const handleGenerateNow = useCallback(async () => {
     try {
       setEnqueuing(true);
       const res = await fetch('/api/briefing', { method: 'POST' });
@@ -116,7 +128,7 @@ export default function BriefingPage() {
     } finally {
       setEnqueuing(false);
     }
-  };
+  }, []);
 
   if (loading) {
     return (
@@ -126,9 +138,9 @@ export default function BriefingPage() {
           <Skeleton className="h-4 w-64" />
         </div>
         <div className="grid gap-6">
-          <Skeleton className="h-64 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-64 w-full rounded-2xl" />
+          ))}
         </div>
       </div>
     );
@@ -178,6 +190,14 @@ export default function BriefingPage() {
                   <SheetTitle>Past Briefings</SheetTitle>
                 </SheetHeader>
                 <div className="mt-8 space-y-4">
+                  {historyError && (
+                    <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-center">
+                      <p className="text-xs text-destructive font-bold mb-2">Failed to load history</p>
+                      <Button variant="outline" size="sm" onClick={fetchHistory} className="h-8 text-[10px] uppercase tracking-widest font-black">
+                        Retry
+                      </Button>
+                    </div>
+                  )}
                   {history.length > 0 ? (
                     history.map((item) => (
                       <div 
@@ -196,7 +216,7 @@ export default function BriefingPage() {
                         <p className="text-xs text-muted-foreground line-clamp-1">{item.summary || 'No summary available'}</p>
                       </div>
                     ))
-                  ) : (
+                  ) : !historyError && (
                     <p className="text-sm text-muted-foreground text-center py-10">No past briefings found.</p>
                   )}
                 </div>
@@ -208,7 +228,8 @@ export default function BriefingPage() {
               variant="outline" 
               size="icon" 
               className="h-12 w-12 rounded-2xl glass border-white/5 hover:border-primary/20 group"
-              disabled={loading}
+              disabled={loading || enqueuing}
+              title={enqueuing ? "Generation in progress — check back shortly" : "Refresh"}
             >
               <RefreshCw className={cn("w-5 h-5 group-hover:rotate-180 transition-transform duration-500", loading && "animate-spin")} />
             </Button>
@@ -224,7 +245,7 @@ export default function BriefingPage() {
           <div className="space-y-3">
             <h3 className="text-2xl font-bold text-foreground">Synthesis Required</h3>
             <p className="text-muted-foreground text-sm max-w-sm mx-auto leading-relaxed">
-              Athene hasn't generated a brief for today yet. Usually, this happens at 7:00 AM, but you can trigger it manually.
+              Athene hasn't generated a brief yet. Usually this happens at {BRIEFING_HOUR_LOCAL}:00, but you can trigger it manually.
             </p>
           </div>
           <Button 
@@ -264,5 +285,3 @@ export default function BriefingPage() {
     </div>
   );
 }
-
-

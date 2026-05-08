@@ -1,3 +1,5 @@
+"use server";
+
 /**
  * RBAC Access Resolver
  * Resolves user roles and departmental access.

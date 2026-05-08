@@ -263,22 +263,22 @@ export default function BriefingPage() {
           <BriefingSection 
             type="calendar" 
             title="Calendar & Meetings" 
-            content={briefing.content?.calendar} 
+            content={briefing.content?.calendar ?? ""} 
           />
           <BriefingSection 
             type="emails" 
             title="Priority Emails" 
-            content={briefing.content?.emails} 
+            content={briefing.content?.emails ?? ""} 
           />
           <BriefingSection 
             type="docs" 
             title="Document Updates" 
-            content={briefing.content?.docs} 
+            content={briefing.content?.docs ?? ""} 
           />
           <BriefingSection 
             type="knowledge" 
             title="Knowledge Highlights" 
-            content={briefing.content?.knowledge} 
+            content={briefing.content?.knowledge ?? ""} 
           />
         </div>
       )}

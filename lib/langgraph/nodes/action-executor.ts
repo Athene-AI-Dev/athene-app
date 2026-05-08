@@ -19,24 +19,11 @@ const MS_PROVIDER_KEY = "microsoft";
 
 
 
-async function resolveMicrosoftConnectionId(clerkOrgId: string): Promise<string> {
-  const { data: orgRow, error: orgError } = await supabaseAdmin
-    .from("organizations")
-    .select("id")
-    .eq("clerk_org_id", clerkOrgId)
-    .maybeSingle();
-
-  if (orgError) {
-    throw new Error(`Failed to resolve organization: ${orgError.message}`);
-  }
-  if (!orgRow) {
-    throw new Error("Organization not found for this Clerk org");
-  }
-
+async function resolveMicrosoftConnectionId(orgId: string): Promise<string> {
   const { data: connectionRow, error: connectionError } = await supabaseAdmin
     .from("nango_connections")
     .select("connection_id")
-    .eq("org_id", orgRow.id)
+    .eq("org_id", orgId)
     .eq("provider_config_key", MS_PROVIDER_KEY)
     .order("created_at", { ascending: false })
     .limit(1)

@@ -10,6 +10,7 @@ const ALL_AGENTS = [
   "cross_dept_retrieval",
   "email_agent",
   "calendar_agent",
+  "report_agent",
   "synthesis",
   "END",
 ] as const;
@@ -25,6 +26,7 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 - cross_dept_retrieval: Cross-department BI analysis — revenue insights, multi-team trends. **Restricted: super_user and admin roles only.**
 - email_agent: Read, draft, or send emails.
 - calendar_agent: Read calendar, find free slots, or create events.
+- report_agent: Plan and write structured, multi-section reports using vectorized and graph data.
 - synthesis: Synthesize a final answer from accumulated retrieved context and finish.
 - END: The request has been fully answered — stop the graph.
 

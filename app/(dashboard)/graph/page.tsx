@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Network, Search, Loader2 } from "lucide-react";
 import { ENTITY_COLORS, type EntityColorKey } from "@/components/graph/knowledge-graph-canvas";
+import { useSearchParams } from "next/navigation";
 
 // Lazy-load the canvas to avoid SSR issues with React Flow
 const KnowledgeGraphCanvas = dynamic(
@@ -117,6 +118,7 @@ function MobileGraphList() {
 
 // ── Page Component ──────────────────────────────────────────
 export default function GraphPage() {
+  const searchParams = useSearchParams();
   // FIX #1: null initial state prevents SSR flicker
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState("member");
@@ -160,7 +162,7 @@ export default function GraphPage() {
       {isMobile === null ? null : isMobile ? (
         <MobileGraphList />
       ) : (
-        <KnowledgeGraphCanvas userRole={userRole} />
+        <KnowledgeGraphCanvas userRole={userRole} focusNodeId={searchParams.get("focus") || undefined} />
       )}
     </div>
   );

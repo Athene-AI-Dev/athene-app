@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
               final_answer: chunk.final_answer ?? null,
               cited_sources: chunk.cited_sources ?? [],
               awaiting_approval: chunk.awaiting_approval ?? false,
+              pending_write_action: chunk.pending_write_action ?? null,
               active_agent: chunk.next ?? null,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));

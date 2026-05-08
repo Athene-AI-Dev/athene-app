@@ -77,6 +77,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.103.0
         version: 2.105.1
+      '@teispace/next-themes':
+        specifier: ^0.4.2
+        version: 0.4.2(next@16.2.5(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@upstash/qstash':
         specifier: ^2.10.1
         version: 2.10.1
@@ -1869,6 +1872,16 @@ packages:
 
   '@tanstack/query-core@5.90.16':
     resolution: {integrity: sha512-MvtWckSVufs/ja463/K4PyJeqT+HMlJWtw6PrCpywznd2NSgO3m4KwO9RqbFqGg6iDE8vVMFWMeQI4Io3eEYww==}
+
+  '@teispace/next-themes@0.4.2':
+    resolution: {integrity: sha512-RXbdToPKFPryxwdVyzuDqYkrOs+vN51+CbP8zysyPPF1jIXi8B98P2WlBzf21yU8htHF9+Uk/nYiTpMsvRq/rg==}
+    peerDependencies:
+      next: '>=13.0.0'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    peerDependenciesMeta:
+      next:
+        optional: true
 
   '@ts-morph/common@0.27.0':
     resolution: {integrity: sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ==}
@@ -7027,6 +7040,13 @@ snapshots:
       tailwindcss: 4.2.4
 
   '@tanstack/query-core@5.90.16': {}
+
+  '@teispace/next-themes@0.4.2(next@16.2.5(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
+    dependencies:
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+    optionalDependencies:
+      next: 16.2.5(@babel/core@7.29.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
 
   '@ts-morph/common@0.27.0':
     dependencies:

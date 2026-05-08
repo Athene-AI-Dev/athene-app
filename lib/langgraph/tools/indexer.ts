@@ -226,10 +226,17 @@ export async function indexDocument(
         console.error("[indexer] Knowledge Graph pass failed:", msg);
         // Propagate error to QStash job if this is a critical failure
         throw new Error(`KG pass failed: ${msg}`);
+        }
       }
     }
-  }
 
+    return {
+      chunksTotal: chunks.length,
+      chunksEmbedded: newTexts.length,
+      chunksSkippedByHash: chunks.length - newTexts.length,
+      nodesUpserted,
+      edgesUpserted,
+    };
   } finally {
     // ---- 9. Release Lock -------------------------------------
     if (locked) {
@@ -238,18 +245,6 @@ export async function indexDocument(
       });
     }
   }
-
-  // ---- 8. Drop refs so GC can reclaim the body -------------
-  // (Local vars fall out of scope when this function returns —
-  // no long-lived refs to `content`, `chunks`, or `newTexts`.)
-
-  return {
-    chunksTotal: chunks.length,
-    chunksEmbedded: newTexts.length,
-    chunksSkippedByHash: chunks.length - newTexts.length,
-    nodesUpserted,
-    edgesUpserted,
-  };
 }
 
 /**

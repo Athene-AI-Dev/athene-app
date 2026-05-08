@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -43,7 +43,7 @@ interface APINode {
   department_ids?: string[];
   source_documents?: string[];
   visibility?: string;
-  community?: string;
+  community?: number | null;
   updated_at?: string;
 }
 
@@ -103,7 +103,7 @@ function jitter(id: string, scale: number): number {
 
 /** Simple grid-based layout grouped by community clusters */
 function layoutNodes(apiNodes: APINode[]): GraphNode[] {
-  const communities = new Map<string, APINode[]>();
+  const communities = new Map<number | "__none__", APINode[]>();
   apiNodes.forEach((n) => {
     const key = n.community ?? "__none__";
     if (!communities.has(key)) communities.set(key, []);
@@ -225,8 +225,8 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   const [neighbors, setNeighbors] = useState<NeighborInfo[]>([]);
   const [neighborsLoading, setNeighborsLoading] = useState(false);
   // FIX #7: highlightedIds removed — was set but never read
-  const [communities, setCommunities] = useState<string[]>([]);
-  const [loadedCommunities, setLoadedCommunities] = useState<Set<string>>(new Set());
+  const [communities, setCommunities] = useState<number[]>([]);
+  const [loadedCommunities, setLoadedCommunities] = useState<Set<number>>(new Set());
   const [totalNodes, setTotalNodes] = useState(0);
   const [isBuildingGraph, setIsBuildingGraph] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -240,7 +240,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
 
   // ── Fetch nodes (FIX #1: reads apiNodesRef.current, not apiNodes) ──
   const fetchNodes = useCallback(
-    async (page = 1, community?: string, append = false) => {
+    async (page = 1, community?: number, append = false) => {
       setIsLoading(true);
       try {
         let url = `/api/graph/nodes?page=${page}&limit=200`;
@@ -303,7 +303,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
 
   // ── Node click → side panel ───────────────────────────────
   const handleNodeClick: NodeMouseHandler<GraphNode> = useCallback(
-    (_event, rfNode) => {
+    (_event: React.MouseEvent, rfNode: GraphNode) => {
       const currentNodes = apiNodesRef.current;
       const node = currentNodes.find((n) => n.id === rfNode.id);
       if (!node) return;
@@ -316,7 +316,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
       setTimeout(() => {
         const neighborList: NeighborInfo[] = [];
 
-        edges.forEach((e) => {
+        edges.forEach((e: GraphEdge) => {
           const relation = (e.data as GraphEdgeData | undefined)?.relation ?? "RELATED_TO";
 
           if (e.source === node.id) {
@@ -355,8 +355,8 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   const handleSearchResults = useCallback(
     (nodeIds: string[]) => {
       // Dim non-matching nodes, highlight matches
-      setNodes((prev) =>
-        prev.map((n) => ({
+      setNodes((prev: GraphNode[]) =>
+        prev.map((n: GraphNode) => ({
           ...n,
           style: {
             ...n.style,
@@ -370,8 +370,8 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   );
 
   const handleSearchClear = useCallback(() => {
-    setNodes((prev) =>
-      prev.map((n) => ({
+    setNodes((prev: GraphNode[]) =>
+      prev.map((n: GraphNode) => ({
         ...n,
         style: {
           ...n.style,

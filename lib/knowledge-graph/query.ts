@@ -16,10 +16,10 @@ function sanitizeForPostgrest(value: string): string {
   return value.replace(/[",\\.()]/g, "");
 }
 
-export type GraphNode = KGNode & { 
-  id: string; 
-  community?: string; 
-  updated_at?: string; 
+export type GraphNode = KGNode & {
+  id: string;
+  community?: number | null;
+  updated_at?: string;
 };
 
 export type GraphEdge = {
@@ -336,7 +336,7 @@ export async function getRecentNodes(
  */
 export async function getCommunity(
   ctx: RLSContext,
-  communityId: string
+  communityId: number
 ): Promise<QueryResult> {
   return withRLS(ctx, async (supabase) => {
     const { data, error } = await supabase
@@ -370,8 +370,9 @@ export async function getCommunity(
     // Post-filter: keep only edges where BOTH endpoints are in-community
     const nodeIdSet = new Set(nodeIds);
     const intraCommunityEdges = (edges ?? []).filter(
-      (e: any) => nodeIdSet.has(e.source_node) && nodeIdSet.has(e.target_node)
-    );
+      (e: { source_node: string; target_node: string }) =>
+        nodeIdSet.has(e.source_node) && nodeIdSet.has(e.target_node)
+    ) as GraphEdge[];
 
     return {
       nodes,

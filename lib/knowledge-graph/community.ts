@@ -101,26 +101,36 @@ export async function detectCommunities(orgId: string): Promise<void> {
   // 4. Build community assignment map: nodeId → communityId
   const assignments = uf.getRoots()
 
-  // 5. Group nodes by community for batch updates
-  const byCommunity = new Map<string, string[]>()
-  for (const [nodeId, communityId] of assignments) {
-    if (!byCommunity.has(communityId)) byCommunity.set(communityId, [])
-    byCommunity.get(communityId)!.push(nodeId)
+  // 5. Map root UUIDs to sequential numbers (1, 2, 3...)
+  const rootToId = new Map<string, number>()
+  let nextId = 1
+  for (const communityId of assignments.values()) {
+    if (!rootToId.has(communityId)) {
+      rootToId.set(communityId, nextId++)
+    }
   }
 
-  // 6. Update kg_nodes.community in batches per community
+  // 6. Group nodes by their numeric community ID
+  const byCommunity = new Map<number, string[]>()
+  for (const [nodeId, rootId] of assignments) {
+    const numericId = rootToId.get(rootId)!
+    if (!byCommunity.has(numericId)) byCommunity.set(numericId, [])
+    byCommunity.get(numericId)!.push(nodeId)
+  }
+
+  // 7. Update kg_nodes.community in batches per community
   const batchSize = 100
-  for (const [communityId, memberIds] of byCommunity) {
+  for (const [numericId, memberIds] of byCommunity) {
     for (let i = 0; i < memberIds.length; i += batchSize) {
       const batch = memberIds.slice(i, i + batchSize)
       const { error } = await supabaseAdmin
         .from('kg_nodes')
-        .update({ community: communityId })
+        .update({ community: numericId })
         .eq('org_id', orgId)
         .in('id', batch)
 
       if (error) {
-        console.error(`[community] Update failed for community ${communityId}:`, error.message)
+        console.error(`[community] Update failed for community ${numericId}:`, error.message)
       }
     }
   }

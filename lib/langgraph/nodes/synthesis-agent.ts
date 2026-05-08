@@ -9,7 +9,7 @@ import { SystemMessage } from "@langchain/core/messages";
 import type { MessageContentComplex } from "@langchain/core/messages";
 import type { AtheneState, AtheneStateUpdate, CitedSource, RetrievedChunk } from "../state";
 import { model } from "../llm-factory";
-import { withLLMSpan, recordLatency } from "../../telemetry/spans";
+import { withLLMSpan } from "../../telemetry/spans";
 
 const SYNTHESIS_PROMPT = `You are an AI assistant synthesizing retrieved information into a clear, cited answer.
 
@@ -134,7 +134,6 @@ export async function synthesisAgentNode(
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);
 
-  const llmStart = Date.now();
   const response = await withLLMSpan(
     getModelName(),
     systemPrompt.length + messages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0),
@@ -143,7 +142,6 @@ export async function synthesisAgentNode(
         new SystemMessage(systemPrompt),
         ...messages,
       ]);
-      recordLatency(span, llmStart);
       return result;
     }
   );

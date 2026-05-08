@@ -20,6 +20,11 @@ export function getTracer(): Tracer {
   return getTracerInstance();
 }
 
+/** @internal */
+export function _resetTracer(): void {
+  _tracer = null;
+}
+
 export function startSpan(
   name: string,
   attributes?: Record<string, string | number | boolean>
@@ -72,7 +77,7 @@ export async function withVectorSearchSpan<T>(
 ): Promise<T> {
   return withSpan(
     "vector_search",
-    (span) => fn(span),
+    fn,
     {
       "vector.query_length": query.length,
       "vector.org_id": orgId,
@@ -125,7 +130,3 @@ export async function withSSEFrameSpan<T>(
   );
 }
 
-// Measure and record latency on an active span.
-export function recordLatency(span: Span, startTime: number): void {
-  span.setAttribute("duration_ms", Date.now() - startTime);
-}

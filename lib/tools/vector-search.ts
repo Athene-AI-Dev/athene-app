@@ -1,6 +1,6 @@
 import { withRLS, type RLSContext } from "../supabase/rls-client";
 import { embed } from "../ai/embedder";
-import { withVectorSearchSpan, recordLatency } from "../telemetry/spans";
+import { withVectorSearchSpan } from "../telemetry/spans";
 
 type UserRoleValue = "member" | "super_user" | "admin";
 
@@ -25,9 +25,7 @@ export async function vectorSearch({
   topK = 5,
 }: Params) {
   return withVectorSearchSpan(query, orgId, topK, async (span) => {
-    const start = Date.now();
     const embedding = await embed(query);
-    recordLatency(span, start);
 
     const ctx: RLSContext = {
       org_id: orgId,
@@ -36,7 +34,6 @@ export async function vectorSearch({
       user_role,
     };
 
-    const searchStart = Date.now();
     const result = await withRLS(ctx, async (supabase) => {
       const { data, error } = await supabase.rpc("vector_search", {
         p_embedding: JSON.stringify(embedding),
@@ -47,7 +44,6 @@ export async function vectorSearch({
       return data ?? [];
     });
     span.setAttribute("vector.results_count", result.length);
-    recordLatency(span, searchStart);
     return result;
   });
 }
@@ -63,9 +59,7 @@ export async function crossDeptVectorSearch(params: Params) {
   const topK = params.topK ?? 5;
   return withVectorSearchSpan(params.query, params.orgId, topK, async (span) => {
     span.setAttribute("vector.cross_dept", true);
-    const start = Date.now();
     const embedding = await embed(params.query);
-    recordLatency(span, start);
 
     const ctx: RLSContext = {
       org_id: params.orgId,
@@ -74,7 +68,6 @@ export async function crossDeptVectorSearch(params: Params) {
       user_role: params.user_role,
     };
 
-    const searchStart = Date.now();
     const result = await withRLS(ctx, async (supabase) => {
       const { data, error } = await supabase.rpc("vector_search_cross_dept", {
         p_embedding: JSON.stringify(embedding),
@@ -85,7 +78,6 @@ export async function crossDeptVectorSearch(params: Params) {
       return data ?? [];
     });
     span.setAttribute("vector.results_count", result.length);
-    recordLatency(span, searchStart);
     return result;
   });
 }

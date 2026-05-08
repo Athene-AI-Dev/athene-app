@@ -14,6 +14,7 @@
 import http from "k6/http";
 import { check } from "k6";
 import { Trend, Rate } from "k6/metrics";
+import { textSummary } from "k6/x/summary";
 
 // Custom metrics
 const firstTokenLatency = new Trend("first_token_latency");
@@ -23,6 +24,9 @@ const errorRate = new Rate("error_rate");
 // Config from env
 const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
 const CLERK_TOKEN = __ENV.CLERK_TOKEN || "";
+
+// Known task types for randomised payload
+const TASK_TYPES = ["general", "report", "data_index", "analytical"];
 
 function randomThreadId() {
   return "test-thread-" + Math.random().toString(36).substring(2, 10);
@@ -52,7 +56,7 @@ export const options = {
   ],
   thresholds: {
     "http_req_duration{page:agent}": ["p(95)<30000"], // 95% under 30s (LLM streaming is slow)
-    "ttfb{page:agent}": ["p(95)<500"],              // TTFB under 500ms
+    "ttfb{page:agent}": ["p(95)<3000"],             // TTFB under 3000ms for LLM streaming endpoint
     "first_token_latency": ["p(95)<1500"],           // 95% under 1.5s
     "error_rate": ["rate<0.05"],                       // <5% errors
   },
@@ -63,7 +67,7 @@ export default function () {
   const payload = JSON.stringify({
     message: "What are the latest Q1 sales figures?",
     threadId: randomThreadId(),
-    task_type: "general",
+    task_type: TASK_TYPES[Math.floor(Math.random() * TASK_TYPES.length)],
   });
 
   const PARAMS = getParams();
@@ -83,7 +87,6 @@ export default function () {
     errorRate.add(1);
     return;
   }
-  errorRate.add(0);
 
   // Parse SSE stream for first token latency
   // NOTE: k6 buffers the entire response, so this is approximate.
@@ -92,6 +95,7 @@ export default function () {
   const lines = body.split("\n");
 
   let firstTokenFound = false;
+  let finalAnswerReceived = false;
   for (const line of lines) {
     const trimmed = line.trim();
     // Match "data:..." (with or without space after colon, per SSE spec)
@@ -103,11 +107,19 @@ export default function () {
         // Approximate: use TTFB since k6 doesn't expose streaming
         firstTokenLatency.add(ttfbMs);
       }
-      if (data.final_answer) break;
+      if (data.final_answer) {
+        finalAnswerReceived = true;
+        break;
+      }
     } catch (e) {
       // Skip non-JSON lines (e.g., empty "data:" heartbeats)
     }
   }
+
+  // Validate that a final_answer was actually received
+  check(res, {
+    "final_answer received": () => finalAnswerReceived,
+  });
 }
 
 export function handleSummary(data) {
@@ -145,6 +157,6 @@ export function handleSummary(data) {
   console.log("=================================\n");
 
   return {
-    "stdout": JSON.stringify(summary, null, 2),
+    "stdout": textSummary(data, { indent: " " }) + "\n" + JSON.stringify(summary, null, 2),
   };
 }

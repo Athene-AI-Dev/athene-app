@@ -6,7 +6,7 @@ import { mapRole } from "@/lib/auth/clerk";
 import { rateLimit, cached } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { withSSEFrameSpan, recordLatency } from "@/lib/telemetry/spans";
+import { withSSEFrameSpan } from "@/lib/telemetry/spans";
 
 export async function POST(req: NextRequest) {
   try {
@@ -231,11 +231,9 @@ export async function POST(req: NextRequest) {
                 console.log(`[agent] First token latency: ${Date.now() - firstTokenTime}ms`);
               }
               if (token) {
-                const frameStart = Date.now();
                 const data = JSON.stringify({ token });
                 await withSSEFrameSpan("llm_token", async (span) => {
                   await writer.write(encoder.encode(`data: ${data}\n\n`));
-                  recordLatency(span, frameStart);
                 });
               }
             }
@@ -243,7 +241,6 @@ export async function POST(req: NextRequest) {
             const messages = chunk.messages as any[] | undefined;
             const lastMessage = messages?.[messages.length - 1];
             if (lastMessage) {
-              const frameStart = Date.now();
               const data = JSON.stringify({
                 content: lastMessage.content,
                 final_answer: chunk.final_answer ?? null,
@@ -253,7 +250,6 @@ export async function POST(req: NextRequest) {
               });
               await withSSEFrameSpan("agent_chunk", async (span) => {
                 await writer.write(encoder.encode(`data: ${data}\n\n`));
-                recordLatency(span, frameStart);
               });
             }
 >>>>>>> 16ae182 (ATH-51)

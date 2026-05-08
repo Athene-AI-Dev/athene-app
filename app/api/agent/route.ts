@@ -90,11 +90,12 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
+      orgId: orgRow.id,
+      userId: memberRow.id,
       role,
       user: {
-        id: userId,
+        id: userId, // Keep Clerk ID for display/identity if needed
+        internalId: memberRow.id,
         timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",

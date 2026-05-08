@@ -23,15 +23,20 @@ export default function ThreadChatPage() {
   const [pendingAction, setPendingAction] = useState<PendingWriteAction | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Cleanup on unmount — abort any in-flight request
+  // Cleanup on unmount — abort any in-flight request without nulling ref
   useEffect(() => {
     return () => {
       if (abortRef.current) {
         abortRef.current.abort();
-        abortRef.current = null;
       }
     };
   }, []);
+
+  // Reset state when threadId changes
+  useEffect(() => {
+    setMessages([]);
+    setIsLoading(false);
+  }, [threadId]);
 
   // Fetch initial thread state
   useEffect(() => {
@@ -44,17 +49,24 @@ export default function ThreadChatPage() {
 
         const data = await res.json();
         if (data.values?.messages) {
-          const loadedMessages: Message[] = data.values.messages.map(
-            (msg: any, idx: number) => ({
-              id: msg.id || `msg-${idx}`,
-              role: msg.type === "human" ? "user" : "assistant",
-              content: msg.content,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              cited_sources: data.values.cited_sources || [],
-            })
+          const msgs = data.values.messages;
+          const loadedMessages: Message[] = msgs.map(
+            (msg: any, idx: number) => {
+              const isLast = idx === msgs.length - 1;
+              const isAssistant = msg.type !== "human";
+              return {
+                id: msg.id || `msg-${idx}`,
+                role: isAssistant ? "assistant" : "user",
+                content: msg.content,
+                timestamp: new Date().toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                cited_sources: (isLast && isAssistant)
+                  ? (data.values.cited_sources || [])
+                  : [],
+              };
+            }
           );
           setMessages(loadedMessages);
         }
@@ -117,7 +129,7 @@ export default function ThreadChatPage() {
   }, []);
 
   // Shared streaming logic for both send and resume
-  async function streamFromUrl(url: string, body: object) {
+  const streamFromUrl = useCallback(async (url: string, body: object) => {
     if (!threadId) return;
 
     const controller = new AbortController();
@@ -164,7 +176,7 @@ export default function ThreadChatPage() {
     } finally {
       abortRef.current = null;
     }
-  }
+  }, [handleStreamMessage, handleStreamError]);
 
   async function handleSend(message: string) {
     if (!message.trim() || isLoading || !threadId) return;

@@ -28,9 +28,6 @@ interface MessageListProps {
   awaitingApproval?: boolean;
 }
 
-// Match [doc_id] patterns only — alphanumeric, hyphens, underscores
-const CITATION_REGEX = /\[([a-zA-Z0-9_-]+)\]/g;
-
 export function MessageList({ messages, awaitingApproval }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -41,16 +38,17 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
         behavior: "smooth",
       });
     }
-  }, [messages]);
+  }, [messages.length]);
 
   function renderContent(content: string, citedSources?: CitedSource[]) {
+    // Local regex instance to avoid concurrent render races
+    const CITATION_REGEX = /\[([a-zA-Z0-9_-]+)\]/g;
+
     if (!citedSources || citedSources.length === 0) {
       return <div className="whitespace-pre-wrap">{content}</div>;
     }
 
     const parts: React.ReactNode[] = [];
-    // Reset lastIndex to avoid stale state from previous calls
-    CITATION_REGEX.lastIndex = 0;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
@@ -188,15 +186,22 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
                       {msg.cited_sources.map((source, idx) => (
                         <Tooltip key={`${source.document_id}-${idx}`}>
                           <TooltipTrigger asChild>
-                            <a
-                              href={source.external_url || "#"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-[#D96FAB] hover:border-[#D96FAB]/30 transition-all duration-200"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
-                              {source.source_type || "Source"}
-                            </a>
+                            {source.external_url ? (
+                              <a
+                                href={source.external_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-[#D96FAB] hover:border-[#D96FAB]/30 transition-all duration-200"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
+                                {source.source_type || "Source"}
+                              </a>
+                            ) : (
+                              <span className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                                <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
+                                {source.source_type || "Source"}
+                              </span>
+                            )}
                           </TooltipTrigger>
                           <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">
                             Document ID: {source.document_id.slice(0, 8)}

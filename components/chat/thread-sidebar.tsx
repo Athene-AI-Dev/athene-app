@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Plus, MessageSquare, Trash2 } from "lucide-react";
@@ -26,16 +26,12 @@ interface Thread {
 export function ThreadSidebar() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const activeThreadId = pathname?.split("/chat/")[1]?.split("/")[0];
 
-  useEffect(() => {
-    fetchThreads();
-  }, []);
-
-  async function fetchThreads() {
+  const fetchThreads = useCallback(async () => {
     try {
       const res = await fetch("/api/threads");
       if (res.ok) {
@@ -47,10 +43,15 @@ export function ThreadSidebar() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchThreads();
+  }, [fetchThreads]);
 
   async function createThread() {
     try {
+      setOperationError(null);
       const res = await fetch("/api/threads", { method: "POST" });
       if (res.ok) {
         const thread = await res.json();
@@ -59,23 +60,22 @@ export function ThreadSidebar() {
       }
     } catch (err) {
       console.error("Failed to create thread:", err);
+      setOperationError("Failed to create thread. Please try again.");
     }
   }
 
-  async function confirmDelete() {
-    if (!deleteId) return;
+  async function confirmDelete(id: string) {
     try {
-      const res = await fetch(`/api/threads/${deleteId}`, { method: "DELETE" });
+      const res = await fetch(`/api/threads/${id}`, { method: "DELETE" });
       if (res.ok) {
-        if (activeThreadId === deleteId) {
+        if (activeThreadId === id) {
           router.push("/chat");
         }
         fetchThreads();
       }
     } catch (err) {
       console.error("Failed to delete thread:", err);
-    } finally {
-      setDeleteId(null);
+      setOperationError("Failed to delete thread. Please try again.");
     }
   }
 
@@ -98,6 +98,14 @@ export function ThreadSidebar() {
           <Plus className="w-4 h-4 mr-2" />
           New chat
         </Button>
+        {operationError && (
+          <div className="mx-4 mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-medium flex justify-between items-center">
+            <span>{operationError}</span>
+            <button onClick={() => setOperationError(null)} className="ml-2 hover:text-white">
+              ×
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -132,7 +140,6 @@ export function ThreadSidebar() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDeleteId(thread.id);
                     }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-500/20 rounded"
                   >
@@ -148,11 +155,11 @@ export function ThreadSidebar() {
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => setDeleteId(null)}>
+                    <AlertDialogCancel>
                       Cancel
                     </AlertDialogCancel>
                     <AlertDialogAction
-                      onClick={confirmDelete}
+                      onClick={() => confirmDelete(thread.id)}
                       className="bg-red-500 hover:bg-red-600"
                     >
                       Delete

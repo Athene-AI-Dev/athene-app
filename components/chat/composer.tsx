@@ -51,12 +51,12 @@ export function Composer({
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = e.target.value;
+    setInput(value);
     if (value.length > MAX_LENGTH) {
       setError(`Message exceeds maximum length of ${MAX_LENGTH.toLocaleString()} characters.`);
-      return;
+    } else {
+      setError(null);
     }
-    setError(null);
-    setInput(value);
     // Auto-resize textarea
     const textarea = e.target;
     textarea.style.height = "auto";
@@ -78,6 +78,8 @@ export function Composer({
           variant="ghost"
           size="icon"
           disabled={isLoading}
+          aria-label="Attach file"
+          title="Attach file"
           className="h-12 w-12 rounded-full hover:bg-[#EEF6FC]/10 text-[#7AADCF] transition-all shrink-0 disabled:opacity-50"
         >
           <Paperclip className="w-5.5 h-5.5" />
@@ -101,6 +103,8 @@ export function Composer({
               variant="ghost"
               size="icon"
               disabled={isLoading}
+              aria-label="Voice input"
+              title="Voice input"
               className="h-12 w-12 rounded-full hover:bg-[#EEF6FC]/10 text-[#7AADCF] transition-all disabled:opacity-50"
             >
               <Mic className="w-5.5 h-5.5" />

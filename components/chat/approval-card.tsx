@@ -14,12 +14,41 @@ interface ApprovalCardProps {
 }
 
 export function ApprovalCard({ threadId, action, onComplete, onError }: ApprovalCardProps) {
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<'approve' | 'reject' | 'edit' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [editPayload, setEditPayload] = useState(
     JSON.stringify(action.payload, null, 2)
   );
+
+  async function readApprovalStream(res: Response): Promise<{ finalContent: string; finalSources: any[] }> {
+    let finalContent = "";
+    let finalSources: any[] = [];
+    if (res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) finalContent = data.content;
+            if (data.cited_sources) finalSources = data.cited_sources;
+            if (data.run_status === "completed" || data.final_answer) break;
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+    return { finalContent, finalSources };
+  }
 
   const toolIcon = action.tool.toLowerCase().includes("email") ? (
     <Mail className="w-5 h-5 text-[#D96FAB]" />
@@ -28,7 +57,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
   );
 
   async function handleApprove() {
-    setLoading(true);
+    setLoadingAction('approve');
     setError(null);
     try {
       const res = await fetch("/api/agent/approve", {
@@ -45,50 +74,19 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
         throw new Error(`Approve failed: ${errText}`);
       }
 
-      // Read the SSE stream from the resumed agent
-      if (res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let finalContent = "";
-        let finalSources: any[] = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.content) finalContent = data.content;
-              if (data.cited_sources) finalSources = data.cited_sources;
-              if (data.run_status === "completed" || data.final_answer) break;
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-
-        onComplete?.(finalContent, finalSources);
-      } else {
-        onComplete?.("", []);
-      }
+      const { finalContent, finalSources } = await readApprovalStream(res);
+      onComplete?.(finalContent, finalSources);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to approve";
       setError(msg);
       onError?.(msg);
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
   async function handleReject() {
-    setLoading(true);
+    setLoadingAction('reject');
     setError(null);
     try {
       const res = await fetch("/api/agent/approve", {
@@ -105,45 +103,14 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
         throw new Error(`Reject failed: ${errText}`);
       }
 
-      // Read the SSE stream from the resumed agent
-      if (res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let finalContent = "";
-        let finalSources: any[] = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.content) finalContent = data.content;
-              if (data.cited_sources) finalSources = data.cited_sources;
-              if (data.run_status === "completed" || data.final_answer) break;
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-
-        onComplete?.(finalContent, finalSources);
-      } else {
-        onComplete?.("", []);
-      }
+      const { finalContent, finalSources } = await readApprovalStream(res);
+      onComplete?.(finalContent, finalSources);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to reject";
       setError(msg);
       onError?.(msg);
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
@@ -151,15 +118,33 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
     setShowEdit(!showEdit);
   }
 
-  function handleEditSave() {
+  async function handleEditSave() {
     try {
       const parsed = JSON.parse(editPayload);
-      // In a real implementation, this would send the edited payload
-      // For now, show that edit was attempted
+      setLoadingAction('edit');
+      setError(null);
+      const res = await fetch("/api/agent/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId,
+          action: "approve",
+          editedPayload: parsed,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "Unknown error");
+        throw new Error(`Edit approve failed: ${errText}`);
+      }
+      const { finalContent, finalSources } = await readApprovalStream(res);
+      onComplete?.(finalContent, finalSources);
       setShowEdit(false);
-      // TODO: Wire up to API with edited payload
-    } catch {
-      setError("Invalid JSON payload");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid JSON payload";
+      setError(msg);
+      onError?.(msg);
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -191,7 +176,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
             <div className="flex gap-3">
               <Button
                 onClick={handleEditSave}
-                disabled={loading}
+                disabled={loadingAction !== null}
                 className="bg-emerald-500 hover:bg-emerald-600 text-white"
               >
                 <Check className="w-4 h-4 mr-2" />
@@ -200,7 +185,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
               <Button
                 onClick={() => setShowEdit(false)}
                 variant="outline"
-                disabled={loading}
+                disabled={loadingAction !== null}
               >
                 Cancel
               </Button>
@@ -221,10 +206,10 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
             <div className="flex items-center gap-3">
               <Button
                 onClick={handleApprove}
-                disabled={loading}
+                disabled={loadingAction !== null}
                 className="bg-emerald-500 hover:bg-emerald-600 text-white"
               >
-                {loading ? (
+                {loadingAction === 'approve' ? (
                   <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 ) : (
                   <Check className="w-4 h-4 mr-2" />
@@ -234,7 +219,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
 
               <Button
                 onClick={handleEdit}
-                disabled={loading}
+                disabled={loadingAction !== null}
                 variant="outline"
                 className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
               >
@@ -244,7 +229,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
 
               <Button
                 onClick={handleReject}
-                disabled={loading}
+                disabled={loadingAction !== null}
                 variant="outline"
                 className="border-red-500/30 text-red-400 hover:bg-red-500/10"
               >
@@ -256,7 +241,7 @@ export function ApprovalCard({ threadId, action, onComplete, onError }: Approval
         )}
 
         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-          Requested at: {new Date(action.requested_at).toLocaleString()}
+          Requested at: {action.requested_at && !isNaN(new Date(action.requested_at).getTime()) ? new Date(action.requested_at).toLocaleString() : 'Unknown time'}
         </p>
       </div>
     </Card>

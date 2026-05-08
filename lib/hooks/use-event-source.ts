@@ -26,6 +26,12 @@ export function useEventSource({
   const [error, setError] = useState<Error | null>(null);
   const abortRef = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
+  const bodyRef = useRef(body);
+  const isStartingRef = useRef(false);
+
+  useEffect(() => {
+    bodyRef.current = body;
+  }, [body]);
 
   const stop = useCallback(() => {
     abortRef.current = true;
@@ -37,13 +43,19 @@ export function useEventSource({
   }, []);
 
   const start = useCallback(async () => {
+    if (isStartingRef.current) {
+      // Queue start after current one completes
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return start();
+    }
+    isStartingRef.current = true;
     stop();
     abortRef.current = false;
-    setIsConnected(true);
     setError(null);
 
     try {
-      const isPost = !!body;
+      const currentBody = bodyRef.current;
+      const isPost = !!currentBody;
       let response: Response;
 
       if (isPost) {
@@ -52,7 +64,7 @@ export function useEventSource({
         response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify(currentBody),
           signal: controller.signal,
         });
       } else {
@@ -64,6 +76,9 @@ export function useEventSource({
       if (!response.ok || !response.body) {
         throw new Error(`Request failed: ${response.status}`);
       }
+
+      // Only set connected after successful response
+      setIsConnected(true);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -97,8 +112,9 @@ export function useEventSource({
       if (!abortRef.current) {
         setIsConnected(false);
       }
+      isStartingRef.current = false;
     }
-  }, [url, body, stop, onMessage, onError]);
+  }, [url, stop, onMessage, onError]);
 
   useEffect(() => {
     if (enabled) {

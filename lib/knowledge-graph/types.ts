@@ -61,6 +61,7 @@ export type KGNode = {
   visibility: Visibility;
   source_documents: string[];
   description?: string | null;
+  community?: number | null;
   metadata?: Record<string, unknown>;
   updated_at?: string;
 };

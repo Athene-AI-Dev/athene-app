@@ -4,10 +4,8 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import { 
   Send, 
   User, 
-  Sparkles, 
   Paperclip, 
   Mic, 
-  Maximize2,
   RefreshCcw,
   ShieldCheck,
   BrainCircuit,
@@ -17,18 +15,14 @@ import {
   Database,
   Loader2,
   ExternalLink,
-  Command,
   ChevronRight,
-  Info
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { 
   Tabs, 
-  TabsContent, 
   TabsList, 
   TabsTrigger 
 } from "@/components/ui/tabs";
@@ -155,25 +149,25 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-120px)] flex-col gap-8 animate-in fade-in duration-700 overflow-hidden">
+    <div className="flex h-[calc(100vh-120px)] flex-col gap-8 animate-in fade-in duration-700 overflow-hidden font-['Space_Grotesk']">
       <div className="flex flex-1 gap-8 overflow-hidden">
         
         {/* Main Conversation Column */}
         <div className="flex flex-1 flex-col min-w-0 gap-6">
           
           {/* Header Section */}
-          <div className="flex items-center justify-between bg-accent/20 p-6 rounded-[2.5rem] border border-white/5 shadow-sm">
+          <div className="flex items-center justify-between bg-white/5 p-6 rounded-[2.5rem] border border-white/5 shadow-sm">
             <div className="flex items-center gap-5">
-              <div className="h-12 w-12 bg-[#D96FAB] rounded-2xl flex items-center justify-center shadow-md">
-                <BrainCircuit className="h-6 w-6 text-white" />
+              <div className="h-12 w-12 bg-white rounded-2xl flex items-center justify-center shadow-md">
+                <img src="/logo.png" alt="A" className="h-8 w-8 object-contain" />
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-base font-black tracking-tight text-foreground">Synthesis v4.2</h2>
+                  <h2 className="text-base font-black tracking-tight text-white">Synthesis v4.2</h2>
                   <Badge className="bg-emerald-500/10 text-emerald-400 border-none text-[9px] font-bold h-4.5 px-2">LIVE</Badge>
                 </div>
-                <p className="text-[11px] text-muted-foreground/40 font-bold uppercase tracking-[0.15em] flex items-center gap-2 mt-0.5">
-                   <ShieldCheck className="w-3.5 h-3.5 text-[#5290B8]" />
+                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-[0.15em] flex items-center gap-2 mt-0.5">
+                   <ShieldCheck className="w-3.5 h-3.5 text-[#66ADE4]" />
                    Encrypted Pipeline
                 </p>
               </div>
@@ -186,17 +180,17 @@ export default function ChatPage() {
                     className="hidden md:block"
                 >
                     <TabsList className="bg-background/50 border border-white/5 p-1 rounded-xl h-11">
-                    <TabsTrigger value="standard" className="rounded-lg px-6 text-[10px] font-bold uppercase tracking-wider transition-all data-[state=active]:bg-white/10 data-[state=active]:text-[#D96FAB] data-[state=active]:shadow-sm">
+                    <TabsTrigger value="standard" className="rounded-lg px-6 text-[10px] font-bold uppercase tracking-wider transition-all data-[state=active]:bg-white/10 data-[state=active]:text-[#66ADE4] data-[state=active]:shadow-sm">
                         Standard
                     </TabsTrigger>
-                    <TabsTrigger value="analytical" className="rounded-lg px-6 text-[10px] font-bold uppercase tracking-wider transition-all data-[state=active]:bg-white/10 data-[state=active]:text-[#D96FAB] data-[state=active]:shadow-sm flex items-center gap-2">
+                    <TabsTrigger value="analytical" className="rounded-lg px-6 text-[10px] font-bold uppercase tracking-wider transition-all data-[state=active]:bg-white/10 data-[state=active]:text-[#66ADE4] data-[state=active]:shadow-sm flex items-center gap-2">
                         <Database className="w-3.5 h-3.5" />
                         Analytical
                     </TabsTrigger>
                     </TabsList>
                 </Tabs>
                <div className="flex items-center gap-2 pr-2">
-                  <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl hover:bg-[#D96FAB]/10 hover:text-[#D96FAB] border border-transparent hover:border-white/10">
+                  <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl hover:bg-[#66ADE4]/10 hover:text-[#66ADE4] border border-transparent hover:border-white/10">
                      <RefreshCcw className="w-4.5 h-4.5" />
                   </Button>
                </div>
@@ -211,8 +205,7 @@ export default function ChatPage() {
                   key={msg.id}
                   className={cn(
                     "flex w-full animate-in fade-in slide-in-from-bottom-4 duration-500",
-                    msg.role === "user" ? "justify-end" : "justify-start",
-                    `stagger-${(i % 5) + 1}`
+                    msg.role === "user" ? "justify-end" : "justify-start"
                   )}
                 >
                   <div className={cn(
@@ -222,21 +215,21 @@ export default function ChatPage() {
                     <div className={cn(
                       "h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center border shadow-sm",
                       msg.role === "assistant" 
-                        ? "bg-[#EEF6FC]/10 border-[#C2DCF0]/20 text-[#5290B8]" 
-                        : "bg-[#D96FAB]/10 border-[#F7DDE9]/20 text-[#D96FAB]"
+                        ? "bg-white border-white/10 text-black" 
+                        : "bg-[#DA88B6] border-none text-white"
                     )}>
-                      {msg.role === "assistant" ? <Zap className="h-5.5 w-5.5" /> : <User className="h-5.5 w-5.5" />}
+                      {msg.role === "assistant" ? <img src="/logo.png" alt="A" className="w-6 h-6 object-contain" /> : <User className="h-5.5 w-5.5" />}
                     </div>
                     
                     <div className="space-y-2">
                       <div className={cn(
                         "p-6 rounded-[2rem] text-[15px] leading-relaxed font-medium shadow-sm transition-all hover:shadow-md",
                         msg.role === "assistant" 
-                          ? "bg-card border border-white/5 text-foreground" 
-                          : "bg-[#D96FAB] text-white border-none shadow-pink-900/20"
+                          ? "bg-white/5 border border-white/5 text-white" 
+                          : "bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] text-white border-none shadow-blue-900/20"
                       )}>
                         {msg.isAnalytical && msg.role === "assistant" && (
-                            <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] font-bold text-[#D96FAB] mb-4 border-b border-white/5 pb-3 w-fit">
+                            <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] font-bold text-[#66ADE4] mb-4 border-b border-white/5 pb-3 w-fit">
                                 <Database className="w-4 h-4" />
                                 Business Intelligence Synthesis
                             </div>
@@ -244,8 +237,8 @@ export default function ChatPage() {
                         <div className="whitespace-pre-wrap">
                             {msg.content || (
                             <div className="flex items-center gap-4 py-2">
-                                <Loader2 className="w-5 h-5 animate-spin text-[#D96FAB]" />
-                                <span className="text-muted-foreground animate-pulse text-[12px] font-bold uppercase tracking-widest">Athene is Synthesizing...</span>
+                                <Loader2 className="w-5 h-5 animate-spin text-[#66ADE4]" />
+                                <span className="text-slate-500 animate-pulse text-[12px] font-bold uppercase tracking-widest">Athene is Synthesizing...</span>
                             </div>
                             )}
                         </div>
@@ -260,9 +253,9 @@ export default function ChatPage() {
                                                 href={source.external_url || "#"}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-[#D96FAB] hover:border-[#D96FAB]/30 transition-all duration-200"
+                                                className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-slate-400 hover:text-[#66ADE4] hover:border-[#66ADE4]/30 transition-all duration-200"
                                             >
-                                                <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
+                                                <ExternalLink className="w-3.5 h-3.5 text-[#66ADE4]" />
                                                 {source.source_type || "Source"}
                                             </a>
                                         </TooltipTrigger>
@@ -279,13 +272,7 @@ export default function ChatPage() {
                         "flex items-center gap-3 px-6 mt-1",
                         msg.role === "user" && "flex-row-reverse"
                       )}>
-                        <span className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-widest opacity-60">{msg.timestamp}</span>
-                        {msg.role === "assistant" && (
-                          <div className="flex gap-2">
-                             <div className="h-1.5 w-1.5 rounded-full bg-white/10" />
-                             <div className="h-1.5 w-1.5 rounded-full bg-white/10" />
-                          </div>
-                        )}
+                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest opacity-60">{msg.timestamp}</span>
                       </div>
                     </div>
                   </div>
@@ -295,9 +282,9 @@ export default function ChatPage() {
           </ScrollArea>
 
           {/* Input Bar */}
-          <div className="bg-card p-4 rounded-[3rem] border border-white/5 flex flex-col gap-3 shadow-2xl shadow-black/20 relative z-10 mx-6 mb-4 group focus-within:border-[#D96FAB]/50 transition-all">
+          <div className="bg-white/5 p-4 rounded-[3rem] border border-white/5 flex flex-col gap-3 shadow-2xl shadow-black/20 relative z-10 mx-6 mb-4 group focus-within:border-[#66ADE4]/50 transition-all">
             <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full hover:bg-[#EEF6FC]/10 text-[#7AADCF] transition-all">
+                <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full hover:bg-[#66ADE4]/10 text-slate-400 transition-all">
                    <Paperclip className="w-5.5 h-5.5" />
                 </Button>
                 
@@ -307,17 +294,17 @@ export default function ChatPage() {
                         onChange={(e) => setInput(e.target.value)}
                         disabled={isLoading}
                         placeholder={isAnalyticalMode ? "Synthesize department-wide BI patterns..." : "Ask Athene to synthesize anything..."}
-                        className="flex-1 bg-transparent border-none focus:outline-none text-foreground text-[15px] font-medium placeholder:text-muted-foreground/20 placeholder:font-bold placeholder:uppercase placeholder:tracking-widest h-12"
+                        className="flex-1 bg-transparent border-none focus:outline-none text-white text-[15px] font-medium placeholder:text-slate-600 placeholder:font-bold placeholder:uppercase placeholder:tracking-widest h-12"
                     />
                     
                     <div className="flex items-center gap-3 pr-2">
-                        <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full hover:bg-[#EEF6FC]/10 text-[#7AADCF] transition-all">
+                        <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full hover:bg-[#66ADE4]/10 text-slate-400 transition-all">
                             <Mic className="w-5.5 h-5.5" />
                         </Button>
                         <Button 
                             type="submit"
                             disabled={isLoading || !input.trim()}
-                            className="h-12 w-12 rounded-full bg-[#D96FAB] text-white hover:bg-[#ECA8CC] shadow-lg shadow-pink-900/20 transition-all active:scale-95 flex items-center justify-center"
+                            className="h-12 w-12 rounded-full bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] text-white hover:shadow-lg hover:shadow-blue-900/20 transition-all active:scale-95 flex items-center justify-center"
                         >
                             {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6 fill-white" />}
                         </Button>
@@ -329,45 +316,45 @@ export default function ChatPage() {
 
         {/* Intelligence Sidebar */}
         <aside className="hidden xl:flex w-80 flex-col gap-8 pr-4 pb-10">
-           <Card className="frosted-card p-10 space-y-8">
-              <h3 className="text-[12px] uppercase tracking-[0.2em] font-black text-muted-foreground/60">Session Context</h3>
+           <Card className="bg-white/5 border border-white/10 p-10 space-y-8 rounded-[2.5rem]">
+              <h3 className="text-[12px] uppercase tracking-[0.2em] font-black text-slate-500">Session Context</h3>
               <div className="space-y-6">
-                 <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 space-y-5 group hover:border-[#D96FAB]/30 transition-all shadow-sm">
+                 <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 space-y-5 group hover:border-[#66ADE4]/30 transition-all shadow-sm">
                     <div className="flex items-center justify-between">
-                       <Layout className="w-5 h-5 text-[#D96FAB]" />
-                       <Badge className="bg-white/5 text-muted-foreground/60 border-white/10 text-[10px] font-bold">3 SOURCES</Badge>
+                       <Layout className="w-5 h-5 text-[#66ADE4]" />
+                       <Badge className="bg-white/5 text-slate-500 border-white/10 text-[10px] font-bold">3 SOURCES</Badge>
                     </div>
-                    <p className="text-[14px] font-black text-foreground leading-tight">Knowledge Graph Synthesis Init</p>
+                    <p className="text-[14px] font-black text-white leading-tight">Knowledge Graph Synthesis Init</p>
                     <div className="flex items-center gap-3">
                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-[#D96FAB]" style={{ width: '100%' }} />
+                          <div className="h-full bg-[#66ADE4]" style={{ width: '100%' }} />
                        </div>
-                       <span className="text-[11px] font-black text-[#D96FAB]">100%</span>
+                       <span className="text-[11px] font-black text-[#66ADE4]">100%</span>
                     </div>
                  </div>
               </div>
            </Card>
 
-           <Card className="frosted-card flex-1 p-10 space-y-8 overflow-hidden">
-              <h3 className="text-[12px] uppercase tracking-[0.2em] font-black text-muted-foreground/60">Active Reasoning</h3>
+           <Card className="bg-white/5 border border-white/10 flex-1 p-10 space-y-8 overflow-hidden rounded-[2.5rem]">
+              <h3 className="text-[12px] uppercase tracking-[0.2em] font-black text-slate-500">Active Reasoning</h3>
               <div className="space-y-4">
                  {[
-                   { name: "Retrieval Scout", status: "Active", icon: Search, color: "text-[#D96FAB]", bg: "bg-[#D96FAB]/10" },
-                   { name: "Logic Engine", status: "Ready", icon: BrainCircuit, color: "text-[#5290B8]", bg: "bg-[#EEF6FC]/10" },
+                   { name: "Retrieval Scout", status: "Active", icon: Search, color: "text-[#66ADE4]", bg: "bg-[#66ADE4]/10" },
+                   { name: "Logic Engine", status: "Ready", icon: BrainCircuit, color: "text-[#66ADE4]", bg: "bg-[#66ADE4]/10" },
                    { name: "Audit Sentry", status: "Wait", icon: ShieldCheck, color: "text-emerald-400", bg: "bg-emerald-400/10" },
                  ].map((agent, i) => (
-                   <div key={i} className="flex items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/5 group hover:border-[#D96FAB]/20 transition-all">
-                      <div className="flex items-center gap-4">
-                         <div className={cn("p-3 rounded-xl shadow-sm bg-background", agent.color)}>
-                            <agent.icon className="w-5 h-5" />
-                         </div>
-                         <div className="flex flex-col">
-                            <span className="text-[13px] font-black text-foreground">{agent.name}</span>
-                            <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">{agent.status}</span>
-                         </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/20 group-hover:text-[#D96FAB] group-hover:translate-x-1 transition-all" />
-                   </div>
+                    <div key={i} className="flex items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/5 group hover:border-[#66ADE4]/20 transition-all">
+                       <div className="flex items-center gap-4">
+                          <div className={cn("p-3 rounded-xl shadow-sm bg-black/40", agent.color)}>
+                             <agent.icon className="w-5 h-5" />
+                          </div>
+                          <div className="flex flex-col">
+                             <span className="text-[13px] font-black text-white">{agent.name}</span>
+                             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{agent.status}</span>
+                          </div>
+                       </div>
+                       <ChevronRight className="w-4 h-4 text-slate-800 group-hover:text-[#66ADE4] group-hover:translate-x-1 transition-all" />
+                    </div>
                  ))}
               </div>
            </Card>

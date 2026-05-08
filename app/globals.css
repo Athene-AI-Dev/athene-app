@@ -1,12 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@100..800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../components/graph/graph.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-sans: "Sora", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-space-grotesk: var(--font-space-grotesk), "Space Grotesk", sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -70,7 +73,7 @@
 
 .dark {
   /* Dark Mode Identity */
-  --background: oklch(0.12 0.02 260);
+  --background: #06080c;
   --foreground: oklch(0.98 0.01 260);
   
   --card: oklch(0.14 0.03 260);
@@ -186,4 +189,21 @@
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

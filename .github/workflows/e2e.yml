@@ -1,0 +1,114 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Allow manual trigger
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # ── Next.js runtime ───────────────────────────────────────────────
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: /chat
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: /chat
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      NANGO_SECRET_KEY: ${{ secrets.NANGO_SECRET_KEY }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+      # ── LangGraph PostgresSaver (agent checkpointer) ───────────────────
+      # FIX: without a direct Postgres connection string, every graph.invoke()
+      # call fails with 'connection string not found' and all AI assertions time out.
+      # Both names are listed because different LangGraph versions read different keys.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # ── E2E-specific ───────────────────────────────────────────────────
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_MEMBER_EMAIL: ${{ secrets.E2E_MEMBER_EMAIL }}
+      E2E_MEMBER_PASSWORD: ${{ secrets.E2E_MEMBER_PASSWORD }}
+      E2E_BI_EMAIL: ${{ secrets.E2E_BI_EMAIL }}
+      E2E_BI_PASSWORD: ${{ secrets.E2E_BI_PASSWORD }}
+      # Required by admin-onboarding.spec.ts OTP fallback branch.
+      # Set by Clerk test-mode webhooks; if absent the test is skipped gracefully.
+      E2E_CLERK_OTP: ${{ secrets.E2E_CLERK_OTP }}
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node setup ──────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # ── Install dependencies ─────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Playwright browsers ──────────────────────────────────────────────
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # FIX: system deps (libglib, libnss, etc.) are OS-level packages NOT included
+      # in the Playwright browser cache. When the cache hits, binaries are restored
+      # but system deps are missing, causing 'missing shared library' launch errors.
+      # Remove the condition so install-deps always runs regardless of cache state.
+      - name: Install Playwright system deps
+        run: npx playwright install-deps chromium
+
+      # ── Run E2E tests ────────────────────────────────────────────────────
+      - name: Run Playwright E2E tests
+        run: npx playwright test --config=tests/e2e/playwright.config.ts
+        env:
+          CI: true
+
+      # ── Upload reports & artefacts on failure ────────────────────────────
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          # FIX: increased from 7 to 14 days. The sprint is 5 weeks; 7-day retention
+          # means week-1 artifacts are gone by week-2, making cross-sprint debugging impossible.
+          retention-days: 14
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: test-results/
+          # FIX: 30 days for raw failure evidence to support intermittent failures
+          # that only reproduce in CI and may take multiple sprint weeks to diagnose.
+          retention-days: 30

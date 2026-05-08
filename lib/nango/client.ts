@@ -9,11 +9,7 @@ export function getNango() {
   if (!nangoInstance) {
     const nangoSecretKey = process.env.NANGO_SECRET_KEY;
     if (!nangoSecretKey) {
-      if (process.env.NODE_ENV === 'test') {
-        console.warn("NANGO_SECRET_KEY missing; using placeholder for testing");
-      } else {
-        throw new Error("Missing NANGO_SECRET_KEY environment variable");
-      }
+       console.warn("⚠️ [Config] Missing NANGO_SECRET_KEY. Integration features will be disabled.");
     }
     nangoInstance = new Nango({
       secretKey: nangoSecretKey || 'placeholder-key'
@@ -199,7 +195,7 @@ export async function listConnections(orgId: string) {
         endUserOrganizationId: orgId
       } as any);
 
-      return connections.filter((conn: any) => conn.metadata?.org_id === orgId).map(c => ({
+      return connections.filter((conn: any) => conn.metadata?.org_id === orgId).map((c: any) => ({
         ...c,
         sync_status: 'connected',
         last_synced_at: null

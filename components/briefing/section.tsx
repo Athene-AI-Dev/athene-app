@@ -1,10 +1,10 @@
 'use client';
 
 import ReactMarkdown from 'react-markdown';
-import { Calendar, Mail, FileText, ChevronRight } from 'lucide-react';
+import { Calendar, Mail, FileText, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type SectionType = 'calendar' | 'emails' | 'docs';
+type SectionType = 'calendar' | 'emails' | 'docs' | 'knowledge';
 
 interface BriefingSectionProps {
   type: SectionType;
@@ -17,18 +17,21 @@ const icons = {
   calendar: <Calendar className="w-5 h-5 text-blue-500" />,
   emails: <Mail className="w-5 h-5 text-purple-500" />,
   docs: <FileText className="w-5 h-5 text-emerald-500" />,
+  knowledge: <Brain className="w-5 h-5 text-amber-500" />,
 };
 
 const gradients = {
   calendar: 'from-blue-500/10 to-transparent',
   emails: 'from-purple-500/10 to-transparent',
   docs: 'from-emerald-500/10 to-transparent',
+  knowledge: 'from-amber-500/10 to-transparent',
 };
 
 const borderColors = {
   calendar: 'border-blue-500/20',
   emails: 'border-purple-500/20',
   docs: 'border-emerald-500/20',
+  knowledge: 'border-amber-500/20',
 };
 
 export function BriefingSection({ type, title, content, className }: BriefingSectionProps) {

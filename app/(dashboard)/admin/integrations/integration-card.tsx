@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { 
   CheckCircle2, 
@@ -44,7 +44,13 @@ export function IntegrationCard({
   onIndex 
 }: IntegrationCardProps) {
   const [indexing, setIndexing] = useState(false);
-  const [imageError, setImageError] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+
 
   const handleIndex = async () => {
     setIndexing(true);
@@ -119,8 +125,9 @@ export function IntegrationCard({
                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">Last Sync</span>
             </div>
             <span className="text-sm font-black text-foreground">
-              {integration.lastSyncedAt ? new Date(integration.lastSyncedAt).toLocaleDateString() : 'Pending'}
+              {integration.lastSyncedAt && mounted ? new Date(integration.lastSyncedAt).toLocaleDateString() : 'Pending'}
             </span>
+
          </div>
       </div>
 

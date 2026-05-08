@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { qstash } from "@/lib/qstash/client";
+import { BRIEFING_HOUR_LOCAL } from "./constants";
+
 
 /**
  * Shape of a row returned from the automations + org_members join.
@@ -98,11 +100,13 @@ export function getNextLocal7AmUtc(timeZone: string, now = new Date()) {
     localNow.year,
     localNow.month,
     localNow.day,
-    7,
+    BRIEFING_HOUR_LOCAL,
     0
   );
 
-  if (scheduledUtc < now) {
+
+  if (scheduledUtc <= now) {
+
     const nextLocalDay = new Date(
       Date.UTC(localNow.year, localNow.month - 1, localNow.day + 1)
     );
@@ -112,9 +116,10 @@ export function getNextLocal7AmUtc(timeZone: string, now = new Date()) {
       nextLocalDay.getUTCFullYear(),
       nextLocalDay.getUTCMonth() + 1,
       nextLocalDay.getUTCDate(),
-      7,
+      BRIEFING_HOUR_LOCAL,
       0
     );
+
   }
 
   return scheduledUtc;

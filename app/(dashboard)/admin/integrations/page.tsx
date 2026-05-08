@@ -77,6 +77,7 @@ function ConfirmDialog({
 }
 
 export default function IntegrationsPage() {
+  const [mounted, setMounted] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +86,10 @@ export default function IntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<Integration | null>(null);
   const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchIntegrations = useCallback(async () => {
     try {
@@ -198,6 +203,8 @@ export default function IntegrationsPage() {
   }, []);
 
   const connectedKeys = new Set(integrations.map((i) => i.provider));
+
+  if (!mounted) return null;
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">

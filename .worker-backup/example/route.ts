@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { verifyQStashSignature } from '@/lib/qstash/verify';
 import { releaseSlot } from '@/lib/qstash/client';

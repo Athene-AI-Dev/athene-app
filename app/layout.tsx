@@ -37,7 +37,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} dark h-full antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
         suppressHydrationWarning
       >
         <body
@@ -52,6 +52,7 @@ export default function RootLayout({
             {children}
             <Toaster position="bottom-right" closeButton richColors />
           </ThemeProvider>
+
         </body>
       </html>
     </ClerkProvider>

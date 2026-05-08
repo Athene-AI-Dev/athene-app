@@ -9,6 +9,8 @@ import {
   useNodesState,
   useEdgesState,
   MarkerType,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type NodeMouseHandler,
@@ -67,6 +69,7 @@ interface NeighborInfo {
 
 interface KnowledgeGraphCanvasProps {
   userRole: string;
+  focusNodeId?: string;
 }
 
 // ── React Flow node data shape ──────────────────────────────
@@ -215,7 +218,9 @@ async function fetchEdgesInBatches(nodeIds: string[]): Promise<APIEdge[]> {
 
 // ── Main Component ──────────────────────────────────────────
 
-export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
+// ── Internal Component for Provider ─────────────────────────
+function KnowledgeGraphCanvasInternal({ userRole, focusNodeId }: KnowledgeGraphCanvasProps) {
+  const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>([]);
   const [apiNodes, setApiNodes] = useState<APINode[]>([]);
@@ -300,6 +305,20 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
     fetchNodes(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentFilter]);
+
+  // FIX #8: Focus mode logic
+  useEffect(() => {
+    if (!isLoading && focusNodeId && nodes.length > 0) {
+      const node = nodes.find((n) => n.id === focusNodeId);
+      if (node) {
+        // We use a small timeout to ensure the canvas has rendered the nodes
+        setTimeout(() => {
+          fitView({ nodes: [node], duration: 1000, padding: 2 });
+          setSelectedNode(apiNodesRef.current.find((n) => n.id === focusNodeId) || null);
+        }, 500);
+      }
+    }
+  }, [isLoading, focusNodeId, nodes, fitView]);
 
   // ── Node click → side panel ───────────────────────────────
   const handleNodeClick: NodeMouseHandler<GraphNode> = useCallback(
@@ -573,5 +592,14 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
         onNavigateToNode={handleNavigateToNode}
       />
     </div>
+  );
+}
+
+// ── Main Export with Provider ───────────────────────────────
+export function KnowledgeGraphCanvas(props: KnowledgeGraphCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <KnowledgeGraphCanvasInternal {...props} />
+    </ReactFlowProvider>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Calendar, Mail, FileText, ChevronRight, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,7 +53,7 @@ export function BriefingSection({ type, title, content, className }: BriefingSec
           "flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border bg-background/50 backdrop-blur-xl shadow-inner transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3",
           borderColors[type]
         )}>
-          {React.cloneElement(icons[type] as React.ReactElement, { className: "w-7 h-7" })}
+          {React.cloneElement(icons[type] as React.ReactElement<{ className: string }>, { className: "w-7 h-7" })}
         </div>
 
         <div className="flex-1 space-y-4">

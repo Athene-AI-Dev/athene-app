@@ -12,6 +12,8 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { mapRole } from "./clerk";
 import { logger } from "@/lib/logger";
 import { cache } from "react";
+import { makeCacheKey, invalidateRBACCache } from "./cache";
+import { syncUserContext } from "./sync";
 
 
 export type UserRole = "admin" | "super_user" | "member" | null;
@@ -27,11 +29,7 @@ export interface UserAccess {
 
 const RBAC_CACHE_TTL_SECONDS = 300;
 
-const USER_ACCESS_CACHE_PREFIX = "user_access";
 
-function makeCacheKey(userId: string, orgId: string) {
-  return `${USER_ACCESS_CACHE_PREFIX}:${userId}:${orgId}`;
-}
 
 
 
@@ -69,7 +67,7 @@ export const resolveUserAccess = cache(async (
       .single();
 
     if (orgData) {
-      const { data, error } = await supabaseAdmin
+      let { data, error } = await supabaseAdmin
         .from("org_members")
         .select("id, department_id, role, active, access_grants(id, scope_type, scope_id, expires_at)")
         .eq("clerk_user_id", userId)
@@ -78,6 +76,25 @@ export const resolveUserAccess = cache(async (
 
       if (error && !error.message.includes("fetch failed") && error.code !== "PGRST116") {
         console.warn(`RBAC Supabase query failed: ${error.message}`);
+      }
+
+      // ATH-Sync: If no record exists, attempt a lazy sync (onboarding)
+      if (!data && orgData) {
+        logger.info({ userId, orgId }, "[rbac] No row found, attempting lazy sync...");
+        const syncResult = await syncUserContext(userId, orgId, clerkRole || undefined);
+        
+        if (syncResult.success) {
+          const { data: freshData } = await supabaseAdmin
+            .from("org_members")
+            .select("id, department_id, role, active, access_grants(id, scope_type, scope_id, expires_at)")
+            .eq("clerk_user_id", userId)
+            .eq("org_id", orgData.id)
+            .single();
+          
+          if (freshData) {
+            data = freshData;
+          }
+        }
       }
 
       if (data) {
@@ -215,18 +232,7 @@ export const resolveUserAccess = cache(async (
   return result;
 });
 
-/**
- * Manually invalidates the RBAC cache for a specific user/org pair.
- * Used by admin endpoints when roles or department assignments change.
- */
-export async function invalidateRBACCache(userId: string, orgId: string): Promise<void> {
-  try {
-    await redis.del(makeCacheKey(userId, orgId));
-    logger.info({ userId, orgId }, "[rbac] Cache invalidated");
-  } catch (err) {
-    logger.error({ userId, orgId, err: (err as Error).message }, "[rbac] Cache invalidation failed");
-  }
-}
+// invalidateRBACCache moved to ./cache.ts
 
 /**
  * Asserts that a user has admin or super_user role within a specific organization.

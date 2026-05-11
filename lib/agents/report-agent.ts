@@ -34,7 +34,7 @@ function extractText(
   fallback = "Generate a report"
 ): string {
   if (typeof content === "string") return content || fallback;
-  const text = content
+  const text = (content as any[])
     .filter(
       (block): block is { type: "text"; text: string } =>
         typeof block === "object" &&
@@ -166,10 +166,6 @@ INSTRUCTIONS:
 
   // Combine into final report
   const finalReport = compiledSections.map(s => s.fullContent).join("\n\n");
-  const contentMap = compiledSections.reduce((acc, s) => {
-    acc[s.title.toLowerCase().replace(/\s+/g, '_')] = s.sectionContent;
-    return acc;
-  }, {} as Record<string, string>);
 
   return {
     final_answer: finalReport,

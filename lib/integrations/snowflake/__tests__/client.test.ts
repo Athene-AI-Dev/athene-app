@@ -29,6 +29,8 @@ describe('snowflake client', () => {
   it('should include correct headers including X-Snowflake-Authorization-Token-Type', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ results: [] })
     })
 
@@ -50,10 +52,12 @@ describe('snowflake client', () => {
   it('should retry on 429', async () => {
     mockFetch.mockResolvedValueOnce({
       status: 429,
-      headers: new Map([['Retry-After', '0']])
+      headers: new Headers({ 'Retry-After': '0' })
     })
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ success: true })
     })
 

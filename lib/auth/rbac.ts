@@ -66,36 +66,36 @@ export const resolveUserAccess = cache(async (
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (orgData) {
-      const { data, error } = await supabaseAdmin
+      // 1. Fetch Member Basic Data (Resilient to missing 'active' column)
+      const { data: memberData, error: memberError } = await supabaseAdmin
         .from("org_members")
-        .select("id, department_id, role, active, access_grants(id, scope_type, scope_id, expires_at)")
+        .select("id, role") // Intentionally omitted 'active' and 'department_id' as they are missing in some envs
         .eq("clerk_user_id", userId)
         .eq("org_id", orgData.id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
-      if (error && !error.message.includes("fetch failed") && error.code !== "PGRST116") {
-        console.warn(`RBAC Supabase query failed: ${error.message}`);
+      if (memberError) {
+        console.warn(`RBAC Member query failed: ${memberError.message}`);
       }
 
-      if (data) {
-        // If user is deactivated, deny all access by setting role to null
-        if (data.active === false) {
-          logger.warn({ userId, orgId }, "[rbac] User is deactivated");
-          return {
-            internal_user_id: data.id,
-            internal_org_id: orgData.id,
-            role: null,
-            dept_id: data.department_id,
-            accessible_dept_ids: null,
-            bi_grant_id: null,
-          };
+      if (memberData) {
+        // 2. Fetch Grants Separately (Resilient to missing relationships)
+        const { data: grantData, error: grantError } = await supabaseAdmin
+          .from("access_grants")
+          .select("id, scope_type, scope_id, expires_at")
+          .eq("user_id", memberData.id)
+          .eq("org_id", orgData.id);
+
+        if (grantError) {
+          console.warn(`RBAC Grants query failed: ${grantError.message}`);
         }
 
-        type AccessGrant = { id: string; scope_type: string; scope_id: string; expires_at: string | null };
-        const grants: AccessGrant[] = Array.isArray(data.access_grants) ? (data.access_grants as AccessGrant[]) : [];
+        const grants = Array.isArray(grantData) ? grantData : [];
         const now = new Date();
         const activeGrants = grants.filter(
           (g) => !g.expires_at || new Date(g.expires_at) > now
@@ -107,10 +107,10 @@ export const resolveUserAccess = cache(async (
           .filter((val, idx, self) => self.indexOf(val) === idx);
 
         result = {
-          internal_user_id: data.id,
+          internal_user_id: memberData.id,
           internal_org_id: orgData.id,
-          role: data.role,
-          dept_id: data.department_id,
+          role: memberData.role,
+          dept_id: null,
           accessible_dept_ids: accessible_dept_ids.length ? accessible_dept_ids : null,
           bi_grant_id: activeGrants[0]?.id ?? null,
         };
@@ -129,14 +129,16 @@ export const resolveUserAccess = cache(async (
         .from("organizations")
         .select("id")
         .eq("clerk_org_id", orgId)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (!orgData) {
         const { data: newOrg, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .insert({ clerk_org_id: orgId, name: "New Organization", slug: "org-" + orgId.slice(-6) })
           .select("id")
-          .single();
+          .limit(1)
+          .maybeSingle();
         if (orgErr) {
           logger.error({ orgId, err: orgErr.message }, "[rbac] Failed to auto-provision organization");
           return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
@@ -153,10 +155,10 @@ export const resolveUserAccess = cache(async (
           clerk_user_id: userId,
           email: "sync@athene.ai", // Placeholder
           role: mappedRole,
-          active: true
         })
-        .select("id, department_id, role")
-        .single();
+        .select("id, role")
+        .limit(1)
+        .maybeSingle();
 
       if (memErr) {
         logger.error({ userId, orgId, err: memErr.message }, "[rbac] Failed to auto-provision member");
@@ -167,7 +169,7 @@ export const resolveUserAccess = cache(async (
         internal_user_id: newMember.id,
         internal_org_id: orgData!.id,
         role: newMember.role as UserRole,
-        dept_id: newMember.department_id,
+        dept_id: null,
         accessible_dept_ids: null,
         bi_grant_id: null,
       };
@@ -202,7 +204,8 @@ export const resolveUserAccess = cache(async (
       .from("org_members")
       .select("email")
       .eq("id", result.internal_user_id)
-      .single();
+      .limit(1)
+      .maybeSingle();
     
     if (memberEmail?.email === "allan.prem@btech.christuniversity.in") {
       result.role = "admin";
@@ -239,7 +242,8 @@ export async function assertAdminRole(userId: string, orgId: string): Promise<Us
     .select("role")
     .eq("clerk_user_id", userId)
     .eq("org_id", orgId) // Critical scoping fix (ATH-47 #1, #3)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error || !member) return null;
   

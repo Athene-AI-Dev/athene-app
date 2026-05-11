@@ -22,11 +22,11 @@ vi.mock("@/lib/supabase/rls-client", () => ({
   withRLS: vi.fn((_ctx, fn) => fn({ rpc: vi.fn() })),
 }));
 
-vi.mock("../langgraph/nodes/report-agent", () => ({
+vi.mock("@/lib/langgraph/nodes/report-agent", () => ({
   reportAgent: mockReportAgent,
 }));
 
-vi.mock("../knowledge-graph/query", () => ({
+vi.mock("@/lib/knowledge-graph/query", () => ({
   getNeighbors: mockGetNeighbors,
 }));
 

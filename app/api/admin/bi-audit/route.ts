@@ -18,11 +18,11 @@ export async function GET(req: Request) {
   const limit = parseInt(searchParams.get('limit') || '100')
 
   const { data, error } = await supabaseAdmin
-    .from('bi_access_audit')
+    .from('grant_access_audit')
     .select('*')
     .eq('org_id', context.org_id)
-    .order('timestamp', { ascending: false })
-    .range(page * limit, (page + 1) * limit - 1) // Pagination support (ATH-47 #11)
+    .order('accessed_at', { ascending: false })
+    .range(page * limit, (page + 1) * limit - 1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

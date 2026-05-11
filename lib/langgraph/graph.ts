@@ -50,7 +50,7 @@ export async function getAgentGraph(): Promise<any> {
       // The supervisor routes to a worker, synthesis, or END
       workflow.addConditionalEdges(
         "supervisor",
-        (state) => state.next || "END",
+        (state) => state.next_node || "END",
         {
           retrieval: "retrieval",
           cross_dept_retrieval: "cross_dept_retrieval",

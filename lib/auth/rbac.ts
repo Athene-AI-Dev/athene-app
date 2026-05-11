@@ -160,8 +160,8 @@ export const resolveUserAccess = cache(async (
         .limit(1)
         .maybeSingle();
 
-      if (memErr) {
-        logger.error({ userId, orgId, err: memErr.message }, "[rbac] Failed to auto-provision member");
+      if (memErr || !newMember) {
+        logger.error({ userId, orgId, err: memErr?.message ?? "newMember null after insert" }, "[rbac] Failed to auto-provision member");
         return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
       }
 

@@ -96,6 +96,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
+    // orgRow and memberRow are guaranteed non-null by the sync blocks above.
+    if (!orgRow || !memberRow) {
+      return NextResponse.json({ error: "Failed to resolve organization or user." }, { status: 500 });
+    }
+
     const { error: threadError } = await supabaseAdmin
       .from("threads")
       .upsert({

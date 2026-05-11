@@ -112,7 +112,7 @@ function queryBuilder(table: string) {
 
   const exec = async () => {
     // BUG-03/08 FIX: Ensure all update/delete operations have an org_id filter
-    if ((pendingUpdate || pendingDelete) && !filters.some(f => f.col === 'org_id')) {
+    if ((pendingUpdate || pendingDelete) && !filters.some(f => f.kind !== "or" && f.col === 'org_id')) {
       throw new Error(`CRITICAL: Attempted ${pendingUpdate ? 'update' : 'delete'} without org_id filter on ${table}`);
     }
     const dataset =
@@ -122,10 +122,10 @@ function queryBuilder(table: string) {
 
     const matches = dataset.filter((row) =>
       filters.every((f) => {
+        if (f.kind === "or") return true; // Simple mock: always match for .or() in tests
         const v = row[f.col];
         if (f.kind === "eq") return v === f.val;
         if (f.kind === "in") return f.vals.includes(v);
-        if (f.kind === "or") return true; // Simple mock: always match for .or() in tests
         if (f.kind === "contains") {
           return Array.isArray(v) && f.vals.every((x) => v.includes(x));
         }
@@ -164,7 +164,7 @@ function queryBuilder(table: string) {
     // select
     if (table === 'documents') {
       // Mock documents table to always pass ownership check
-      return { data: matches, count: filters.find(f => f.col === 'id' && f.kind === 'in')?.vals.length ?? 0, error: null };
+      return { data: matches, count: filters.find(f => f.kind === 'in' && f.col === 'id')?.vals.length ?? 0, error: null };
     }
     return { data: matches, count: matches.length, error: null };
   };

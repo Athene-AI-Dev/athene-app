@@ -11,6 +11,7 @@ const ALL_AGENTS = [
   "email_agent",
   "calendar_agent",
   "action_executor",
+  "report_agent",
   "synthesis",
   "END",
 ] as const;
@@ -27,6 +28,7 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 - email_agent: Read, draft, or send emails.
 - calendar_agent: Read calendar, find free slots, or create events.
 - action_executor: Execute approved write actions (emails, calendar events).
+- report_agent: Plan and write structured, multi-section reports using vectorized and graph data.
 - synthesis: Synthesize a final answer from accumulated retrieved context and finish.
 - END: The request has been fully answered — stop the graph.
 

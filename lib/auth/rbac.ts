@@ -121,16 +121,58 @@ export const resolveUserAccess = cache(async (
   }
 
 
-  // 2. Fallback to Clerk role ONLY if a user record was found but lacked a role
-  // ATH-23: If no record found at all, we return null to enforce deny-by-default.
-  if (!result || !result.role) {
-    if (result?.internal_user_id) {
-      // User exists in org but role is missing? Map from Clerk.
-      const mappedRole = mapRole(clerkRole || undefined);
-      result = { ...result!, role: mappedRole };
+  // 2. Fallback: Auto-provision if missing (Issue #401 fix)
+  if (!result || !result.internal_user_id) {
+    if (orgId && userId) {
+      // Lazy-sync Org
+      let { data: orgData } = await supabaseAdmin
+        .from("organizations")
+        .select("id")
+        .eq("clerk_org_id", orgId)
+        .single();
+
+      if (!orgData) {
+        const { data: newOrg, error: orgErr } = await supabaseAdmin
+          .from("organizations")
+          .insert({ clerk_org_id: orgId, name: "New Organization", slug: "org-" + orgId.slice(-6) })
+          .select("id")
+          .single();
+        if (orgErr) {
+          logger.error({ orgId, err: orgErr.message }, "[rbac] Failed to auto-provision organization");
+          return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
+        }
+        orgData = newOrg;
+      }
+
+      // Lazy-sync Member
+      const mappedRole = mapRole(clerkRole || undefined) || "member";
+      const { data: newMember, error: memErr } = await supabaseAdmin
+        .from("org_members")
+        .insert({
+          org_id: orgData!.id,
+          clerk_user_id: userId,
+          email: "sync@athene.ai", // Placeholder
+          role: mappedRole,
+          active: true
+        })
+        .select("id, department_id, role")
+        .single();
+
+      if (memErr) {
+        logger.error({ userId, orgId, err: memErr.message }, "[rbac] Failed to auto-provision member");
+        return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
+      }
+
+      result = {
+        internal_user_id: newMember.id,
+        internal_org_id: orgData!.id,
+        role: newMember.role as UserRole,
+        dept_id: newMember.department_id,
+        accessible_dept_ids: null,
+        bi_grant_id: null,
+      };
     } else {
-      // No internal user record -> no access.
-      logger.warn({ userId, orgId }, "[RBAC] No org_members row");
+      // No Clerk context -> Deny
       result = {
         internal_user_id: null,
         internal_org_id: null,
@@ -140,7 +182,6 @@ export const resolveUserAccess = cache(async (
         bi_grant_id: null,
       };
     }
-
   }
 
 

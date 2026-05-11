@@ -93,9 +93,9 @@ export async function POST(
 
   const stateValues = currentState.values as Record<string, unknown>;
   
-  // H1 Fix: Check ownership using Clerk IDs (since state stores them) 
+  // H1 Fix: Check ownership using internal UUIDs (since state now stores them) 
   // but ensure audit logs use consistent internal IDs.
-  if (stateValues.orgId !== clerkOrgId || stateValues.userId !== clerkUserId) {
+  if (stateValues.orgId !== access.internal_org_id || stateValues.userId !== access.internal_user_id) {
     return NextResponse.json(
       { error: "Thread not found or you are not the owner" },
       { status: 403 },

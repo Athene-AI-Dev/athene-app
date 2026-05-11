@@ -68,18 +68,20 @@ export async function reportAgent(
       )
     : "Generate a report";
 
-  // 1. Plan sections using LLM
-  const planPrompt = PLAN_PROMPT_TEMPLATE.replace("{{query}}", query);
+  // 1. Plan sections using LLM or use pre-defined sections from state
+  let sections: string[] = (state as any).sections || [];
+  
+  if (sections.length === 0) {
+    const planPrompt = PLAN_PROMPT_TEMPLATE.replace("{{query}}", query);
 
-  const planResponse = await plannerModel.invoke([
-    new SystemMessage(planPrompt),
-  ]);
+    const planResponse = await plannerModel.invoke([
+      new SystemMessage(planPrompt),
+    ]);
 
-  let sections: string[] = [];
-  try {
-    let rawContent = extractText(
-      planResponse.content as MessageContent
-    );
+    try {
+      let rawContent = extractText(
+        planResponse.content as MessageContent
+      );
     // Strip markdown code fences if the model wrapped the JSON
     if (rawContent.startsWith("```json")) {
       rawContent = rawContent
@@ -93,6 +95,7 @@ export async function reportAgent(
   } catch (error) {
     console.error("Failed to parse report plan:", error);
     sections = ["Introduction", "Key Findings", "Conclusion"];
+    }
   }
 
   // Guard: clamp to a maximum of 6 sections per spec
@@ -153,14 +156,23 @@ INSTRUCTIONS:
       const sectionContent = extractText(
         synthesizeResponse.content as MessageContent
       );
-      return `## ${section}\n\n${sectionContent}`;
+      return {
+        title: section,
+        sectionContent,
+        fullContent: `## ${section}\n\n${sectionContent}`
+      };
     })
   );
 
   // Combine into final report
-  const finalReport = compiledSections.join("\n\n");
+  const finalReport = compiledSections.map(s => s.fullContent).join("\n\n");
+  const contentMap = compiledSections.reduce((acc, s) => {
+    acc[s.title.toLowerCase().replace(/\s+/g, '_')] = s.sectionContent;
+    return acc;
+  }, {} as Record<string, string>);
 
   return {
     final_answer: finalReport,
+    content: contentMap, // Map of title -> content
   };
 }

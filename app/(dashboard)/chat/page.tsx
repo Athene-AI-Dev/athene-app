@@ -33,6 +33,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { HitlModal } from "@/components/chat/hitl-modal";
+import { toast } from "sonner";
 
 interface Message {
   id: string;
@@ -42,6 +44,7 @@ interface Message {
   timestamp: string;
   cited_sources?: any[];
   isAnalytical?: boolean;
+  awaiting_approval?: boolean;
 }
 
 export default function ChatPage() {
@@ -56,7 +59,14 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyticalMode, setIsAnalyticalMode] = useState(false);
+  const [threadId, setThreadId] = useState<string>("");
+  const [isHitlModalOpen, setIsHitlModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ tool: string; payload: any } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setThreadId(crypto.randomUUID());
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -96,7 +106,7 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           message: userMessage, 
-          threadId: `thread-${Date.now()}`,
+          threadId,
           task_type: isAnalyticalMode ? "analytical" : "general"
         }),
       });
@@ -126,11 +136,17 @@ export default function ChatPage() {
                     ? { 
                         ...m, 
                         content: payload.content,
-                        cited_sources: payload.cited_sources || m.cited_sources 
+                        cited_sources: payload.cited_sources || m.cited_sources,
+                        awaiting_approval: payload.awaiting_approval
                       }
                     : m
                 )
               );
+
+              if (payload.awaiting_approval && payload.pending_write_action) {
+                setPendingAction(payload.pending_write_action);
+                setIsHitlModalOpen(true);
+              }
             }
           } catch { }
         }
@@ -145,6 +161,38 @@ export default function ChatPage() {
       );
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleHitlDecision(action: 'approve' | 'reject' | 'edit', edits?: any) {
+    try {
+      const res = await fetch(`/api/threads/${threadId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, edits }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to process decision");
+      }
+
+      toast.success(`Action ${action}ed successfully`);
+      
+      // After approval, we might want to trigger the next step of the graph
+      // The backend /approve endpoint already resumes the graph in the background.
+      // We should probably start a new stream to listen for the results.
+      
+      // For now, let's just clear the pending action
+      setPendingAction(null);
+      
+      // Optionally, send a follow-up message or just wait for the background process to complete
+      // In a real app, we might poll or use WebSockets/SSE to see the resumed output.
+      // Since the backend resumes background execution, we might need a way to reconnect to the stream.
+      
+    } catch (error: any) {
+      toast.error(error.message);
+      throw error;
     }
   }
 
@@ -360,6 +408,14 @@ export default function ChatPage() {
            </Card>
         </aside>
       </div>
+
+      <HitlModal 
+        isOpen={isHitlModalOpen}
+        onClose={() => setIsHitlModalOpen(false)}
+        threadId={threadId}
+        pendingAction={pendingAction}
+        onDecision={handleHitlDecision}
+      />
     </div>
   );
 }

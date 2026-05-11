@@ -18,7 +18,7 @@ type NodeRow = {
   visibility: string;
   description: string | null;
   updated_at: string;
-  community?: string;
+  community?: number | null;
 };
 
 type EdgeRow = {
@@ -29,6 +29,8 @@ type EdgeRow = {
   relation: string;
   provenance: string;
   confidence: number;
+  department_id?: string | null;
+  visibility?: string;
 };
 
 const nodes: NodeRow[] = [];
@@ -497,9 +499,9 @@ describe("getNeighbors", () => {
 describe("getCommunity", () => {
   it("returns both nodes and intra-community edges", async () => {
     nodes.push(
-      { id: "c1-n1", org_id: "org-1", label: "N1", community: "community-42", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
-      { id: "c1-n2", org_id: "org-1", label: "N2", community: "community-42", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
-      { id: "c2-n1", org_id: "org-1", label: "N3", community: "community-99", entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null }
+      { id: "c1-n1", org_id: "org-1", label: "N1", community: 42, entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
+      { id: "c1-n2", org_id: "org-1", label: "N2", community: 42, entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null },
+      { id: "c2-n1", org_id: "org-1", label: "N3", community: 99, entity_type: "c", department_ids: [], visibility: "org_wide", source_documents: [], updated_at: "", description: null }
     );
     edges.push({
       id: "e-internal",
@@ -520,7 +522,7 @@ describe("getCommunity", () => {
       confidence: 1.0,
     });
 
-    const res = await getCommunity(ctx, "community-42");
+    const res = await getCommunity(ctx, 42);
     expect(res.nodes).toHaveLength(2);
     expect(res.edges).toHaveLength(1);
     expect(res.edges[0].id).toBe("e-internal");

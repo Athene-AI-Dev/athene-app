@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Activity, 
   Cpu, 
@@ -59,39 +59,38 @@ const MetricCard = ({ icon: Icon, label, value, status }: MetricCardProps) => {
 // --- Command Center Content ---
 
 export default function DashboardPage() {
-  const [pulse, setPulse] = useState(98.4);
-  const [resources, setResources] = useState(1.24);
-  const [uptime, setUptime] = useState({ h: 342, m: 12, s: 4 });
   const [latencies, setLatencies] = useState([2.4, 18.1, 42.5]);
+  const [stats, setStats] = useState({ documents: 0, knowledge_nodes: 0, actions: 0, integrations: 0 });
+  const [orchestrations, setOrchestrations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard_stats");
+      if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+      const data = await res.json();
+      setStats(data.stats);
+      setOrchestrations(data.recent_orchestrations);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    const interval = setInterval(fetchStats, 30000); // Refresh stats every 30s
+    return () => clearInterval(interval);
+  }, [fetchStats]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // Fluctuate Pulse
-      setPulse(p => {
-        const delta = (Math.random() - 0.5) * 0.2;
-        return Math.min(100, Math.max(95, p + delta));
-      });
-
-      // Fluctuate Resources
-      setResources(r => {
-        const delta = (Math.random() - 0.5) * 0.01;
-        return Math.max(1.0, r + delta);
-      });
-
       // Update Latencies
       setLatencies(prev => prev.map(l => {
         const delta = (Math.random() - 0.5) * 1.5;
         return Math.max(1.0, l + delta);
       }));
-
-      // Update Uptime
-      setUptime(u => {
-        let { h, m, s } = u;
-        s += 1;
-        if (s >= 60) { s = 0; m += 1; }
-        if (m >= 60) { m = 0; h += 1; }
-        return { h, m, s };
-      });
     }, 1000);
 
     return () => clearInterval(interval);
@@ -113,10 +112,7 @@ export default function DashboardPage() {
     });
   };
 
-  const formatUptime = (u: typeof uptime) => {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${pad(u.h)}:${pad(u.m)}:${pad(u.s)}`;
-  };
+
 
   return (
     <div className="p-8 font-['Space_Grotesk']">
@@ -132,9 +128,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <MetricCard icon={Activity} label="System Pulse" value={`${pulse.toFixed(1)}%`} status="Optimal" />
-        <MetricCard icon={Cpu} label="Total Resources" value={`${resources.toFixed(2)} TB`} status="+12%" />
-        <MetricCard icon={Clock} label="System Uptime" value={formatUptime(uptime)} status="Stable" />
+        <MetricCard icon={Database} label="Knowledge Depth" value={`${stats.documents} Docs`} status="Indexed" />
+        <MetricCard icon={Cpu} label="Neural Entities" value={`${stats.knowledge_nodes}`} status="Networked" />
+        <MetricCard icon={Activity} label="Agent Decisiveness" value={`${stats.actions} HITL`} status="Audited" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -147,35 +143,41 @@ export default function DashboardPage() {
                 className="text-[10px] text-slate-500 hover:text-[#66ADE4] uppercase font-bold transition-colors">View All</button>
             </div>
             <div className="space-y-4">
-              {[
-                { label: "Neural Text Synthesis", id: "#ATH-928", time: "Today, 10:24 AM", status: "Processing", icon: CpuIcon },
-                { label: "Vector Database Indexing", id: "#ATH-112", time: "Today, 09:15 AM", status: "Success", icon: Database },
-                { label: "Image Perception Layer", id: "#ATH-884", time: "Today, 08:42 AM", status: "Retrying", icon: Activity },
-              ].map((item, i) => (
-                <div 
-                  key={i} 
-                  onClick={() => handleOrchestrationClick(item.label)}
-                  className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group cursor-pointer">
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 rounded-lg bg-black/40 border border-white/5">
-                      <item.icon size={18} className="text-slate-400 group-hover:text-[#66ADE4]" />
+              {loading ? (
+                [...Array(3)].map((_, i) => (
+                  <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />
+                ))
+              ) : orchestrations.length === 0 ? (
+                <p className="text-xs text-slate-500 py-4 text-center">No recent orchestrations found.</p>
+              ) : (
+                orchestrations.map((item, i) => (
+                  <div 
+                    key={i} 
+                    onClick={() => handleOrchestrationClick(item.label)}
+                    className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group cursor-pointer">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 rounded-lg bg-black/40 border border-white/5">
+                        <CpuIcon size={18} className="text-slate-400 group-hover:text-[#66ADE4]" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold">{item.label}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-widest">
+                          ID: {item.id} • {new Date(item.time).toLocaleTimeString()}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-sm font-bold">{item.label}</div>
-                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">Agent ID: {item.id} • {item.time}</div>
+                    <div className="flex items-center gap-4">
+                      <span className={`px-2 py-1 rounded text-[8px] font-bold uppercase tracking-widest ${
+                        item.status === 'Success' ? 'bg-green-500/10 text-green-400' : 
+                        item.status === 'Failed' ? 'bg-red-500/10 text-red-400' : 'bg-[#66ADE4]/10 text-[#66ADE4]'
+                      }`}>
+                        {item.status}
+                      </span>
+                      <ChevronRight size={16} className="text-slate-600" />
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className={`px-2 py-1 rounded text-[8px] font-bold uppercase tracking-widest ${
-                      item.status === 'Success' ? 'bg-green-500/10 text-green-400' : 
-                      item.status === 'Processing' ? 'bg-[#66ADE4]/10 text-[#66ADE4]' : 'bg-red-500/10 text-red-400'
-                    }`}>
-                      {item.status}
-                    </span>
-                    <ChevronRight size={16} className="text-slate-600" />
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </GlassCard>
         </div>
@@ -204,12 +206,21 @@ export default function DashboardPage() {
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
             <GlassCard className="p-6 relative">
-               <div className="flex items-center gap-4 text-[#66ADE4]">
-                  <Zap size={24} />
-                  <p className="text-sm leading-relaxed italic">
-                    "System health is optimal. The neural grid is currently self-optimizing for peak efficiency across all sectors."
-                  </p>
-               </div>
+                <div className="space-y-4 mb-6">
+                   <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Resource Synthesis</span>
+                      <span className="text-[10px] font-mono text-[#66ADE4]">72%</span>
+                   </div>
+                   <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] rounded-full" style={{ width: '72%' }} />
+                   </div>
+                </div>
+                <div className="flex items-center gap-4 text-[#66ADE4]">
+                   <Zap size={24} />
+                   <p className="text-sm leading-relaxed italic">
+                     "System health is optimal. The neural grid is currently self-optimizing for peak efficiency across all sectors."
+                   </p>
+                </div>
             </GlassCard>
             <div 
               onClick={handlePlusClick}

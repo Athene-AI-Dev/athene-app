@@ -369,3 +369,7 @@ export function getWriteProviders(): ProviderConfig[] {
 export function getAllProviders(): ProviderConfig[] {
   return Object.values(PROVIDER_REGISTRY).filter((p) => !p.hidden);
 }
+/**
+ * List of all registered providers.
+ */
+export const PROVIDERS = Object.values(PROVIDER_REGISTRY);

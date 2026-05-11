@@ -38,25 +38,58 @@ export async function POST(req: NextRequest) {
     const effectiveThreadId = threadId;
 
     // Resolve internal org and user for thread persistence
-    const { data: orgRow } = await supabaseAdmin
+    let { data: orgRow } = await supabaseAdmin
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
       .single();
 
+    // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+      const { data: newOrg, error: orgCreateError } = await supabaseAdmin
+        .from("organizations")
+        .insert({ 
+          clerk_org_id: orgId,
+          name: "Organization " + orgId.slice(-4), // Fallback name
+          slug: "org-" + orgId.slice(-8)
+        })
+        .select("id")
+        .single();
+      
+      if (orgCreateError) {
+        logger.error({ orgId, err: orgCreateError.message }, "[agent] Org sync failed");
+        return NextResponse.json({ error: "Failed to sync organization" }, { status: 500 });
+      }
+      orgRow = newOrg;
     }
 
-    const { data: memberRow } = await supabaseAdmin
+    let { data: memberRow } = await supabaseAdmin
       .from("org_members")
       .select("id")
       .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow.id)
+      .eq("org_id", orgRow!.id)
       .single();
 
+    // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
-      return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+      const { data: newMember, error: memberCreateError } = await supabaseAdmin
+        .from("org_members")
+        .insert({
+          org_id: orgRow!.id,
+          clerk_user_id: userId,
+          email: "unknown@sync.athene.ai", // Placeholder, ideally fetch from Clerk if needed
+          full_name: "User " + userId.slice(-4),
+          role: mapRole(orgRole ?? undefined) ?? "member",
+          active: true
+        })
+        .select("id")
+        .single();
+
+      if (memberCreateError) {
+        logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
+        return NextResponse.json({ error: "Failed to sync user membership" }, { status: 500 });
+      }
+      memberRow = newMember;
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
@@ -90,11 +123,12 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
+      orgId: orgRow.id,
+      userId: memberRow.id,
       role,
       user: {
-        id: userId,
+        id: userId, // Keep Clerk ID for display/identity if needed
+        internalId: memberRow.id,
         timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",
@@ -122,6 +156,7 @@ export async function POST(req: NextRequest) {
               final_answer: chunk.final_answer ?? null,
               cited_sources: chunk.cited_sources ?? [],
               awaiting_approval: chunk.awaiting_approval ?? false,
+              pending_write_action: chunk.pending_write_action ?? null,
               active_agent: chunk.next ?? null,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));

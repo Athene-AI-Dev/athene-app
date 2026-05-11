@@ -103,6 +103,9 @@ importers:
       cronstrue:
         specifier: ^3.14.0
         version: 3.14.0
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0
@@ -164,6 +167,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.2.4
+      '@types/dotenv':
+        specifier: ^8.2.3
+        version: 8.2.3
       '@types/node':
         specifier: ^20.19.39
         version: 20.19.39
@@ -1888,8 +1894,8 @@ packages:
     resolution: {integrity: sha512-RXbdToPKFPryxwdVyzuDqYkrOs+vN51+CbP8zysyPPF1jIXi8B98P2WlBzf21yU8htHF9+Uk/nYiTpMsvRq/rg==}
     peerDependencies:
       next: '>=13.0.0'
-      react: '>=18.0.0'
-      react-dom: '>=18.0.0'
+      react: 19.2.3
+      react-dom: 19.2.3
     peerDependenciesMeta:
       next:
         optional: true
@@ -1929,6 +1935,10 @@ packages:
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
+
+  '@types/dotenv@8.2.3':
+    resolution: {integrity: sha512-g2FXjlDX/cYuc5CiQvyU/6kkbP1JtmGzh0obW50zD7OKeILVL0NSpPWLXVfqoAGQjom2/SLLx9zHq0KXvD6mbw==}
+    deprecated: This is a stub types definition. dotenv provides its own type definitions, so you do not need this installed.
 
   '@types/estree-jsx@1.0.5':
     resolution: {integrity: sha512-52CcUVNFyfb1A2ALocQw/Dd1BQFNmSdkuC3BkZ6iqhdMfQz7JWOFRuJFloOzjk+6WijU56m9oKXFAXc7o3Towg==}
@@ -7134,6 +7144,10 @@ snapshots:
       '@types/ms': 2.1.0
 
   '@types/deep-eql@4.0.2': {}
+
+  '@types/dotenv@8.2.3':
+    dependencies:
+      dotenv: 17.4.2
 
   '@types/estree-jsx@1.0.5':
     dependencies:

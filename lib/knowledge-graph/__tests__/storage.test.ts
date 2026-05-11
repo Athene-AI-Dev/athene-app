@@ -110,6 +110,7 @@ function queryBuilder(table: "kg_nodes" | "kg_edges") {
     if ((pendingUpdate || pendingDelete) && !filters.some(f => f.col === 'org_id')) {
       throw new Error(`CRITICAL: Attempted ${pendingUpdate ? 'update' : 'delete'} without org_id filter on ${table}`);
     }
+    const dataset =
       table === "kg_nodes"
         ? (nodes as unknown as Record<string, unknown>[])
         : (edges as unknown as Record<string, unknown>[]);

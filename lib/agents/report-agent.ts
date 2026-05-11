@@ -173,6 +173,5 @@ INSTRUCTIONS:
 
   return {
     final_answer: finalReport,
-    content: contentMap, // Map of title -> content
   };
 }

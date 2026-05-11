@@ -26,12 +26,12 @@ vi.mock("@anthropic-ai/sdk", () => {
 });
 
 
+import { extractEntitiesAndRelations } from "@/lib/knowledge-graph/extractor";
 import {
-  extractEntitiesAndRelations,
   maxVisibility,
   strongerProvenance,
   unionStrings,
-} from "@/lib/knowledge-graph/extractor";
+} from "@/lib/knowledge-graph/utils";
 import type { ExtractorChunk } from "@/lib/knowledge-graph/types";
 
 beforeEach(() => {
@@ -53,7 +53,7 @@ const baseChunk = (overrides: Partial<ExtractorChunk> = {}): ExtractorChunk => (
   org_id: "org-1",
   document_id: "doc-1",
   department_id: "dept-1",
-  visibility: "department",
+  visibility: "team",
   ...overrides,
 });
 
@@ -79,14 +79,14 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
 
     expect(nodes).toHaveLength(2);
     const helios = nodes.find((n) => n.label === "Project Helios");
     expect(helios).toBeDefined();
     expect(helios!.entity_type).toBe("project");
     expect(helios!.department_ids).toEqual(["dept-1"]);
-    expect(helios!.visibility).toBe("department");
+    expect(helios!.visibility).toBe("team");
     expect(helios!.source_documents).toEqual(["doc-1"]);
 
     expect(edges).toHaveLength(1);
@@ -95,7 +95,7 @@ describe("extractEntitiesAndRelations", () => {
     expect(edges[0].confidence).toBe(1.0);
     expect(edges[0].source_document).toBe("doc-1");
     expect(edges[0].department_id).toBe("dept-1");
-    expect(edges[0].visibility).toBe("department");
+    expect(edges[0].visibility).toBe("team");
   });
 
   it("dedups entities across chunks by (label, entity_type) and merges dept_ids/source_documents", async () => {
@@ -113,7 +113,7 @@ describe("extractEntitiesAndRelations", () => {
     const result = await extractEntitiesAndRelations([
       baseChunk({ chunk_index: 0, document_id: "doc-A", department_id: "dept-1" }),
       baseChunk({ chunk_index: 1, document_id: "doc-B", department_id: "dept-2" }),
-    ]);
+    ], {} as any);
 
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].department_ids.sort()).toEqual(["dept-1", "dept-2"]);
@@ -141,7 +141,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
     expect(edges).toHaveLength(1);
     expect(edges[0].confidence).toBe(1.0);
   });
@@ -167,7 +167,7 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
     expect(edges[0].provenance).toBe("AMBIGUOUS");
     expect(edges[0].confidence).toBeGreaterThanOrEqual(0);
     expect(edges[0].confidence).toBeLessThanOrEqual(1);
@@ -190,7 +190,7 @@ describe("extractEntitiesAndRelations", () => {
         ],
       }),
     ];
-    const { edges } = await extractEntitiesAndRelations([baseChunk()]);
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
     expect(edges).toHaveLength(0);
   });
 
@@ -203,13 +203,13 @@ describe("extractEntitiesAndRelations", () => {
         }) +
         "\n```",
     ];
-    const { nodes } = await extractEntitiesAndRelations([baseChunk()]);
+    const { nodes } = await extractEntitiesAndRelations([baseChunk()], {} as any);
     expect(nodes).toHaveLength(1);
     expect(nodes[0].label).toBe("X");
   });
 
   it("returns empty result for empty input", async () => {
-    const r = await extractEntitiesAndRelations([]);
+    const r = await extractEntitiesAndRelations([], {} as any);
     expect(r.nodes).toEqual([]);
     expect(r.edges).toEqual([]);
   });
@@ -227,8 +227,8 @@ describe("merge helpers", () => {
   });
 
   it("maxVisibility broadens correctly", () => {
-    expect(maxVisibility("private", "department")).toBe("department");
-    expect(maxVisibility("department", "public")).toBe("public");
+    expect(maxVisibility("private", "team")).toBe("team");
+    expect(maxVisibility("team", "public")).toBe("public");
     expect(maxVisibility("public", "private")).toBe("public");
   });
 });

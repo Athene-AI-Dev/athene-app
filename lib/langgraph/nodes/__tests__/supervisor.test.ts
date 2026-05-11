@@ -22,6 +22,7 @@ function makeState(overrides: Partial<AtheneState> = {}): AtheneState {
     userId: "user-1",
     role: "member",
     next: "",
+    user: null,
     messages: [{ role: "user", content: "test" }] as any,
     retrievedDocs: [],
     active_agent: null,

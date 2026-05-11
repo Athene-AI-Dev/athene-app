@@ -1,6 +1,8 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+AtheneAI.zip
+athene-ui-source/
 
 # dependencies
+node_modules/
 /node_modules
 /.pnp
 .pnp.*
@@ -14,11 +16,14 @@
 /coverage
 
 # next.js
+.next/
 /.next/
 /out/
+out/
 
 # production
 /build
+build/
 
 # misc
 .DS_Store
@@ -30,8 +35,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,10 +46,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# supabase CLI local state (contains linked project ref, do not commit)
+# supabase CLI local state
 .supabase/
 supabase/.branches/
 supabase/.temp/
 
-# clerk configuration (can include secrets)
+# clerk configuration
 /.clerk/

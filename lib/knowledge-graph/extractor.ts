@@ -9,8 +9,7 @@
 // ============================================================
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
+import type {
   EntityType,
   ExtractionResult,
   ExtractorChunk,
@@ -19,15 +18,11 @@ import {
   KGProvenance,
   Visibility,
 } from "./types";
-import {
-  strongerProvenance,
-  unionStrings,
-  maxVisibility,
-  nodeKey as makeNodeKey,
-} from "./utils";
 
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 2048;
+
+let anthropicInstance: Anthropic | null = null;
 
 const EXTRACTION_PROMPT = `# Entity & Relationship Extraction Prompt
 
@@ -83,20 +78,13 @@ Return a single JSON object with exactly two keys: \`entities\` and \`relationsh
 5. Do not include quotes from the source text. Descriptions are your own concise summaries (≤ 140 chars).
 6. Do not include PII you would not want logged. Anonymize email addresses and phone numbers.`;
 
-async function getClient(orgId: string, supabase: SupabaseClient): Promise<Anthropic> {
-  // 🔑 Resolve BYOK key via SECURITY DEFINER RPC
-  const { data: apiKey, error } = await supabase.rpc("get_decrypted_llm_key", {
-    p_org_id: orgId,
-    p_provider: "anthropic",
-  });
-
-  const finalKey = (apiKey && !error) ? (apiKey as string) : process.env.ANTHROPIC_API_KEY;
-
-  if (!finalKey) {
-    throw new Error(`No Anthropic API key available for org ${orgId} (checked BYOK and system env)`);
+function getClient(): Anthropic {
+  if (!anthropicInstance) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY environment variable");
+    anthropicInstance = new Anthropic({ apiKey });
   }
-
-  return new Anthropic({ apiKey: finalKey });
+  return anthropicInstance;
 }
 
 function loadPrompt(): string {
@@ -198,10 +186,8 @@ function normConfidence(x: unknown, provenance: KGProvenance): number {
 
 // ---- Single-chunk extraction ----------------------------------
 
-async function extractFromChunk(
-  chunk: ExtractorChunk,
-  client: Anthropic
-): Promise<ExtractionResult> {
+async function extractFromChunk(chunk: ExtractorChunk): Promise<ExtractionResult> {
+  const client = getClient();
   const systemPrompt = loadPrompt();
 
   let raw: string;
@@ -244,7 +230,7 @@ async function extractFromChunk(
     const entityType = normEntityType(e.entity_type);
     if (!label || !entityType) continue;
 
-    const key = makeNodeKey(label, entityType);
+    const key = `${label}::${entityType}`;
     if (seenNodes.has(key)) continue;
     seenNodes.add(key);
 
@@ -319,24 +305,19 @@ async function extractFromChunk(
  * merged record unions `department_ids` and `source_documents`.
  */
 export async function extractEntitiesAndRelations(
-  chunks: ExtractorChunk[],
-  supabase: SupabaseClient
+  chunks: ExtractorChunk[]
 ): Promise<ExtractionResult> {
   if (!Array.isArray(chunks) || chunks.length === 0) {
     return { nodes: [], edges: [] };
   }
 
-  const orgId = chunks[0].org_id;
-  const client = await getClient(orgId, supabase);
-
-  // Running chunk LLM calls in parallel up to a small cap
+  // Running chunk LLM calls in parallel up to a small cap keeps wall
+  // time reasonable without hammering the Haiku rate limit.
   const CONCURRENCY = 5;
   const chunkResults: ExtractionResult[] = [];
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
-    const settled = await Promise.all(
-      batch.map((chunk) => extractFromChunk(chunk, client))
-    );
+    const settled = await Promise.all(batch.map(extractFromChunk));
     chunkResults.push(...settled);
   }
 
@@ -344,7 +325,7 @@ export async function extractEntitiesAndRelations(
   const nodeMap = new Map<string, KGNode>();
   for (const res of chunkResults) {
     for (const n of res.nodes) {
-      const key = `${n.org_id}::${makeNodeKey(n.label, n.entity_type)}`;
+      const key = `${n.org_id}::${n.label}::${n.entity_type}`;
       const existing = nodeMap.get(key);
       if (!existing) {
         nodeMap.set(key, {
@@ -388,4 +369,33 @@ export async function extractEntitiesAndRelations(
     nodes: Array.from(nodeMap.values()),
     edges: Array.from(edgeMap.values()),
   };
+}
+
+// ---- Small pure helpers (exported for tests) ------------------
+
+export function unionStrings(a: string[], b: string[]): string[] {
+  const set = new Set<string>();
+  for (const s of a) if (s) set.add(s);
+  for (const s of b) if (s) set.add(s);
+  return Array.from(set);
+}
+
+const VISIBILITY_RANK: Record<Visibility, number> = {
+  private: 0,
+  department: 1,
+  public: 2,
+};
+
+export function maxVisibility(a: Visibility, b: Visibility): Visibility {
+  return VISIBILITY_RANK[a] >= VISIBILITY_RANK[b] ? a : b;
+}
+
+const PROVENANCE_RANK: Record<KGProvenance, number> = {
+  AMBIGUOUS: 0,
+  INFERRED: 1,
+  EXTRACTED: 2,
+};
+
+export function strongerProvenance(a: KGProvenance, b: KGProvenance): KGProvenance {
+  return PROVENANCE_RANK[a] >= PROVENANCE_RANK[b] ? a : b;
 }

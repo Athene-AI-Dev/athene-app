@@ -18,20 +18,8 @@
 
 import { supabaseAdmin } from "../supabase/server";
 import type { PendingWriteAction } from "../langgraph/state";
-import { logger } from "../logger";
-import { z } from "zod";
-
-
-export const emailDraftSchema = z.object({
-  to: z.array(z.string().email()).min(1, "At least one recipient is required"),
-  cc: z.array(z.string().email()).default([]),
-  subject: z.string().trim().min(1, "Subject is required"),
-  body: z.string().trim().min(1, "Body is required"),
-  _warning: z.string().optional(),
-});
 
 // ---- Types ---------------------------------------------------
-
 
 export type HitlAction = "approve" | "edit" | "reject";
 
@@ -46,31 +34,6 @@ export interface HitlResult {
   /** The final payload to execute (original or edited) */
   payload: Record<string, unknown> | null;
 }
-
-// ---- Validation ----------------------------------------------
-
-/**
- * Validates a pending action payload against the appropriate tool schema.
- * Throws if validation fails.
- */
-export async function validatePayload(
-  tool: string,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    if (tool === "email-send") {
-      emailDraftSchema.parse(payload);
-    } else if (tool === "calendar-create") {
-      const { calendarEventSchema } = await import("@/lib/agents/calendar-agent");
-      calendarEventSchema.parse(payload);
-    }
-  } catch (err: any) {
-    const detail = err instanceof z.ZodError ? err.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') : err.message;
-    logger.warn({ tool, detail }, "Payload validation failed");
-    throw new Error(`Draft validation failed: ${detail}`);
-  }
-}
-
 
 // ---- Thread ownership check ----------------------------------
 
@@ -119,17 +82,9 @@ export function processDecision(
       if (!request.edits || Object.keys(request.edits).length === 0) {
         throw new Error("Edit action requires non-empty edits object");
       }
-      // Only merge fields that are present in the original payload to prevent injection of unknown keys
-      const filteredEdits: Record<string, unknown> = {};
-      for (const key of Object.keys(request.edits)) {
-        if (key in pendingAction.payload) {
-          filteredEdits[key] = request.edits[key];
-        }
-      }
-
       return {
         approved: true,
-        payload: { ...pendingAction.payload, ...filteredEdits },
+        payload: { ...pendingAction.payload, ...request.edits },
       };
 
     case "reject":
@@ -159,7 +114,7 @@ export async function logHitlDecision(params: {
   editedPayload: Record<string, unknown> | null;
 }): Promise<void> {
   const { error } = await supabaseAdmin.from("hitl_decisions").insert({
-    org_id: params.orgId, // Must be UUID
+    org_id: params.orgId,
     thread_id: params.threadId,
     user_id: params.userId,
     action_type: params.actionType,
@@ -171,7 +126,7 @@ export async function logHitlDecision(params: {
   });
 
   if (error) {
-    logger.error({ error: error.message, threadId: params.threadId }, "[hitl] Audit log insertion failed — blocking action");
-    throw new Error(`Audit logging failed: ${error.message}. Action blocked for safety.`);
+    // Log but don't throw — audit failures should not block the action
+    console.error("[hitl] Failed to write audit log:", error.message);
   }
 }

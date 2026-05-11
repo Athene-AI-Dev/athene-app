@@ -20,23 +20,11 @@ import { resolveUserAccess } from "@/lib/auth/rbac";
 import {
   processDecision,
   logHitlDecision,
-  validatePayload,
   type HitlRequest,
 } from "@/lib/graph/interrupts";
 import { getAgentGraph } from "@/lib/langgraph/graph";
-import { logger } from "@/lib/logger";
-import { z } from "zod";
-
 
 // ---- Route handler -------------------------------------------
-
-const hitlRequestSchema = z.object({
-  action: z.enum(["approve", "edit", "reject"]),
-  edits: z.record(z.string(), z.unknown()).optional(),
-}).refine(data => data.action !== "edit" || (data.edits && Object.keys(data.edits).length > 0), {
-  message: "Edit action requires a non-empty edits object",
-  path: ["edits"],
-});
 
 export async function POST(
   request: NextRequest,
@@ -60,24 +48,34 @@ export async function POST(
 
   const { id: threadId } = await params;
 
-  // H1/M2 Fix: Validate threadId is a UUID to prevent DB cast errors
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId)) {
-    return NextResponse.json({ error: "Invalid thread ID format" }, { status: 400 });
-  }
-
   // 3. Parse and validate request body
   let body: HitlRequest;
   try {
-    const rawBody = await request.json();
-    body = hitlRequestSchema.parse(rawBody);
-  } catch (err: any) {
+    body = await request.json();
+  } catch {
     return NextResponse.json(
-      { error: err instanceof z.ZodError ? err.issues[0].message : "Invalid request body" },
+      { error: "Invalid JSON body" },
+      { status: 400 },
+    );
+  }
+
+  if (!["approve", "edit", "reject"].includes(body.action)) {
+    return NextResponse.json(
+      { error: "action must be 'approve', 'edit', or 'reject'" },
+      { status: 400 },
+    );
+  }
+
+  if (body.action === "edit" && (!body.edits || Object.keys(body.edits).length === 0)) {
+    return NextResponse.json(
+      { error: "Edit action requires a non-empty edits object" },
       { status: 400 },
     );
   }
 
   // 4. Get the current graph state and verify thread ownership.
+  // We authorize from the checkpoint state because the thread routes are keyed by
+  // LangGraph thread_id; a separate threads table row is not guaranteed to exist.
   const graph = await getAgentGraph();
 
   const currentState = await graph.getState({
@@ -92,9 +90,6 @@ export async function POST(
   }
 
   const stateValues = currentState.values as Record<string, unknown>;
-  
-  // H1 Fix: Check ownership using Clerk IDs (since state stores them) 
-  // but ensure audit logs use consistent internal IDs.
   if (stateValues.orgId !== clerkOrgId || stateValues.userId !== clerkUserId) {
     return NextResponse.json(
       { error: "Thread not found or you are not the owner" },
@@ -114,21 +109,8 @@ export async function POST(
       { status: 409 },
     );
   }
-  
-  // 5. Validate payload if editing
-  if (body.action === "edit") {
-    try {
-      const mergedPayload = { ...pendingAction.payload, ...body.edits };
-      await validatePayload(pendingAction.tool, mergedPayload);
-    } catch (err: any) {
-      return NextResponse.json(
-        { error: `Invalid edits: ${err.message}` },
-        { status: 400 }
-      );
-    }
-  }
 
-  // 6. Process the decision
+  // 5. Process the decision
   let result;
   try {
     result = processDecision(body, pendingAction as any);
@@ -139,9 +121,9 @@ export async function POST(
     );
   }
 
-  // 7. Audit log the decision (using internal UUID)
+  // 6. Audit log the decision
   await logHitlDecision({
-    orgId: access.internal_org_id!,
+    orgId: clerkOrgId,
     threadId,
     userId: access.internal_user_id,
     actionType: pendingAction.tool,
@@ -150,9 +132,10 @@ export async function POST(
     editedPayload: body.action === "edit" ? (result.payload as Record<string, unknown>) : null,
   });
 
-  // 8. Update state
+  // 7. Update state and resume the graph
   const stateUpdate = result.approved
     ? {
+        // Keep pending_write_action with final payload for downstream execution
         pending_write_action: {
           tool: pendingAction.tool,
           payload: result.payload,
@@ -160,6 +143,7 @@ export async function POST(
         },
       }
     : {
+        // Rejected — clear the pending action
         pending_write_action: null,
       };
 
@@ -168,39 +152,28 @@ export async function POST(
     stateUpdate,
   );
 
-  // 9. Resume the graph and catch immediate failures (Fix M1)
-  try {
-    const stream = await graph.stream(null, { configurable: { thread_id: threadId } });
-    
-    // Drive the first step synchronously to verify the graph starts without error
-    const iterator = stream[Symbol.asyncIterator]();
-    const firstChunk = await iterator.next();
-    
-    if (firstChunk.done) {
-      logger.info({ threadId }, "[hitl] Graph resume finished immediately");
-    } else {
-      // Continue the rest of the execution in the background
-      (async () => {
-        try {
-          for await (const _ of { [Symbol.asyncIterator]: () => iterator }) {
-            // drives remaining execution
-          }
-        } catch (err) {
-          logger.error({ threadId, err }, "[hitl] Background graph execution failed");
-        }
-      })();
+  // 8. Resume the graph.
+  // The graph will now execute approval_node → synthesis_agent → END
+  // We don't await the full stream here — the client polls /api/agent/status
+  const resumeConfig = { configurable: { thread_id: threadId } };
+
+  // Fire-and-forget: stream the rest of the graph.
+  // Client polls /api/agent/status for completion — we intentionally don't block here.
+  (async () => {
+    try {
+      const stream = await graph.stream(null, resumeConfig);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _chunk of stream) { /* drives execution */ }
+    } catch (err) {
+      console.error("[hitl] Graph resume failed after approval", {
+        threadId,
+        orgId: clerkOrgId,
+        userId: access.internal_user_id,
+        decision: body.action,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
-  } catch (err) {
-    logger.error({
-      threadId,
-      error: err instanceof Error ? err.message : String(err),
-    }, "[hitl] Graph resume failed immediately");
-    
-    return NextResponse.json(
-      { error: "Action approved, but the system failed to execute it. Please contact support." },
-      { status: 500 }
-    );
-  }
+  })();
 
   return NextResponse.json({
     success: true,

@@ -3,7 +3,7 @@ import { baseFetch, getProviderToken } from '../base'
 
 export async function snowflakeFetch(connectionId: string, orgId: string, sql: string): Promise<any> {
   const token = await getProviderToken(connectionId, 'snowflake', orgId)
-  const connection = await getConnection(connectionId, 'snowflake', orgId)
+  const connection = await getConnection(connectionId, 'snowflake')
   
   const accountIdentifier = connection.metadata?.account_identifier
   if (!accountIdentifier) {

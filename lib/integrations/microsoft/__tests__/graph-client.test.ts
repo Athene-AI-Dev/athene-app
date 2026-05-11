@@ -22,7 +22,6 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve({ data: 'ok' }),
       } as any)
 
@@ -43,11 +42,10 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValue({
         ok: false,
         status: 404,
-        headers: new Headers(),
         text: () => Promise.resolve('Not Found'),
       } as any)
 
-      await expect(graphFetch('conn-123', 'org-123', '/invalid')).rejects.toThrow('[baseFetch] GET https://graph.microsoft.com/v1.0/invalid → 404: Not Found')
+      await expect(graphFetch('conn-123', 'org-123', '/invalid')).rejects.toThrow('Graph API: 404 Not Found')
     })
 
     it('should retry on 429 status code', async () => {
@@ -62,7 +60,6 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve({ success: true }),
       } as any)
 
@@ -82,7 +79,6 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
-        headers: new Headers(),
         arrayBuffer: () => Promise.resolve(buffer),
       } as any)
 
@@ -96,7 +92,6 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve({
           value: [{ id: 1 }, { id: 2 }],
           '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/items?$skip=2'
@@ -105,7 +100,6 @@ describe('graph-client', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
         json: () => Promise.resolve({ value: [{ id: 3 }] }),
       } as any)
 

@@ -5,7 +5,6 @@ import { listSharePointDocs, fetchDocContent as fetchSharePointDocContent } from
 import { registerProvider, registerSearcher } from '../registry'
 import { FetchedChunk } from '../base'
 import { microsoftSearch } from './searcher'
-import { graphFetch } from './graph-client'
 
 export async function microsoftFetcher(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
@@ -80,37 +79,8 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
   }
 
   // 4. SharePoint Documents
-  try {
-    const sitesData = await graphFetch(connectionId, orgId, '/sites?search=*')
-    if (sitesData.value) {
-      for (const site of sitesData.value) {
-        // Not all sites have drives, so this might fail for some, but we catch inside or around
-        try {
-          const siteDocs = await listSharePointDocs(connectionId, orgId, site.id)
-          for (const doc of siteDocs) {
-            const driveId = doc.parentReference?.driveId
-            if (!driveId) continue
-            const content = await fetchSharePointDocContent(connectionId, orgId, driveId, doc.id)
-            chunks.push({
-              chunk_id: `ms_sharepoint_${doc.id}`,
-              title: `SharePoint: ${doc.name}`,
-              content,
-              source_url: doc.webLink,
-              metadata: { 
-                provider: 'microsoft',
-                resource_type: 'sharepoint_doc',
-                id: doc.id 
-              }
-            })
-          }
-        } catch (siteError) {
-          console.error(`Error fetching docs for site ${site.id}:`, siteError)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching SharePoint docs:', error)
-  }
+  // Note: SharePoint requires Site ID. For a generic fetcher without site discovery, we might skip or use a default.
+  // Assuming discovery might happen elsewhere, or we skip for the global 'microsoft' fetcher which is primary to 'me' resources.
 
   return chunks
 }
@@ -118,5 +88,3 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
 // Register
 registerProvider('microsoft', microsoftFetcher)
 registerSearcher('microsoft', microsoftSearch)
-registerProvider('microsoft-graph', microsoftFetcher)
-registerSearcher('microsoft-graph', microsoftSearch)

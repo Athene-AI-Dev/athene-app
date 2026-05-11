@@ -3,9 +3,6 @@ import { auth } from "@clerk/nextjs/server";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
-import { rateLimit } from "@/lib/redis/client";
-import { supabaseAdmin } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,92 +12,18 @@ export async function POST(req: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const { message, threadId, task_type, is_cross_dept_query } = await req.json();
-
-    // 1. Validate Message
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
-      return NextResponse.json({ error: "A non-empty message string is required." }, { status: 400 });
-    }
-    if (message.length > 10000) {
-      return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
-    }
-
-    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
-    if (!threadId) {
-      return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
-    }
-
-    const { allowed } = await rateLimit(`agent:${userId}`, 10, 60);
-    if (!allowed) {
-      return NextResponse.json({ error: "Rate limited" }, { status: 429 });
-    }
-
-    const effectiveThreadId = threadId;
-
-    // Resolve internal org and user for thread persistence
-    const { data: orgRow } = await supabaseAdmin
-      .from("organizations")
-      .select("id")
-      .eq("clerk_org_id", orgId)
-      .single();
-
-    if (!orgRow) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-    }
-
-    const { data: memberRow } = await supabaseAdmin
-      .from("org_members")
-      .select("id")
-      .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow.id)
-      .single();
-
-    if (!memberRow) {
-      return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
-    }
-
-    // 3. Ensure Thread Persistence (Required for HITL foreign keys)
-    const { error: threadError } = await supabaseAdmin
-      .from("threads")
-      .upsert({
-        id: effectiveThreadId,
-        org_id: orgRow.id,
-        user_id: memberRow.id,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "id" });
-
-    if (threadError) {
-      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
-      // If it's not a valid UUID, this will fail here instead of crashing the graph later
-      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
-    }
-
-    const graph = await getAgentGraph();
-    
-    // ATH-43: Prevent concurrent messages if the thread is awaiting approval
-    const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
-    if (currentState?.values?.awaiting_approval) {
-      return NextResponse.json(
-        { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
-        { status: 409 }
-      );
-    }
+    const { message, threadId } = await req.json();
 
     const role = mapRole(orgRole ?? undefined) ?? "member";
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
-      role,
-      user: {
-        id: userId,
-        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
-      },
-      task_type: task_type || "general",
-      is_cross_dept_query: !!is_cross_dept_query,
+      org_id: orgId,
+      user_id: userId,
+      user_role: role,
     };
 
+    const graph = await getAgentGraph();
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -109,7 +32,9 @@ export async function POST(req: NextRequest) {
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {
-            thread_id: effectiveThreadId,
+            thread_id: threadId || `user-${userId}`,
+            org_id: orgId,
+            user_id: userId,
           },
           streamMode: "values",
         });

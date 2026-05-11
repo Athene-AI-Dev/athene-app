@@ -1,13 +1,6 @@
-export type ProviderKey =
+﻿export type ProviderKey =
   | 'google'
   | 'microsoft'
-  | 'google_drive'
-  | 'gmail'
-  | 'google_calendar'
-  | 'sharepoint'
-  | 'onedrive'
-  | 'outlook'
-  | 'ms_calendar'
   | 'slack'
   | 'hubspot'
   | 'notion'
@@ -22,7 +15,6 @@ export type ProviderKey =
 export interface ProviderCapabilities {
   canFetch: boolean;
   canSearch: boolean;
-  canWrite: boolean;
   requiresScopes: string[];
 }
 
@@ -31,18 +23,17 @@ export interface ProviderConfig {
   displayName: string;
   description: string;
   icon: string;
-  category: "productivity" | "crm" | "devtools" | "communication" | "data";
+  category: string;
   nangoIntegrationId: string;
   resources: string[];
   capabilities: ProviderCapabilities;
-  hidden?: boolean;
 }
 
 export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
   google: {
     key: 'google',
     displayName: 'Google Workspace',
-    description: 'Gmail, Drive, and Calendar',
+    description: 'Gmail, Drive, Calendar',
     icon: '/integrations/gdrive.svg',
     category: 'productivity',
     nangoIntegrationId: 'google',
@@ -50,151 +41,41 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
-      requiresScopes: ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/calendar.readonly'],
+      requiresScopes: ['gmail.readonly', 'drive.readonly', 'calendar.readonly'],
     },
-    hidden: true,
   },
   microsoft: {
     key: 'microsoft',
     displayName: 'Microsoft 365',
-    description: 'Outlook, OneDrive, and SharePoint',
+    description: 'Outlook, OneDrive, SharePoint, Calendar',
     icon: '/integrations/outlook.svg',
     category: 'productivity',
     nangoIntegrationId: 'microsoft',
-    resources: ['messages', 'files', 'sites'],
+    resources: ['emails', 'files', 'documents', 'events'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
-      requiresScopes: ['Mail.Read', 'Files.Read.All', 'Sites.Read.All'],
-    },
-    hidden: true,
-  },
-  google_drive: {
-    key: 'google_drive',
-    displayName: 'Google Drive',
-    description: 'Sync and search Drive files and documents',
-    icon: '/integrations/gdrive.svg',
-    category: 'productivity',
-    nangoIntegrationId: 'google-drive',
-    resources: ['files', 'folders'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    },
-  },
-  gmail: {
-    key: 'gmail',
-    displayName: 'Gmail',
-    description: 'Sync and search emails and threads',
-    icon: '/integrations/gmail.svg',
-    category: 'communication',
-    nangoIntegrationId: 'google-mail',
-    resources: ['messages', 'threads'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['https://www.googleapis.com/auth/gmail.readonly'],
-    },
-  },
-  google_calendar: {
-    key: 'google_calendar',
-    displayName: 'Google Calendar',
-    description: 'Sync and search calendar events',
-    icon: '/integrations/gcalendar.svg',
-    category: 'productivity',
-    nangoIntegrationId: 'google-calendar',
-    resources: ['events'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-    },
-  },
-  sharepoint: {
-    key: 'sharepoint',
-    displayName: 'SharePoint',
-    description: 'Sync and search SharePoint sites and documents',
-    icon: '/integrations/sharepoint.svg',
-    category: 'productivity',
-    nangoIntegrationId: 'microsoft-sharepoint',
-    resources: ['sites', 'driveItems'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['Sites.Read.All', 'Files.Read.All'],
-    },
-  },
-  onedrive: {
-    key: 'onedrive',
-    displayName: 'OneDrive',
-    description: 'Sync and search OneDrive files',
-    icon: '/integrations/onedrive.svg',
-    category: 'productivity',
-    nangoIntegrationId: 'microsoft-onedrive',
-    resources: ['driveItems'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['Files.Read.All'],
-    },
-  },
-  outlook: {
-    key: 'outlook',
-    displayName: 'Outlook',
-    description: 'Sync and search Outlook emails',
-    icon: '/integrations/outlook.svg',
-    category: 'communication',
-    nangoIntegrationId: 'microsoft-outlook',
-    resources: ['messages'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['Mail.Read'],
-    },
-  },
-  ms_calendar: {
-    key: 'ms_calendar',
-    displayName: 'Outlook Calendar',
-    description: 'Sync and search Outlook calendar events',
-    icon: '/integrations/mscalendar.svg',
-    category: 'productivity',
-    nangoIntegrationId: 'microsoft-calendar',
-    resources: ['events'],
-    capabilities: {
-      canFetch: true,
-      canSearch: true,
-      canWrite: false,
-      requiresScopes: ['Calendars.Read'],
+      requiresScopes: ['Mail.Read', 'Files.Read.All', 'Sites.Read.All', 'Calendars.Read'],
     },
   },
   slack: {
     key: 'slack',
     displayName: 'Slack',
-    description: 'Index public channels, threads, and search messages live',
+    description: 'Channels and threads',
     icon: '/integrations/slack.svg',
     category: 'communication',
     nangoIntegrationId: 'slack',
-    resources: ['channels', 'messages', 'threads'],
+    resources: ['channels', 'threads'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
-      requiresScopes: ['channels:history', 'channels:read', 'groups:history', 'groups:read'],
+      requiresScopes: ['channels:history', 'channels:read'],
     },
   },
   hubspot: {
     key: 'hubspot',
     displayName: 'HubSpot',
-    description: 'Sync contacts, companies, deals, and notes',
+    description: 'Contacts, Companies, Deals, Notes',
     icon: '/integrations/hubspot.svg',
     category: 'crm',
     nangoIntegrationId: 'hubspot',
@@ -202,170 +83,131 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
-      requiresScopes: ['crm.objects.contacts.read', 'crm.objects.companies.read', 'crm.objects.deals.read'],
+      requiresScopes: ['crm.objects.contacts.read'],
     },
   },
   notion: {
     key: 'notion',
     displayName: 'Notion',
-    description: 'Sync workspace pages, databases, and wikis',
+    description: 'Pages and databases',
     icon: '/integrations/notion.svg',
     category: 'productivity',
     nangoIntegrationId: 'notion',
-    resources: ['pages', 'databases', 'blocks'],
+    resources: ['pages', 'databases'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
       requiresScopes: [],
     },
   },
   jira: {
     key: 'jira',
     displayName: 'Jira',
-    description: 'Sync issues, sprints, and project boards',
+    description: 'Issues and comments',
     icon: '/integrations/jira.svg',
-    category: 'devtools',
+    category: 'dev',
     nangoIntegrationId: 'jira',
-    resources: ['issues', 'projects', 'boards'],
+    resources: ['issues', 'comments'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
-      requiresScopes: ['read:jira-work', 'write:jira-work'],
+      requiresScopes: ['read:jira-work'],
     },
   },
   confluence: {
     key: 'confluence',
     displayName: 'Confluence',
-    description: 'Sync spaces, pages, and knowledge base articles',
+    description: 'Pages and spaces',
     icon: '/integrations/confluence.svg',
-    category: 'devtools',
+    category: 'productivity',
     nangoIntegrationId: 'confluence',
-    resources: ['pages', 'spaces', 'blogs'],
+    resources: ['pages', 'spaces'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
-      requiresScopes: ['read:confluence-content.summary', 'read:confluence-space.summary'],
+      requiresScopes: ['read:confluence-content.summary'],
     },
   },
   salesforce: {
     key: 'salesforce',
     displayName: 'Salesforce',
-    description: 'Sync accounts, opportunities, and cases',
+    description: 'Accounts, Opportunities, Cases',
     icon: '/integrations/salesforce.svg',
     category: 'crm',
     nangoIntegrationId: 'salesforce',
-    resources: ['Account', 'Opportunity', 'Case', 'Contact'],
+    resources: ['accounts', 'opportunities', 'cases'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
       requiresScopes: ['api', 'refresh_token', 'offline_access'],
     },
   },
   snowflake: {
     key: 'snowflake',
     displayName: 'Snowflake',
-    description: 'Query schemas and sync table data for BI analysis',
+    description: 'Tables and views',
     icon: '/integrations/snowflake.svg',
     category: 'data',
     nangoIntegrationId: 'snowflake',
-    resources: ['tables', 'views', 'schemas'],
+    resources: ['tables', 'views'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: false,
       requiresScopes: [],
     },
   },
   github: {
     key: 'github',
     displayName: 'GitHub',
-    description: 'Sync repos, issues, PRs, wikis, and search code',
+    description: 'Issues, PRs, Wiki',
     icon: '/integrations/github.svg',
-    category: 'devtools',
+    category: 'dev',
     nangoIntegrationId: 'github',
-    resources: ['repos', 'issues', 'pull_requests', 'wiki'],
+    resources: ['issues', 'prs', 'wiki'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
-      requiresScopes: ['repo', 'read:user', 'user:email'],
+      requiresScopes: ['repo', 'read:user'],
     },
   },
   linear: {
     key: 'linear',
     displayName: 'Linear',
-    description: 'Sync issues, cycles, and projects',
+    description: 'Issues, projects, cycles',
     icon: '/integrations/linear.svg',
-    category: 'devtools',
+    category: 'dev',
     nangoIntegrationId: 'linear',
-    resources: ['issues', 'projects', 'cycles', 'teams'],
+    resources: ['issues', 'projects', 'cycles'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
-      requiresScopes: ['read', 'write'],
+      requiresScopes: ['read'],
     },
   },
   zendesk: {
     key: 'zendesk',
     displayName: 'Zendesk',
-    description: 'Sync support tickets and help center articles',
+    description: 'Tickets and articles',
     icon: '/integrations/zendesk.svg',
-    category: 'communication',
+    category: 'crm',
     nangoIntegrationId: 'zendesk',
-    resources: ['tickets', 'articles', 'users'],
+    resources: ['tickets', 'articles'],
     capabilities: {
       canFetch: true,
       canSearch: true,
-      canWrite: true,
-      requiresScopes: ['tickets:read', 'help_center:read', 'users:read'],
+      requiresScopes: ['tickets:read', 'help_center:read'],
     },
   },
 };
 
-/**
- * Returns the configuration for a specific provider.
- */
-export function getProvider(key: ProviderKey): ProviderConfig {
+export function getProviderConfig(key: ProviderKey): ProviderConfig {
   return PROVIDER_REGISTRY[key];
 }
 
-/**
- * Legacy alias for getProvider.
- */
-export function getProviderConfig(key: ProviderKey): ProviderConfig {
-  return getProvider(key);
-}
-
-/**
- * Returns a provider configuration by its Nango unique key.
- */
-export function getProviderByNangoKey(nangoKey: string): ProviderConfig | undefined {
-  return Object.values(PROVIDER_REGISTRY).find((p) => p.nangoIntegrationId === nangoKey);
-}
-
-/**
- * Returns all providers belonging to a specific category.
- */
 export function getProvidersByCategory(category: string): ProviderConfig[] {
   return Object.values(PROVIDER_REGISTRY).filter((p) => p.category === category);
 }
 
-/**
- * Returns all providers that support write operations.
- */
-export function getWriteProviders(): ProviderConfig[] {
-  return Object.values(PROVIDER_REGISTRY).filter((p) => p.capabilities.canWrite);
-}
-
-/**
- * Returns all registered providers.
- */
 export function getAllProviders(): ProviderConfig[] {
-  return Object.values(PROVIDER_REGISTRY).filter((p) => !p.hidden);
+  return Object.values(PROVIDER_REGISTRY);
 }

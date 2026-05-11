@@ -4,7 +4,7 @@ import { getConnection } from '@/lib/nango/client'
 import { FetchedChunk } from '../base'
 
 export async function snowflakeSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
-  const connection = await getConnection(connectionId, 'snowflake', orgId)
+  const connection = await getConnection(connectionId, 'snowflake')
   const allowlist = connection.metadata?.allowlist as string[] | undefined
 
   if (!allowlist || allowlist.length === 0) {

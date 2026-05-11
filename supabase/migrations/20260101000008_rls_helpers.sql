@@ -6,8 +6,7 @@ CREATE OR REPLACE FUNCTION set_app_context(
   p_org_id text,
   p_user_id text,
   p_dept_id text DEFAULT '',
-  p_role text DEFAULT 'member',
-  p_kms_key text DEFAULT ''
+  p_role text DEFAULT 'member'
 )
 RETURNS void AS $$
 BEGIN
@@ -18,14 +17,13 @@ BEGIN
   PERFORM set_config('app.user_id', p_user_id, true);
   PERFORM set_config('app.department_id', p_dept_id, true);
   PERFORM set_config('app.user_role', p_role, true);
-  PERFORM set_config('app.kms_key', p_kms_key, true);
 END;
 $$ LANGUAGE plpgsql;
 
 -- Ensure service_role can call this
-GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text, text) TO service_role;
-GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text, text) TO anon;
+GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION set_app_context(text, text, text, text) TO anon;
 
 -- Vector search function
 CREATE OR REPLACE FUNCTION match_documents (

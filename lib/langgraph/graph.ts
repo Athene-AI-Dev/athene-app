@@ -1,79 +1,152 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
+/**
+ * lib/langgraph/graph.ts
+ *
+ * Assembles the AtheneState StateGraph and compiles it with the
+ * Postgres checkpointer.
+ *
+ * Node topology (mirrors ATH-21 spec):
+ *
+ *   START → supervisor ─┬→ retrieval_agent    ─┐
+ *                        ├→ cross_dept_agent   ─┤→ supervisor (loop)
+ *                        ├→ email_agent        ─┤
+ *                        ├→ calendar_agent     ─┤
+ *                        ├→ report_agent       ─┤
+ *                        ├→ data_index_agent   ─┤
+ *                        └→ FINISH ────────────┼→ synthesis_agent → END
+ *
+ *  Write-action path (HITL):
+ *   supervisor → approval_node  ← graph interrupted here
+ *              → action_executor → synthesis_agent → END
+ *
+ * IMPORTANT — node registration order:
+ *   LangGraph requires every node to be registered with addNode() BEFORE
+ *   any addEdge() / addConditionalEdges() call that references it.
+ *   All addNode() calls are therefore grouped first; all addEdge() calls follow.
+ *
+ * Lazy singleton:
+ *   getAgentGraph() is safe to call on every request — compilation only
+ *   happens once per process lifetime. A _compilingPromise guard prevents
+ *   parallel compilation races on cold start.
+ */
+
+import { StateGraph, START, END, type CompiledStateGraph } from "@langchain/langgraph";
 import { AtheneState } from "./state";
-import { supervisor } from "./nodes/supervisor";
-import { retrievalAgent } from "./nodes/retrieval-agent";
-import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
-import { emailAgentNode } from "./nodes/email-agent";
-import { calendarAgentNode } from "./nodes/calendar-agent";
-import { synthesisAgentNode } from "./nodes/synthesis-agent";
-import { actionExecutorNode } from "./nodes/action-executor";
 import { getCheckpointer } from "./checkpointer";
 
-// Shared compilation promise to prevent race conditions during cold starts
-let _compilingPromise: Promise<any> | null = null;
+// ── Node imports ─────────────────────────────────────────────────────────────────────
+import { supervisor }              from "./nodes/supervisor";
+import { retrievalAgent }          from "./nodes/retrieval-agent";
+import { crossDeptRetrievalAgent } from "./nodes/cross-dept-retrieval";
+import { synthesisAgent }          from "./nodes/synthesis-agent";
+import { approvalNode }            from "./nodes/async-tool-node";
+import { actionExecutorNode }      from "./nodes/action-executor";
 
-export async function getAgentGraph(): Promise<any> {
-  if (_compilingPromise) return _compilingPromise;
+// ── Stub factory ─────────────────────────────────────────────────────────────
+// Replace each stub as the real node lands in its own ticket.
+// The stub logs a warning so it is visible in staging logs immediately.
+function stubNode(label: string) {
+  return async (state: typeof AtheneState.State): Promise<Partial<typeof AtheneState.State>> => {
+    console.warn(`[graph] stub node reached: ${label}`, { org_id: state.org_id });
+    return { next: "FINISH" };
+  };
+}
 
-  _compilingPromise = (async () => {
-    try {
-      const checkpointer = await getCheckpointer();
+// ── Compiled graph singleton ────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AtheneGraph = CompiledStateGraph<typeof AtheneState.State, Partial<typeof AtheneState.State>, any>;
 
-      const workflow = new StateGraph(AtheneState)
-        // Router
-        .addNode("supervisor", supervisor)
-        // Worker nodes
-        .addNode("retrieval", retrievalAgent)
-        .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
-        .addNode("email_agent", emailAgentNode)
-        .addNode("calendar_agent", calendarAgentNode)
-        .addNode("synthesis", synthesisAgentNode)
-        // Write-action executor (paused by interrupt_before for HITL approval)
-        .addNode("action_executor", actionExecutorNode);
+let _compiledGraph: AtheneGraph | null = null;
+let _compilingPromise: Promise<AtheneGraph> | null = null;
 
-      // Edges
-      workflow.addEdge(START, "supervisor");
+/**
+ * Returns the lazily-compiled agent graph.
+ * Concurrent calls during cold start share one compilation promise.
+ */
+export async function getAgentGraph(): Promise<AtheneGraph> {
+  if (_compiledGraph)     return _compiledGraph;
+  if (_compilingPromise)  return _compilingPromise;
 
-      // Workers always return to the supervisor after completion
-      workflow.addEdge("retrieval", "supervisor");
-      workflow.addEdge("cross_dept_retrieval", "supervisor");
-      workflow.addEdge("email_agent", "supervisor");
-      workflow.addEdge("calendar_agent", "supervisor");
-      workflow.addEdge("action_executor", "supervisor");
+  _compilingPromise = (async (): Promise<AtheneGraph> => {
+    const checkpointer = await getCheckpointer();
 
-      // Synthesis is the terminal node for answers
-      workflow.addEdge("synthesis", END);
+    const workflow = new StateGraph(AtheneState);
 
-      // The supervisor routes to a worker, synthesis, or END
-      workflow.addConditionalEdges(
-        "supervisor",
-        (state) => state.next || "END",
-        {
-          retrieval: "retrieval",
-          cross_dept_retrieval: "cross_dept_retrieval",
-          email_agent: "email_agent",
-          calendar_agent: "calendar_agent",
-          synthesis: "synthesis",
-          action_executor: "action_executor",
-          END: END,
-        }
-      );
+    // ── Step 1: Register ALL nodes before any edges ───────────────────
+    // LangGraph validates edge targets against registered nodes at
+    // addEdge/addConditionalEdges time — registration must come first.
 
-      // ATH-43: The interrupt_before: ["action_executor"] halts execution
-      // whenever the graph is about to run the action_executor node.
-      // This gives the user a chance to review the pending_write_action
-      // (set by email_agent or calendar_agent) before it actually executes.
-      return workflow.compile({
-        checkpointer,
-        interruptBefore: ["action_executor"],
-      });
-    } catch (err) {
-      _compilingPromise = null; // Allow retry on failure
-      throw err;
+    workflow.addNode("supervisor",          supervisor);
+    workflow.addNode("retrieval_agent",     retrievalAgent);
+    workflow.addNode("cross_dept_agent",    crossDeptRetrievalAgent);
+    workflow.addNode("email_agent",         stubNode("email_agent"));
+    workflow.addNode("calendar_agent",      stubNode("calendar_agent"));
+    workflow.addNode("report_agent",        stubNode("report_agent"));
+    workflow.addNode("data_index_agent",    stubNode("data_index_agent"));
+    // approval_node: graph is interrupted BEFORE this node executes (HITL gate)
+    workflow.addNode("approval_node",       approvalNode);
+    workflow.addNode("action_executor",     actionExecutorNode);
+    workflow.addNode("synthesis_agent",     synthesisAgent);
+
+    // ── Step 2: Wire edges ────────────────────────────────────────────
+
+    workflow.addEdge(START, "supervisor");
+
+    // Supervisor routes to a worker, the HITL path, or terminal synthesis.
+    workflow.addConditionalEdges(
+      "supervisor",
+      (state) => state.next || "FINISH",
+      {
+        retrieval_agent:  "retrieval_agent",
+        cross_dept_agent: "cross_dept_agent",
+        email_agent:      "email_agent",
+        calendar_agent:   "calendar_agent",
+        report_agent:     "report_agent",
+        data_index_agent: "data_index_agent",
+        // Supervisor routes write-actions to the HITL gate
+        action_executor:  "approval_node",
+        FINISH:           "synthesis_agent",
+      }
+    );
+
+    // All worker agents loop back to supervisor for re-routing.
+    for (const node of [
+      "retrieval_agent",
+      "cross_dept_agent",
+      "email_agent",
+      "calendar_agent",
+      "report_agent",
+      "data_index_agent",
+    ] as const) {
+      workflow.addEdge(node, "supervisor");
     }
+
+    // HITL path: approval_node → action_executor → synthesis_agent
+    workflow.addEdge("approval_node",   "action_executor");
+    workflow.addEdge("action_executor", "synthesis_agent");
+
+    // Synthesis is always the terminal node
+    workflow.addEdge("synthesis_agent", END);
+
+    // ── Step 3: Compile ───────────────────────────────────────────────
+    const compiled = workflow.compile({
+      checkpointer,
+      // Pause BEFORE approval_node; /api/agent/approve resumes the thread.
+      interruptBefore: ["approval_node"],
+    }) as AtheneGraph;
+
+    _compiledGraph    = compiled;
+    _compilingPromise = null;
+    return compiled;
   })();
 
   return _compilingPromise;
 }
 
-
+/**
+ * Reset the singleton — **test use only**.
+ * @internal
+ */
+export function _resetCompiledGraph(): void {
+  _compiledGraph    = null;
+  _compilingPromise = null;
+}

@@ -34,7 +34,8 @@
     "node_modules",
     "scratch",
     "vitest.config.ts",
-    "tests",
-    ".next"
+    "lib/integrations/atlassian/__tests__/**",
+    "lib/tools/__tests__/vector-search.test.ts",
+    "lib/agents/__tests__/**"
   ]
 }

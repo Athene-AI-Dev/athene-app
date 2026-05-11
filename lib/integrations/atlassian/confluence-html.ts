@@ -14,24 +14,23 @@ export function stripHtml(html: string | null | undefined): string {
 
   let text = html
 
-  // 1. Handle list items specifically first
-  text = text.replace(/<li[^>]*>/gi, "\n• ")
-
-  // 2. Replace other block elements with newlines
-  text = text.replace(/<(p|div|br|h1|h2|h3|h4|h5|h6|tr)[^>]*>/gi, "\n")
+  // 1. Replace block elements with newlines
+  text = text.replace(/<(p|div|br|h1|h2|h3|h4|h5|h6|li|tr)[^>]*>/gi, '\n')
+  
+  // 2. Handle list items specifically
+  text = text.replace(/<li[^>]*>/gi, '\n• ')
 
   // 3. Strip all other tags
-  text = text.replace(/<[^>]*>/g, "")
+  text = text.replace(/<[^>]*>/g, '')
 
   // 4. Decode common HTML entities
   text = text
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
 
   // 5. Clean up multiple newlines and whitespace
   text = text
@@ -42,4 +41,3 @@ export function stripHtml(html: string | null | undefined): string {
 
   return text.trim()
 }
-export const confluenceHtmlToText = stripHtml;

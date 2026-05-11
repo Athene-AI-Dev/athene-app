@@ -1,67 +1,43 @@
-"use client";
-
-import { useAuth } from "@clerk/nextjs";
-import { redirect, useRouter } from "next/navigation";
-import { Sidebar } from "@/components/athene-sidebar";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { resolveUserAccess } from "@/lib/auth/rbac";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import { useEffect, useState } from "react";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, orgRole, isLoaded } = useAuth();
-  const [mounted, setMounted] = useState(false);
-  const [userAccess, setUserAccess] = useState<any>(null);
-  const router = useRouter();
+  const { userId, orgId, orgRole } = await auth();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded && userId && orgId) {
-      resolveUserAccess(userId, orgId, orgRole).then(setUserAccess);
-    }
-  }, [isLoaded, userId, orgId, orgRole]);
-
-  if (!isLoaded || !mounted || !userAccess) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#0b0e14]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#66ADE4] border-t-transparent" />
-      </div>
-    );
-  }
-
+  // Protect dashboard routes
   if (!userId) {
     redirect("/");
   }
-
+  // Dashboard requires an active org — Clerk may return null orgId if the
+  // user hasn't joined/selected one. Send them to sign-in to pick one.
   if (!orgId) {
-    redirect("/org-selection");
+    redirect("/sign-in");
   }
 
+  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
+
   return (
-    <SidebarProvider>
-      <div className="flex h-screen w-full bg-[#0b0e14] text-white overflow-hidden font-['Space_Grotesk'] relative">
-        {/* Sidebar */}
-        <Sidebar role={userAccess.role} />
+    <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+      {/* Sidebar */}
+      <Sidebar role={userAccess.role} className="hidden lg:flex" />
 
-        {/* Main Content Wrapper */}
-        <div className="flex-1 flex flex-col h-full relative overflow-hidden">
-          {/* Header */}
-          <Header role={userAccess.role} />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <Header role={userAccess.role} />
 
-          {/* Scrollable Page Content */}
-          <main className="flex-1 overflow-y-auto custom-scrollbar">
-            {children}
-          </main>
-        </div>
+        {/* Page Content */}
+        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[var(--background)] via-[var(--background)] to-purple-950/5 dark:to-purple-950/20">
+          <div className="container mx-auto max-w-7xl px-8 py-8">{children}</div>
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }
-

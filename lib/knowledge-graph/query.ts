@@ -7,15 +7,6 @@
 import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 import type { KGNode } from "./types";
 
-/**
- * Sanitise a value for use in raw PostgREST `.or()` filter strings.
- * Strips characters that could break the filter grammar (quotes,
- * commas, parens, dots) and prevents filter-injection attacks.
- */
-function sanitizeForPostgrest(value: string): string {
-  return value.replace(/[",\\.()]/g, "");
-}
-
 export type GraphNode = KGNode & { 
   id: string; 
   community?: string; 
@@ -61,7 +52,7 @@ export async function searchNodes(
       .from("kg_nodes")
       .select("*")
       .eq("org_id", ctx.org_id)
-      .or(`label.ilike.%${sanitizeForPostgrest(query)}%,description.ilike.%${sanitizeForPostgrest(query)}%`)
+      .or(`label.ilike."%${query}%",description.ilike."%${query}%"`)
       .limit(limit);
 
     if (error) throw new Error(`searchNodes failed: ${error.message}`);
@@ -137,7 +128,6 @@ export async function traverseFromNode(
       .from("kg_nodes")
       .select("*")
       .eq("id", nodeId)
-      .eq("org_id", ctx.org_id)
       .maybeSingle();
 
     if (startErr) throw new Error(`Traversal start failed: ${startErr.message}`);
@@ -152,16 +142,10 @@ export async function traverseFromNode(
     for (let hop = 0; hop < maxHops; hop++) {
       if (currentHopNodes.length === 0) break;
 
-      // Use chained PostgREST .in() with properly quoted IDs
-      // to prevent injection via crafted UUIDs
       let query = supabase
         .from("kg_edges")
         .select("*, source:kg_nodes!source_node(*), target:kg_nodes!target_node(*)")
-        .eq("org_id", ctx.org_id)
-        .or(
-          `source_node.in.(${currentHopNodes.map(id => `"${sanitizeForPostgrest(id)}"`).join(",")}),` +
-          `target_node.in.(${currentHopNodes.map(id => `"${sanitizeForPostgrest(id)}"`).join(",")})`
-        );
+        .or(`source_node.in.(${currentHopNodes.map(id => `"${id}"`).join(",")}),target_node.in.(${currentHopNodes.map(id => `"${id}"`).join(",")})`);
 
       if (relationFilter && relationFilter.length > 0) {
         query = query.in("relation", relationFilter);
@@ -274,7 +258,7 @@ export async function getNeighbors(
       .from("kg_edges")
       .select("*, source:kg_nodes!source_node(*), target:kg_nodes!target_node(*)")
       .eq("org_id", ctx.org_id)
-      .or(`source_node.eq.${sanitizeForPostgrest(nodeId)},target_node.eq.${sanitizeForPostgrest(nodeId)}`);
+      .or(`source_node.eq."${nodeId}",target_node.eq."${nodeId}"`);
 
     if (edgeErr) throw new Error(`getNeighbors fetch failed: ${edgeErr.message}`);
 
@@ -353,29 +337,19 @@ export async function getCommunity(
       return { nodes: [], edges: [], boundary_reached: false };
     }
 
-    // Fetch edges where EITHER endpoint is in the community.
-    // Using OR instead of AND ensures cross-community edges are included;
-    // we post-filter in JS to keep only edges with both endpoints in-community.
+    // Fetch intra-community edges
     const { data: edges, error: edgeErr } = await supabase
       .from("kg_edges")
       .select("*")
       .eq("org_id", ctx.org_id)
-      .or(
-        `source_node.in.(${nodeIds.map(id => `"${sanitizeForPostgrest(id)}"`).join(",")}),` +
-        `target_node.in.(${nodeIds.map(id => `"${sanitizeForPostgrest(id)}"`).join(",")})`
-      );
+      .in("source_node", nodeIds)
+      .in("target_node", nodeIds);
 
     if (edgeErr) throw new Error(`getCommunity edges failed: ${edgeErr.message}`);
 
-    // Post-filter: keep only edges where BOTH endpoints are in-community
-    const nodeIdSet = new Set(nodeIds);
-    const intraCommunityEdges = (edges ?? []).filter(
-      (e: any) => nodeIdSet.has(e.source_node) && nodeIdSet.has(e.target_node)
-    );
-
     return {
       nodes,
-      edges: intraCommunityEdges as GraphEdge[],
+      edges: (edges ?? []) as GraphEdge[],
       boundary_reached: false,
     };
   });

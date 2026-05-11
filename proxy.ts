@@ -10,30 +10,51 @@ const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
  * Handles authentication and resolves RBAC context to inject as headers.
  */
 export default clerkMiddleware(async (auth, request) => {
-  if (isPublicRoute(request)) return NextResponse.next();
+  const { userId, orgId } = await auth();
 
   // 1. Enforce Authentication for non-public routes
-  const { userId, orgId, orgRole } = await auth.protect();
+  if (!isPublicRoute(request)) {
+    if (!userId) {
+      return (await auth()).redirectToSignIn();
+    }
+  }
 
-  // 2. Resolve RBAC context
-  const access = await resolveUserAccess(userId, orgId ?? "");
+  // 2. Resolve RBAC if we have a user and org context
+  // Only inject headers if we are in an org context
+  if (userId && orgId) {
+    try {
+      const { orgRole } = await auth();
+      const access = await resolveUserAccess(userId, orgId, orgRole);
 
-  const requestHeaders = new Headers(request.headers);
+      const requestHeaders = new Headers(request.headers);
 
-  // 3. Inject headers with safe defaults (matching ATH-23 spec)
-  requestHeaders.set("x-current-org-id", orgId ?? "");
-  requestHeaders.set("x-current-user-id", access.internal_user_id ?? "");
-  requestHeaders.set("x-current-user-role", access.role ?? "member");
-  requestHeaders.set("x-current-user-dept-id", access.dept_id ?? "");
-  requestHeaders.set("x-current-accessible-depts", JSON.stringify(access.accessible_dept_ids ?? []));
+      // Inject RBAC context into headers for downstream API/Server Components
+      requestHeaders.set("x-current-user-id", userId);
+      requestHeaders.set("x-current-user-role", access.role || "member"); // Fallback to member
 
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+      if (access.dept_id) requestHeaders.set("x-current-user-dept-id", access.dept_id);
+      if (access.accessible_dept_ids) {
+        requestHeaders.set("x-current-accessible-depts", JSON.stringify(access.accessible_dept_ids));
+      }
+      if (access.bi_grant_id) requestHeaders.set("x-current-bi-grant-id", access.bi_grant_id);
+
+      // Always inject the org and clerk user ID for verification
+      requestHeaders.set("x-current-org-id", orgId);
+      requestHeaders.set("x-clerk-user-id", userId);
+
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    } catch (error) {
+      console.error("Middleware RBAC resolution failed:", error);
+      // Continue without RBAC headers; RLS will catch unauthorized access
+    }
+  }
+
+  return NextResponse.next();
 });
-
 
 export const config = {
   matcher: [

@@ -21,6 +21,8 @@ import {
   Zap,
   CheckCircle2,
   Circle,
+  PlayCircle,
+  Terminal,
 } from 'lucide-react';
 import { Space_Grotesk } from 'next/font/google';
 import { toast } from "sonner";
@@ -149,6 +151,9 @@ export default function AgentLaboratory() {
     { time: "14:03:01", type: "kern", content: "Inference engine warm-up complete." },
     { time: "14:04:12", type: "wait", content: "Awaiting laboratory deployment..." },
   ]);
+  const [testNode, setTestNode] = useState("email_agent");
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -229,6 +234,36 @@ export default function AgentLaboratory() {
         error: "Deployment failed",
       }
     );
+  };
+
+  const handleTestNode = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/agent-lab/test-node", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nodeName: testNode,
+          mockState: {
+            messages: [{ role: "user", content: "This is a mock message for testing." }],
+          },
+        }),
+      });
+
+      if (!res.ok) throw new Error("Test failed");
+      const data = await res.json();
+      setTestResult(data.output);
+      toast.success(`Node ${testNode} tested successfully`);
+      
+      const now = new Date();
+      const timeStr = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      setLogs(prev => [...prev, { time: timeStr, type: "sync", content: `Isolated test: ${testNode} success.` }]);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   return (
@@ -388,6 +423,64 @@ export default function AgentLaboratory() {
                        <span className="flex items-center gap-2"><Radio size={10} className="text-blue-400" /> Pro-tip: Use [brackets] for dynamic variables.</span>
                        <span className="flex items-center gap-2"><Zap size={10} className="text-blue-400" /> Prompt strength: Optimal</span>
                     </div>
+                </div>
+              </GlassCard>
+
+              {/* Node Isolation Testing */}
+              <GlassCard className="p-8 border-white/[0.05]">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-emerald-500/10 rounded-md">
+                       <Terminal size={14} className="text-emerald-400" />
+                    </div>
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">Node Isolation Testing</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    {["email_agent", "retrieval", "synthesis", "calendar_agent"].map(n => (
+                      <button 
+                        key={n}
+                        onClick={() => setTestNode(n)}
+                        className={cn(
+                          "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all border",
+                          testNode === n ? "bg-[#66ADE4]/10 border-[#66ADE4]/20 text-[#66ADE4]" : "bg-white/5 border-white/5 text-slate-500 hover:text-white"
+                        )}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8">
+                   <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3">
+                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.2em]">Input Context</span>
+                        <div className="text-[11px] text-slate-400 font-mono italic">
+                          {"{ \"messages\": [{ \"role\": \"user\", \"content\": \"...\" }] }"}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={handleTestNode}
+                        disabled={isTesting}
+                        className="w-full h-11 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center gap-3 text-[10px] font-bold uppercase tracking-widest transition-all"
+                      >
+                        {isTesting ? <RefreshCw className="animate-spin w-4 h-4" /> : <PlayCircle className="w-4 h-4 text-emerald-400" />}
+                        Trigger Node
+                      </button>
+                   </div>
+
+                   <div className="bg-black/60 rounded-xl border border-white/5 p-4 font-mono text-[10px] min-h-[120px] overflow-auto custom-scrollbar relative">
+                      <span className="absolute top-2 right-4 text-slate-800 uppercase tracking-widest">OUTPUT_STREAM</span>
+                      {testResult ? (
+                        <pre className="text-emerald-400/80 animate-in fade-in duration-500">
+                          {JSON.stringify(testResult, null, 2)}
+                        </pre>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-slate-700 italic">
+                          Awaiting execution...
+                        </div>
+                      )}
+                   </div>
                 </div>
               </GlassCard>
             </div>

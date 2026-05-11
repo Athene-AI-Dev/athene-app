@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server'
 import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
 import { supabaseAdmin } from '@/lib/supabase/server'
@@ -75,7 +77,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         .select('run_count')
         .eq('id', automation_id)
         .single()
-      
+
       const nextCount = (autoData?.run_count ?? 0) + 1
 
       await supabaseAdmin

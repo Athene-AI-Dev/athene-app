@@ -8,12 +8,14 @@
 //   4. Audit write failures don't bubble up
 // ============================================================
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ToolMessage } from '@langchain/core/messages'
 import type { AtheneStateType } from '@/lib/langgraph/state'
 
 // ---- Mock ToolNode ------------------------------------------
 
-const mockToolNodeInvoke = vi.fn()
+const { mockToolNodeInvoke } = vi.hoisted(() => ({
+  mockToolNodeInvoke: vi.fn(),
+}))
 
 vi.mock('@langchain/langgraph/prebuilt', () => ({
   ToolNode: class FakeToolNode {
@@ -32,9 +34,12 @@ vi.mock('@/lib/langgraph/tools/registry', () => ({
 
 // ---- Mock supabaseAdmin -------------------------------------
 
-const mockInsert = vi.fn()
-const mockFromAudit = vi.fn(() => ({ insert: mockInsert }))
-mockInsert.mockResolvedValue({ error: null })
+const { mockInsert, mockFromAudit } = vi.hoisted(() => {
+  const mockInsert = vi.fn()
+  const mockFromAudit = vi.fn(() => ({ insert: mockInsert }))
+  mockInsert.mockResolvedValue({ error: null })
+  return { mockInsert, mockFromAudit }
+})
 
 vi.mock('@/lib/supabase/server', () => ({
   supabaseAdmin: { from: mockFromAudit },
@@ -82,7 +87,9 @@ describe('crossDeptRetrievalAgent — role guard', () => {
   })
 
   it('allows admin role', async () => {
-    mockToolNodeInvoke.mockResolvedValue({ messages: [] })
+    mockToolNodeInvoke.mockResolvedValue({
+      messages: [new ToolMessage({ tool_call_id: 'tc-1', content: '[]' })],
+    })
     const result = await crossDeptRetrievalAgent(makeState('admin'), {})
     expect(result.messages).toBeDefined()
     expect(result.messages![0].content).not.toContain('Access Denied')
@@ -99,15 +106,15 @@ describe('crossDeptRetrievalAgent — super_user path', () => {
     // Tool returns one doc
     mockToolNodeInvoke.mockResolvedValue({
       messages: [
-        {
-          _getType: () => 'tool',
+        new ToolMessage({
+          tool_call_id: 'tc-1',
           content: JSON.stringify([
             {
               chunk_id: 'chunk-1',
               metadata: { department_id: 'finance' },
             },
           ]),
-        },
+        }),
       ],
     })
   })
@@ -133,8 +140,8 @@ describe('crossDeptRetrievalAgent — super_user path', () => {
   it('sets retrievedDocs from parsed tool messages', async () => {
     const result = await crossDeptRetrievalAgent(makeState('super_user'), {})
 
-    expect(result.retrievedDocs).toHaveLength(1)
-    expect((result.retrievedDocs as any[])[0].chunk_id).toBe('chunk-1')
+    expect(result.retrieved_chunks).toHaveLength(1)
+    expect((result.retrieved_chunks as any[])[0].chunk_id).toBe('chunk-1')
   })
 })
 
@@ -142,13 +149,13 @@ describe('crossDeptRetrievalAgent — audit logging', () => {
   it('writes audit row when docs retrieved', async () => {
     mockToolNodeInvoke.mockResolvedValue({
       messages: [
-        {
-          _getType: () => 'tool',
+        new ToolMessage({
+          tool_call_id: 'tc-1',
           content: JSON.stringify([
             { chunk_id: 'c-1', metadata: { department_id: 'eng' } },
             { chunk_id: 'c-2', metadata: { department_id: 'finance' } },
           ]),
-        },
+        }),
       ],
     })
 

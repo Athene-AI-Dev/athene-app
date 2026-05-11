@@ -75,6 +75,7 @@ describe('Slack Integration', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: async () => ({ ok: true, channels: [] }),
       })
 
@@ -85,22 +86,24 @@ describe('Slack Integration', () => {
     it('handles pagination correctly', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: async () => ({ ok: true, channels: [{ id: 'C1' }], response_metadata: { next_cursor: 'p2' } }),
       })
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: async () => ({ ok: true, channels: [{ id: 'C2' }], response_metadata: { next_cursor: '' } }),
       })
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, messages: [] }) })
+      mockFetch.mockResolvedValue({ ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ ok: true, messages: [] }) })
 
       await fetchSlackMessages('conn-1', 'org-1')
       expect(mockFetch).toHaveBeenCalled()
     })
 
     it('fetches thread replies when thread_ts is present', async () => {
-      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, channels: [{ id: 'C1' }] }) })
-      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P', thread_ts: '1', reply_count: 1 }] }) })
-      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P' }, { ts: '2', text: 'R' }] }) })
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ ok: true, channels: [{ id: 'C1' }] }) })
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P', thread_ts: '1', reply_count: 1 }] }) })
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ ok: true, messages: [{ ts: '1', text: 'P' }, { ts: '2', text: 'R' }] }) })
 
       const chunks = await fetchSlackMessages('conn-1', 'org-1')
       expect(chunks[0].content).toContain('R')

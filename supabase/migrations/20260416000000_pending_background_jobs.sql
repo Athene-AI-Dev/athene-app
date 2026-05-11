@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS pending_background_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id TEXT NOT NULL,
+    org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     source_type TEXT NOT NULL,
     url TEXT NOT NULL,
     body JSONB NOT NULL,

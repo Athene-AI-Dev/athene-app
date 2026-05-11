@@ -15,8 +15,8 @@ export function unionStrings(a: string[], b: string[]): string[] {
  */
 const VISIBILITY_RANK: Record<Visibility, number> = {
   private: 0,
-  team: 1,
-  public: 2,
+  department: 1,
+  org_wide: 2,
 };
 
 /**

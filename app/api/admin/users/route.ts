@@ -37,7 +37,8 @@ export async function GET(request: Request) {
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (!orgData) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -51,15 +52,8 @@ export async function GET(request: Request) {
         id,
         clerk_user_id,
         email,
-        full_name,
-        role,
-        department_id,
-        active,
-        last_active_at,
-        departments (
-          id,
-          name
-        )
+        display_name,
+        role
       `, { count: "exact" })
       .eq("org_id", orgData.id);
 
@@ -125,7 +119,8 @@ export async function POST(request: Request) {
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (!orgData) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -153,12 +148,11 @@ export async function POST(request: Request) {
         org_id: orgData.id,
         email: email,
         role: targetRole,
-        department_id: departmentId,
-        active: true,
-        full_name: email.split("@")[0], // Placeholder
+        display_name: email.split("@")[0], // Standardize on 'display_name' per blueprint
       })
       .select()
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (memberError) throw memberError;
     
@@ -169,7 +163,8 @@ export async function POST(request: Request) {
       .select("id")
       .eq("clerk_user_id", userId)
       .eq("org_id", orgData.id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     // 6. Audit Log
 

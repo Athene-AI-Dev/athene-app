@@ -1,8 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { reportAgent } from "../langgraph/nodes/report-agent";
-import { getNeighbors } from "../knowledge-graph/query";
+import { reportAgent } from "@/lib/langgraph/nodes/report-agent";
+import { getNeighbors } from "@/lib/knowledge-graph/query";
 import { HumanMessage } from "@langchain/core/messages";
-import type { AtheneStateType } from "../langgraph/state";
+import type { AtheneStateType } from "@/lib/langgraph/state";
 
 
 

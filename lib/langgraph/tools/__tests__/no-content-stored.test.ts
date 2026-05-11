@@ -56,6 +56,7 @@ vi.mock("@/lib/supabase/server", () => {
     from(table: string) {
       return makeQueryBuilder(table);
     },
+    rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
   };
   return { supabaseAdmin: admin, supabaseServer: admin, supabase: admin };
 });
@@ -127,7 +128,7 @@ describe("Rule #2 — document body is never persisted", () => {
       documentId: "doc-1",
       deptId: "dept-1",
       sourceType: "gdrive",
-      visibility: "department",
+      visibility: "team",
       content: body,
       metadata: { title: "Helios Overview", author: "jane" },
       buildGraph: false,
@@ -168,7 +169,7 @@ describe("Rule #2 — document body is never persisted", () => {
         orgId: "org-1",
         documentId: "doc-forbidden",
         sourceType: "gdrive",
-        visibility: "department",
+        visibility: "team",
         content: "hello world",
         metadata: { content: "hello world" },
         buildGraph: false,
@@ -180,7 +181,7 @@ describe("Rule #2 — document body is never persisted", () => {
         orgId: "org-1",
         documentId: "doc-forbidden-2",
         sourceType: "gdrive",
-        visibility: "department",
+        visibility: "team",
         content: "hello world",
         metadata: { Body: "hello world" },
         buildGraph: false,
@@ -198,7 +199,7 @@ describe("Rule #2 — document body is never persisted", () => {
       orgId: "org-1",
       documentId: "doc-dedup",
       sourceType: "gdrive",
-      visibility: "department",
+      visibility: "team",
       content: body,
       buildGraph: false,
     });
@@ -206,7 +207,7 @@ describe("Rule #2 — document body is never persisted", () => {
       orgId: "org-1",
       documentId: "doc-dedup",
       sourceType: "gdrive",
-      visibility: "department",
+      visibility: "team",
       content: body,
       buildGraph: false,
     });
@@ -222,7 +223,7 @@ describe("Rule #2 — document body is never persisted", () => {
       orgId: "org-1",
       documentId: "doc-hash",
       sourceType: "gdrive",
-      visibility: "department",
+      visibility: "team",
       content: body,
       buildGraph: false,
     });
@@ -243,7 +244,7 @@ describe("Rule #2 — document body is never persisted", () => {
       orgId: "org-1",
       documentId: "doc-meta",
       sourceType: "gdrive",
-      visibility: "department",
+      visibility: "team",
       content: "Hello world.",
       buildGraph: false,
     });

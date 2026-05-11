@@ -1,21 +1,21 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/athene-sidebar";
 import { Header } from "@/components/header";
-import { resolveUserAccess } from "@/lib/auth/rbac";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
+import type { UserAccess } from "@/lib/auth/rbac";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, orgRole, isLoaded } = useAuth();
+  const { userId, orgId, isLoaded } = useAuth();
   const [mounted, setMounted] = useState(false);
-  const [userAccess, setUserAccess] = useState<any>(null);
+  const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -23,10 +23,30 @@ export default function DashboardLayout({
   }, []);
 
   useEffect(() => {
-    if (isLoaded && userId && orgId) {
-      resolveUserAccess(userId, orgId, orgRole).then(setUserAccess);
+    if (!isLoaded || !mounted) return;
+
+    if (!userId) {
+      router.push("/");
+      return;
     }
-  }, [isLoaded, userId, orgId, orgRole]);
+
+    if (!orgId) {
+      router.push("/org-selection");
+      return;
+    }
+
+    // Fetch RBAC access from the server-side API route (avoids calling
+    // server-only code — supabaseAdmin, Redis, react cache — in the browser)
+    fetch("/api/auth/user-access")
+      .then((res) => {
+        if (!res.ok) throw new Error(`user-access returned ${res.status}`);
+        return res.json() as Promise<UserAccess>;
+      })
+      .then(setUserAccess)
+      .catch((err) => {
+        console.error("[DashboardLayout] Failed to load user access:", err);
+      });
+  }, [isLoaded, mounted, userId, orgId, router]);
 
   if (!isLoaded || !mounted || !userAccess) {
     return (
@@ -34,14 +54,6 @@ export default function DashboardLayout({
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#66ADE4] border-t-transparent" />
       </div>
     );
-  }
-
-  if (!userId) {
-    redirect("/");
-  }
-
-  if (!orgId) {
-    redirect("/org-selection");
   }
 
   return (
@@ -64,4 +76,3 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
-

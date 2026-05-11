@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
 
 /**
- * Clerk Middleware (proxy.ts — Next.js 16 convention)
+ * Clerk Middleware (middleware.ts — Next.js convention)
  * Handles authentication and resolves RBAC context to inject as headers.
  */
 export default clerkMiddleware(async (auth, request) => {

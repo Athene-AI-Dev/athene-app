@@ -53,7 +53,7 @@ const baseChunk = (overrides: Partial<ExtractorChunk> = {}): ExtractorChunk => (
   org_id: "org-1",
   document_id: "doc-1",
   department_id: "dept-1",
-  visibility: "team",
+  visibility: "department",
   ...overrides,
 });
 
@@ -87,7 +87,7 @@ describe("extractEntitiesAndRelations", () => {
     expect(helios).toBeDefined();
     expect(helios!.entity_type).toBe("project");
     expect(helios!.department_ids).toEqual(["dept-1"]);
-    expect(helios!.visibility).toBe("team");
+    expect(helios!.visibility).toBe("department");
     expect(helios!.source_documents).toEqual(["doc-1"]);
 
     expect(edges).toHaveLength(1);
@@ -96,7 +96,7 @@ describe("extractEntitiesAndRelations", () => {
     expect(edges[0].confidence).toBe(1.0);
     expect(edges[0].source_document).toBe("doc-1");
     expect(edges[0].department_id).toBe("dept-1");
-    expect(edges[0].visibility).toBe("team");
+    expect(edges[0].visibility).toBe("department");
   });
 
   it("dedups entities across chunks by (label, entity_type) and merges dept_ids/source_documents", async () => {

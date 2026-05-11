@@ -111,6 +111,7 @@ export async function PATCH(req: NextRequest) {
         .maybeSingle()
 
       if (fetchError) throw fetchError
+      if (!oldKey) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
       const { data, error: updateError } = await supabase
         .from('llm_keys')
@@ -160,6 +161,7 @@ export async function DELETE(req: NextRequest) {
         .maybeSingle()
 
       if (fetchError) throw fetchError
+      if (!key) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
       const { error: deleteError } = await supabase
         .from('llm_keys')

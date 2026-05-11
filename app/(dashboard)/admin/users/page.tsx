@@ -51,7 +51,7 @@ interface UserMember {
   id: string;
   clerk_user_id: string | null;
   email: string;
-  full_name: string;
+  display_name: string;
   role: "admin" | "super_user" | "member";
   department_id: string;
   active: boolean;
@@ -246,10 +246,10 @@ export default function UsersPage() {
                   <TableCell className="py-6 px-8">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66ADE4]/20 to-[#DA88B6]/20 flex items-center justify-center text-xs font-black text-white border border-white/5">
-                        {user.full_name?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                        {user.display_name?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-black text-sm text-white tracking-tight">{user.full_name}</span>
+                        <span className="font-black text-sm text-white tracking-tight">{user.display_name}</span>
                         <span className="text-xs text-slate-500 font-medium">{user.email}</span>
                       </div>
                     </div>

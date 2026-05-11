@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
@@ -54,7 +55,8 @@ export async function POST(req: NextRequest) {
           slug: "org-" + orgId.slice(-8)
         })
         .select("id")
-        .single();
+        .limit(1)
+        .maybeSingle();
       
       if (orgCreateError) {
         logger.error({ orgId, err: orgCreateError.message }, "[agent] Org sync failed");
@@ -68,7 +70,8 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("clerk_user_id", userId)
       .eq("org_id", orgRow!.id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
@@ -78,12 +81,12 @@ export async function POST(req: NextRequest) {
           org_id: orgRow!.id,
           clerk_user_id: userId,
           email: "unknown@sync.athene.ai", // Placeholder, ideally fetch from Clerk if needed
-          full_name: "User " + userId.slice(-4),
+          display_name: "User " + userId.slice(-4),
           role: mapRole(orgRole ?? undefined) ?? "member",
-          active: true
         })
         .select("id")
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (memberCreateError) {
         logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
@@ -103,9 +106,9 @@ export async function POST(req: NextRequest) {
       }, { onConflict: "id" });
 
     if (threadError) {
-      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
-      // If it's not a valid UUID, this will fail here instead of crashing the graph later
-      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
+      logger.warn({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed - continuing with in-memory state only");
+      // ATH-PROD: Do not return 500. Let the graph proceed even if DB sync fails
+      // This prevents "Legacy Ghost" FK issues from blocking the entire chat.
     }
 
     const graph = await getAgentGraph();
@@ -157,15 +160,22 @@ export async function POST(req: NextRequest) {
               cited_sources: chunk.cited_sources ?? [],
               awaiting_approval: chunk.awaiting_approval ?? false,
               pending_write_action: chunk.pending_write_action ?? null,
-              active_agent: chunk.next ?? null,
+              active_agent: chunk.next_node ?? null,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));
           }
         }
         await writer.close();
-      } catch (err: unknown) {
+      } catch (err: any) {
         console.error("[agent] Stream error:", err);
-        await writer.abort(err);
+        const errorData = JSON.stringify({
+          error: true,
+          content: err.message.includes("quota") 
+            ? "Synthesis Halted: OpenAI Quota Exhausted. Please check your billing or provide a BYOK key in Admin settings." 
+            : `System Error: ${err.message}`,
+        });
+        await writer.write(encoder.encode(`data: ${errorData}\n\n`));
+        await writer.close();
       }
     })();
 

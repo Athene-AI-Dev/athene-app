@@ -70,7 +70,7 @@ export default function BriefingPage() {
       }
 
       const data = await res.json();
-      setBriefing(data.error ? null : data);
+      setBriefing(data && !data.error ? data : null);
     } catch (err) {
       console.error('Failed to fetch briefing', err);
       toast.error('An unexpected error occurred while loading briefing');

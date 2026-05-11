@@ -58,16 +58,17 @@ vi.mock("@/lib/supabase/server", () => ({
 
 function makeStub() {
   return {
-    from(table: "kg_nodes" | "kg_edges") {
-      return queryBuilder(table);
+    from(table: "kg_nodes" | "kg_edges" | "documents") {
+      return queryBuilder(table as any);
     },
   };
 }
 
-function queryBuilder(table: "kg_nodes" | "kg_edges") {
+function queryBuilder(table: string) {
   type Filter =
     | { kind: "eq"; col: string; val: unknown }
     | { kind: "in"; col: string; vals: unknown[] }
+    | { kind: "or"; query: string }
     | { kind: "contains"; col: string; vals: unknown[] };
   const filters: Filter[] = [];
   let pendingUpdate: Record<string, unknown> | null = null;
@@ -96,6 +97,10 @@ function queryBuilder(table: "kg_nodes" | "kg_edges") {
     pendingUpdate = patch;
     return builder;
   };
+  builder.or = (query: string) => {
+    filters.push({ kind: "or", query });
+    return builder;
+  };
   builder.insert = (rows: Record<string, unknown>[]) => {
     pendingInsert = rows;
     return builder;
@@ -120,6 +125,7 @@ function queryBuilder(table: "kg_nodes" | "kg_edges") {
         const v = row[f.col];
         if (f.kind === "eq") return v === f.val;
         if (f.kind === "in") return f.vals.includes(v);
+        if (f.kind === "or") return true; // Simple mock: always match for .or() in tests
         if (f.kind === "contains") {
           return Array.isArray(v) && f.vals.every((x) => v.includes(x));
         }
@@ -156,7 +162,11 @@ function queryBuilder(table: "kg_nodes" | "kg_edges") {
     }
 
     // select
-    return { data: matches, error: null };
+    if (table === 'documents') {
+      // Mock documents table to always pass ownership check
+      return { data: matches, count: filters.find(f => f.col === 'id' && f.kind === 'in')?.vals.length ?? 0, error: null };
+    }
+    return { data: matches, count: matches.length, error: null };
   };
 
   builder.then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
@@ -187,7 +197,7 @@ const node = (overrides: Partial<KGNode> = {}): KGNode => ({
   label: "Project X",
   entity_type: "project",
   department_ids: ["dept-1"],
-  visibility: "team",
+  visibility: "department",
   source_documents: ["doc-1"],
   ...overrides,
 });
@@ -218,10 +228,10 @@ describe("upsertNodes", () => {
 
   it("upgrades visibility but never narrows", async () => {
     await upsertNodes(ctx, [node({ label: "A", visibility: "private" })]);
-    await upsertNodes(ctx, [node({ label: "A", visibility: "public" })]);
-    expect(nodes[0].visibility).toBe("public");
+    await upsertNodes(ctx, [node({ label: "A", visibility: "org_wide" })]);
+    expect(nodes[0].visibility).toBe("org_wide");
     await upsertNodes(ctx, [node({ label: "A", visibility: "private" })]);
-    expect(nodes[0].visibility).toBe("public"); // not narrowed
+    expect(nodes[0].visibility).toBe("org_wide"); // not narrowed
   });
 });
 
@@ -241,7 +251,7 @@ describe("upsertEdges", () => {
       relation: "USES",
       provenance: "EXTRACTED",
       confidence: 1.0,
-      visibility: "team",
+      visibility: "department",
       department_id: "dept-1",
       source_document: "doc-1",
     };
@@ -263,7 +273,7 @@ describe("upsertEdges", () => {
       relation: "USES",
       provenance: "EXTRACTED",
       confidence: 1.0,
-      visibility: "team",
+      visibility: "department",
       department_id: null,
       source_document: null,
     };
@@ -298,7 +308,7 @@ describe("upsertEdges", () => {
       relation: "USES",
       provenance: "EXTRACTED",
       confidence: 1.0,
-      visibility: "team",
+      visibility: "department",
       department_id: null,
       source_document: null,
     };
@@ -325,7 +335,7 @@ describe("deleteByDocument", () => {
           relation: "USES",
           provenance: "EXTRACTED",
           confidence: 1.0,
-          visibility: "team",
+          visibility: "department",
           department_id: null,
           source_document: "doc-orphan",
         },

@@ -161,12 +161,12 @@ export default function AuditPage() {
                               </td>
                               <td className="py-6">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[10px] font-black text-purple-400 border border-purple-500/20">
-                                    {log.admin?.full_name?.charAt(0) || log.admin?.email?.charAt(0)}
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-black text-white leading-none">{log.admin?.full_name}</span>
-                                    <span className="text-[10px] text-slate-500 font-bold mt-1">{log.admin?.email}</span>
+                                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[10px] font-black text-purple-400 border border-purple-500/20">
+                                      {log.admin?.display_name?.charAt(0) || log.admin?.email?.charAt(0)}
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-black text-white leading-none">{log.admin?.display_name}</span>
+                                      <span className="text-[10px] text-slate-500 font-bold mt-1">{log.admin?.email}</span>
                                   </div>
                                 </div>
                               </td>
@@ -182,10 +182,10 @@ export default function AuditPage() {
                                 {log.target ? (
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black text-slate-400 border border-white/5">
-                                      {log.target?.full_name?.charAt(0) || log.target?.email?.charAt(0)}
+                                      {log.target?.display_name?.charAt(0) || log.target?.email?.charAt(0)}
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-black text-white leading-none">{log.target?.full_name}</span>
+                                      <span className="text-xs font-black text-white leading-none">{log.target?.display_name}</span>
                                       <span className="text-[10px] text-slate-500 font-bold mt-1">{log.target?.email}</span>
                                     </div>
                                   </div>

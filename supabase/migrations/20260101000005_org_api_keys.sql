@@ -62,25 +62,25 @@ $$ LANGUAGE plpgsql;
 -- for the LLM factory (ATH-21). Bypasses RLS but checks org_id.
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION get_decrypted_llm_key(p_org_id uuid, p_provider text)
-RETURNS text
+CREATE OR REPLACE FUNCTION get_decrypted_llm_key(
+  p_org_id uuid,
+  p_kms_key text
+)
+RETURNS TABLE (
+  provider text,
+  plaintext text
+)
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_encrypted_key bytea;
 BEGIN
-  SELECT key_encrypted INTO v_encrypted_key
-  FROM llm_keys
-  WHERE org_id = p_org_id 
-    AND provider = p_provider
-    AND is_active = true;
-
-  IF v_encrypted_key IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  RETURN decrypt_llm_key(v_encrypted_key);
+  RETURN QUERY
+  SELECT
+    lk.provider,
+    pgp_sym_decrypt(lk.key_encrypted, p_kms_key) AS plaintext
+  FROM llm_keys lk
+  WHERE lk.org_id = p_org_id 
+    AND lk.is_active = true;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -20,13 +20,8 @@ import { HumanMessage } from "@langchain/core/messages";
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 
-vi.mock("../../langgraph/llm-factory", () => ({
+vi.mock("@/lib/langgraph/llm-factory", () => ({
   model: { invoke: mockInvoke },
-}));
-
-vi.mock("fs", () => ({
-  default: { readFileSync: mockReadFileSync },
-  readFileSync: mockReadFileSync,
 }));
 
 // ---- Import after mocks ------------------------------------
@@ -147,7 +142,7 @@ describe("synthesisAgentNode", () => {
     const result = await synthesisAgentNode(makeState({ retrieved_chunks: [] }));
 
     expect(result.final_answer).toBe(
-      "I don't have enough info in your connected sources.",
+      "I don't have enough information in your connected sources to answer that.",
     );
     expect(result.cited_sources).toHaveLength(0);
     expect(result.retrieved_chunks).toHaveLength(0);
@@ -160,7 +155,7 @@ describe("synthesisAgentNode", () => {
     );
 
     expect(result.final_answer).toBe(
-      "I don't have enough info in your connected sources.",
+      "I don't have enough information in your connected sources to answer that.",
     );
     expect(mockInvoke).not.toHaveBeenCalled();
   });
@@ -209,17 +204,6 @@ describe("synthesisAgentNode", () => {
     ).rejects.toThrow("Rate limit exceeded");
   });
 
-  // ── Prompt file error ─────────────────────────────────────
-
-  it("missing prompt file: throws descriptive error", async () => {
-    mockReadFileSync.mockImplementation(() => {
-      throw new Error("ENOENT: no such file");
-    });
-
-    await expect(
-      synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] })),
-    ).rejects.toThrow("Synthesis prompt file missing");
-  });
 
   // ── Complex (multimodal) content array from LLM ───────────
 

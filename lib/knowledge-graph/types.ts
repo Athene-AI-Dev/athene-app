@@ -17,7 +17,7 @@ export type EntityType =
   | "organization"
   | "product";
 
-export type Visibility = "public" | "team" | "private";
+export type Visibility = "org_wide" | "department" | "private";
 
 /** How we arrived at this edge. */
 export type KGProvenance = "EXTRACTED" | "INFERRED" | "AMBIGUOUS";

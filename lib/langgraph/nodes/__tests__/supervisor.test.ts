@@ -21,11 +21,10 @@ function makeState(overrides: Partial<AtheneState> = {}): AtheneState {
     orgId: "org-1",
     userId: "user-1",
     role: "member",
-    next: "",
-    user: null,
+    next_node: "",
     messages: [{ role: "user", content: "test" }] as any,
     retrievedDocs: [],
-    active_agent: null,
+    user: null,
     task_type: null,
     complexity: "simple",
     is_cross_dept_query: false,
@@ -63,7 +62,7 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("retrieval");
+    expect(result.next_node).toBe("retrieval");
     expect(result.task_type).toBe("document_search");
     expect(result.hop_count).toBe(1);
     expect(result.is_cross_dept_query).toBe(false);
@@ -83,7 +82,7 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("cross_dept_retrieval");
+    expect(result.next_node).toBe("cross_dept_retrieval");
     expect(result.is_cross_dept_query).toBe(true);
     expect(result.complexity).toBe("complex");
     expect(result.hop_count).toBe(1);
@@ -103,7 +102,7 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("retrieval");
+    expect(result.next_node).toBe("retrieval");
     expect(result.is_cross_dept_query).toBe(false);
     expect(result.task_type).toBe("document_search");
     expect(result.reasoning).toMatch(/\[Guard\]/);
@@ -111,7 +110,7 @@ describe("supervisor", () => {
 
   it("routes an email request to the email agent", async () => {
     mockInvoke.mockResolvedValue({
-      next_agent: "email",
+      next_agent: "email_agent",
       task_type: "email_draft",
       complexity: "medium",
       reasoning: "User wants to draft an email.",
@@ -122,14 +121,14 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("email");
+    expect(result.next_node).toBe("email_agent");
     expect(result.task_type).toBe("email_draft");
     expect(result.hop_count).toBe(1);
   });
 
   it("routes a scheduling request to the calendar agent", async () => {
     mockInvoke.mockResolvedValue({
-      next_agent: "calendar",
+      next_agent: "calendar_agent",
       task_type: "calendar_create",
       complexity: "medium",
       reasoning: "User wants to book a meeting.",
@@ -140,14 +139,14 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("calendar");
+    expect(result.next_node).toBe("calendar_agent");
     expect(result.task_type).toBe("calendar_create");
     expect(result.hop_count).toBe(1);
   });
 
   it("routes a report request to the report agent", async () => {
     mockInvoke.mockResolvedValue({
-      next_agent: "report",
+      next_agent: "report_agent",
       task_type: "report_generation",
       complexity: "medium",
       reasoning: "User wants a formatted report from retrieved data.",
@@ -159,7 +158,7 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("report");
+    expect(result.next_node).toBe("report_agent");
     expect(result.task_type).toBe("report_generation");
     expect(result.hop_count).toBe(1);
   });
@@ -168,7 +167,7 @@ describe("supervisor", () => {
     const state = makeState({ hop_count: 6 });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("END");
+    expect(result.next_node).toBe("END");
     expect(result.reasoning).toMatch(/Max hop/);
     expect(mockInvoke).not.toHaveBeenCalled();
   });
@@ -187,7 +186,7 @@ describe("supervisor", () => {
     });
     const result = await supervisor(state);
 
-    expect(result.active_agent).toBe("synthesis");
+    expect(result.next_node).toBe("synthesis");
     expect(result.hop_count).toBe(1);
   });
 
@@ -217,7 +216,7 @@ describe("supervisor", () => {
     const result = await supervisor(state);
 
     expect(mockInvoke).toHaveBeenCalledOnce();
-    expect(result.active_agent).toBe("synthesis");
+    expect(result.next_node).toBe("synthesis");
     expect(result.hop_count).toBe(6);
   });
 });

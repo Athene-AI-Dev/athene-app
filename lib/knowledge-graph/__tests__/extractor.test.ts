@@ -79,7 +79,8 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
 
     expect(nodes).toHaveLength(2);
     const helios = nodes.find((n) => n.label === "Project Helios");
@@ -110,10 +111,11 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
     const result = await extractEntitiesAndRelations([
       baseChunk({ chunk_index: 0, document_id: "doc-A", department_id: "dept-1" }),
       baseChunk({ chunk_index: 1, document_id: "doc-B", department_id: "dept-2" }),
-    ], {} as any);
+    ], mockSupabase);
 
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].department_ids.sort()).toEqual(["dept-1", "dept-2"]);
@@ -141,7 +143,8 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
     expect(edges).toHaveLength(1);
     expect(edges[0].confidence).toBe(1.0);
   });
@@ -167,7 +170,8 @@ describe("extractEntitiesAndRelations", () => {
       }),
     ];
 
-    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
     expect(edges[0].provenance).toBe("AMBIGUOUS");
     expect(edges[0].confidence).toBeGreaterThanOrEqual(0);
     expect(edges[0].confidence).toBeLessThanOrEqual(1);
@@ -190,7 +194,8 @@ describe("extractEntitiesAndRelations", () => {
         ],
       }),
     ];
-    const { edges } = await extractEntitiesAndRelations([baseChunk()], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const { edges } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
     expect(edges).toHaveLength(0);
   });
 
@@ -203,13 +208,15 @@ describe("extractEntitiesAndRelations", () => {
         }) +
         "\n```",
     ];
-    const { nodes } = await extractEntitiesAndRelations([baseChunk()], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const { nodes } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
     expect(nodes).toHaveLength(1);
     expect(nodes[0].label).toBe("X");
   });
 
   it("returns empty result for empty input", async () => {
-    const r = await extractEntitiesAndRelations([], {} as any);
+    const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
+    const r = await extractEntitiesAndRelations([], mockSupabase);
     expect(r.nodes).toEqual([]);
     expect(r.edges).toEqual([]);
   });
@@ -227,8 +234,8 @@ describe("merge helpers", () => {
   });
 
   it("maxVisibility broadens correctly", () => {
-    expect(maxVisibility("private", "team")).toBe("team");
-    expect(maxVisibility("team", "public")).toBe("public");
-    expect(maxVisibility("public", "private")).toBe("public");
+    expect(maxVisibility("private", "department")).toBe("department");
+    expect(maxVisibility("department", "org_wide")).toBe("org_wide");
+    expect(maxVisibility("org_wide", "private")).toBe("org_wide");
   });
 });

@@ -47,7 +47,7 @@ export async function supervisor(state: AtheneStateType) {
   // ── Hop-limit guard: skip LLM entirely at max hops ──
   if (hopCount >= MAX_HOPS) {
     return {
-      active_agent: "END",
+      next_node: "END",
       reasoning: `[Guard] Max hop limit (${MAX_HOPS}) reached.`,
       hop_count: hopCount,
     };
@@ -95,8 +95,7 @@ export async function supervisor(state: AtheneStateType) {
   }
 
   return {
-    active_agent: nextAgent === "END" ? "END" : nextAgent,
-    next: nextAgent === "END" ? "END" : nextAgent,
+    next_node: nextAgent === "END" ? "END" : nextAgent,
     task_type: taskType,
     complexity: response.complexity,
     reasoning,
@@ -105,4 +104,3 @@ export async function supervisor(state: AtheneStateType) {
       nextAgent === "cross_dept_retrieval" ? true : isCrossDeptQuery,
   };
 }
-

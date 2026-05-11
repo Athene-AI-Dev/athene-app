@@ -176,7 +176,7 @@ async function processDocument(
     org_id: orgId,
     document_id: docId,
     department_id: doc.dept_id ?? undefined,
-    visibility: (doc.visibility ?? 'team') as 'public' | 'team' | 'private',
+    visibility: (doc.visibility ?? 'department') as any,
   }))
 
   const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks, supabaseAdmin)

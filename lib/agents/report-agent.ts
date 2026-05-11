@@ -166,7 +166,6 @@ INSTRUCTIONS:
 
   // Combine into final report
   const finalReport = compiledSections.map(s => s.fullContent).join("\n\n");
-
   return {
     final_answer: finalReport,
   };

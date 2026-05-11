@@ -16,8 +16,40 @@ import { logger } from "@/lib/logger";
 
 const MS_PROVIDER_KEY = "microsoft";
 
+/** Default timeout for external integration calls (30 seconds). */
+const INTEGRATION_TIMEOUT_MS = 30_000;
 
+/**
+ * Race a promise against a timeout. If the timeout fires first, the returned
+ * promise rejects with a descriptive error so the agent state always receives
+ * actionable feedback instead of hanging forever.
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  label: string,
+  ms: number = INTEGRATION_TIMEOUT_MS
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `Integration timeout: ${label} did not respond within ${ms / 1000}s. ` +
+          `The external provider may be down — please retry later.`
+        )
+      );
+    }, ms);
 
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 async function resolveMicrosoftConnectionId(orgId: string): Promise<string> {
   const { data: connectionRow, error: connectionError } = await supabaseAdmin
@@ -121,22 +153,31 @@ export async function actionExecutorNode(
 
   try {
     let result: unknown;
-    const connectionId = await resolveMicrosoftConnectionId(state.orgId);
+    const connectionId = await withTimeout(
+      resolveMicrosoftConnectionId(state.orgId),
+      "Microsoft connection lookup"
+    );
 
     switch (action.tool) {
       case "email-send": {
-        result = await sendEmail(
-          connectionId,
-          state.orgId,
-          toEmailDraft(action.payload)
+        result = await withTimeout(
+          sendEmail(
+            connectionId,
+            state.orgId,
+            toEmailDraft(action.payload)
+          ),
+          "email-send"
         );
         break;
       }
       case "calendar-create": {
-        result = await createEvent(
-          connectionId,
-          state.orgId,
-          toEventDraft(action.payload)
+        result = await withTimeout(
+          createEvent(
+            connectionId,
+            state.orgId,
+            toEventDraft(action.payload)
+          ),
+          "calendar-create"
         );
         break;
       }

@@ -28,7 +28,7 @@ export async function GET() {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const { data: departments, error } = await cached(
+    const departments = await cached(
       `org:departments:${orgData.id}`,
       300,
       async () => {
@@ -41,8 +41,6 @@ export async function GET() {
         return data;
       }
     );
-
-    if (error) throw error;
 
     return NextResponse.json({ departments });
 

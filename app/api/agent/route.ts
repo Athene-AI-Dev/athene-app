@@ -39,17 +39,8 @@ export async function POST(req: NextRequest) {
 
     const effectiveThreadId = threadId;
 
-<<<<<<< HEAD
-    // Resolve internal org and user for thread persistence
-    let { data: orgRow } = await supabaseAdmin
-      .from("organizations")
-      .select("id")
-      .eq("clerk_org_id", orgId)
-      .limit(1)
-      .maybeSingle();
-=======
     // Resolve internal org and user for thread persistence (cached)
-    const orgRow = await cached(
+    let orgRow = await cached(
       `org:clerk:${orgId}`,
       300,
       async () => {
@@ -61,7 +52,6 @@ export async function POST(req: NextRequest) {
         return data;
       }
     );
->>>>>>> 16ae182 (ATH-51)
 
     // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
@@ -83,29 +73,19 @@ export async function POST(req: NextRequest) {
       orgRow = newOrg;
     }
 
-<<<<<<< HEAD
-    let { data: memberRow } = await supabaseAdmin
-      .from("org_members")
-      .select("id")
-      .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow!.id)
-      .limit(1)
-      .maybeSingle();
-=======
-    const memberRow = await cached(
-      `member:clerk:${userId}:${orgRow.id}`,
+    let memberRow = await cached(
+      `member:clerk:${userId}:${orgRow!.id}`,
       300,
       async () => {
         const { data } = await supabaseAdmin
           .from("org_members")
           .select("id")
           .eq("clerk_user_id", userId)
-          .eq("org_id", orgRow.id)
+          .eq("org_id", orgRow!.id)
           .single();
         return data;
       }
     );
->>>>>>> 16ae182 (ATH-51)
 
     // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
@@ -139,20 +119,15 @@ export async function POST(req: NextRequest) {
       .from("threads")
       .upsert({
         id: effectiveThreadId,
-        org_id: orgRow!.id,
-        user_id: memberRow!.id,
+        org_id: orgRow.id,
+        user_id: memberRow.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 
     if (threadError) {
-<<<<<<< HEAD
       logger.warn({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed - continuing with in-memory state only");
       // ATH-PROD: Do not return 500. Let the graph proceed even if DB sync fails
       // This prevents "Legacy Ghost" FK issues from blocking the entire chat.
-=======
-      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
-      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
->>>>>>> 16ae182 (ATH-51)
     }
 
     const graph = await getAgentGraph();
@@ -170,18 +145,13 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId: orgRow!.id,
-      userId: memberRow!.id,
+      orgId: orgRow.id,
+      userId: memberRow.id,
       role,
       user: {
-<<<<<<< HEAD
-        id: userId, // Keep Clerk ID for display/identity if needed
-        internalId: memberRow!.id,
-        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
-=======
         id: userId,
-        timezone: "UTC",
->>>>>>> 16ae182 (ATH-51)
+        internalId: memberRow.id,
+        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",
       is_cross_dept_query: !!is_cross_dept_query,
@@ -203,20 +173,6 @@ export async function POST(req: NextRequest) {
           streamMode: ["values", "messages"],
         });
 
-<<<<<<< HEAD
-        for await (const chunk of eventStream as AsyncIterable<any>) {
-          const lastMessage = chunk.messages?.[chunk.messages.length - 1];
-          if (lastMessage) {
-            const data = JSON.stringify({
-              content: lastMessage.content,
-              final_answer: chunk.final_answer ?? null,
-              cited_sources: chunk.cited_sources ?? [],
-              awaiting_approval: chunk.awaiting_approval ?? false,
-              pending_write_action: chunk.pending_write_action ?? null,
-              active_agent: chunk.next_node ?? null,
-            });
-            await writer.write(encoder.encode(`data: ${data}\n\n`));
-=======
         for await (const [mode, chunk] of eventStream as AsyncIterable<[string, any]>) {
           if (mode === "messages") {
             const messageChunk = (chunk as any[])?.[0];
@@ -232,7 +188,7 @@ export async function POST(req: NextRequest) {
               }
               if (token) {
                 const data = JSON.stringify({ token });
-                await withSSEFrameSpan("llm_token", async (span) => {
+                await withSSEFrameSpan("llm_token", async () => {
                   await writer.write(encoder.encode(`data: ${data}\n\n`));
                 });
               }
@@ -248,11 +204,10 @@ export async function POST(req: NextRequest) {
                 awaiting_approval: chunk.awaiting_approval ?? false,
                 active_agent: chunk.next ?? null,
               });
-              await withSSEFrameSpan("agent_chunk", async (span) => {
+              await withSSEFrameSpan("agent_chunk", async () => {
                 await writer.write(encoder.encode(`data: ${data}\n\n`));
               });
             }
->>>>>>> 16ae182 (ATH-51)
           }
         }
         await writer.close();

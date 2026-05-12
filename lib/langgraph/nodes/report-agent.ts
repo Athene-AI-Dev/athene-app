@@ -9,6 +9,53 @@ const plannerModel = getModel("simple", 0);
 // Slightly higher temperature for prose generation
 const synthesisModel = getModel("simple", 0.2);
 
+/**
+ * Parses the raw string output from the graphQueryTool into structured
+ * relationship tuples. This is intentionally lenient to handle varied
+ * whitespace, optional provenance brackets, and label characters that
+ * include spaces, hyphens, dots, colons, slashes, and underscores.
+ *
+ * Expected input lines (from graph-query.ts formatResult):
+ *   "  AWS → DEPENDS_ON → Payment Service [extracted, 0.85]"
+ *   "  HR Portal → RELATES_TO → Employee DB"
+ *
+ * Returns an array of { source, relation, target } objects.
+ */
+export function parseGraphRelationships(
+  graphResult: string
+): Array<{ source: string; relation: string; target: string }> {
+  if (!graphResult || graphResult.includes("No knowledge graph data")) {
+    return [];
+  }
+
+  // Robust pattern:
+  //   ^\s*          — optional leading whitespace
+  //   (.+?)        — source entity (non-greedy, any chars)
+  //   \s*→\s*      — arrow with flexible whitespace
+  //   (.+?)        — relation (non-greedy)
+  //   \s*→\s*      — second arrow with flexible whitespace
+  //   (.+?)        — target entity (non-greedy)
+  //   (?:\s*\[.*?\])? — optional provenance brackets (non-greedy)
+  //   \s*$         — optional trailing whitespace
+  const GRAPH_REL_PATTERN = /^\s*(.+?)\s*→\s*(.+?)\s*→\s*(.+?)(?:\s*\[.*?\])?\s*$/gm;
+
+  const results: Array<{ source: string; relation: string; target: string }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = GRAPH_REL_PATTERN.exec(graphResult)) !== null) {
+    const source = match[1].trim();
+    const relation = match[2].trim();
+    const target = match[3].trim();
+
+    // Skip degenerate matches where any group is empty
+    if (source && relation && target) {
+      results.push({ source, relation, target });
+    }
+  }
+
+  return results;
+}
+
 // Inlined prompt template
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
 
@@ -177,15 +224,12 @@ export async function reportAgent(
 
       // b. Process Graph Results for Connected Concepts
       let connectedConcepts = "";
-      if (graphResult && !graphResult.includes("No knowledge graph data")) {
-        // IMPORTANT: graphQueryTool must output relationships
-        // in the format: "Entity → RELATION → Entity"
-        // See graphQueryTool README for output schema.
-        const GRAPH_REL_PATTERN = /([^\n→]+) → ([^\n→]+) → ([^\n→\s\[]+)/g;
-        const matches = [...graphResult.matchAll(GRAPH_REL_PATTERN)];
-        
-        if (matches.length > 0) {
-          const relLines = matches.slice(0, 5).map(m => m[0].trim());
+      if (graphResult) {
+        const rels = parseGraphRelationships(graphResult);
+        if (rels.length > 0) {
+          const relLines = rels
+            .slice(0, 5)
+            .map((r) => `${r.source} → ${r.relation} → ${r.target}`);
           connectedConcepts = `\n\n**Connected concepts:** ${relLines.join(" | ")}`;
         }
       }

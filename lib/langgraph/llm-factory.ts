@@ -8,8 +8,8 @@ export type ModelTier = "simple" | "medium" | "complex";
 
 const TIER_MAP: Record<ModelTier, string> = {
   simple: "gpt-4o-mini",
-  medium: "gpt-4o",
-  complex: "gpt-4o",
+  medium: "gpt-4o-mini",
+  complex: "gpt-4o-mini",
 };
 
 /**

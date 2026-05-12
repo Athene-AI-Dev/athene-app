@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { 
   X, 
@@ -42,10 +42,15 @@ export function AddIntegrationDialog({
   onConnect,
   connecting
 }: AddIntegrationDialogProps) {
+  const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
   const providers = getAllProviders();
 
-  if (!open) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
 
   const filteredProviders = providers.filter(
     (p) =>

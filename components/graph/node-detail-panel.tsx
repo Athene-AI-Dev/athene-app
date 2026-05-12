@@ -12,7 +12,7 @@ interface NodeData {
   department_ids?: string[];
   source_documents?: string[];
   visibility?: string;
-  community?: string;
+  community?: number | null;
   updated_at?: string;
 }
 

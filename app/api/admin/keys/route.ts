@@ -73,7 +73,8 @@ export async function POST(req: NextRequest) {
           created_by: userId
         })
         .select()
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (insertError) throw insertError
 
@@ -106,16 +107,19 @@ export async function PATCH(req: NextRequest) {
         .from('llm_keys')
         .select('provider, label, is_active')
         .eq('id', id)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (fetchError) throw fetchError
+      if (!oldKey) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
       const { data, error: updateError } = await supabase
         .from('llm_keys')
         .update({ is_active, label })
         .eq('id', id)
         .select()
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (updateError) throw updateError
 
@@ -153,9 +157,11 @@ export async function DELETE(req: NextRequest) {
         .from('llm_keys')
         .select('provider')
         .eq('id', id)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (fetchError) throw fetchError
+      if (!key) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
       const { error: deleteError } = await supabase
         .from('llm_keys')

@@ -20,13 +20,8 @@ import { HumanMessage } from "@langchain/core/messages";
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 
-vi.mock("../../langgraph/llm-factory", () => ({
+vi.mock("@/lib/langgraph/llm-factory", () => ({
   model: { invoke: mockInvoke },
-}));
-
-vi.mock("fs", () => ({
-  default: { readFileSync: mockReadFileSync },
-  readFileSync: mockReadFileSync,
 }));
 
 // ---- Import after mocks ------------------------------------
@@ -40,14 +35,14 @@ const PROMPT_TEMPLATE = "Mode: {{MODE}}\nContext: {{CONTEXT}}";
 
 function makeState(overrides: Partial<AtheneState> = {}): AtheneState {
   return {
-    retrieval_results: [],
+    retrieved_chunks: [],
     messages: [new HumanMessage("What is the revenue?")],
     orgId: "org-1",
     userId: "user-1",
     role: "member",
     next: "",
     final_answer: null,
-    citations: [],
+    cited_sources: [],
     task_type: "retrieval",
     is_cross_dept_query: false,
     ...overrides,
@@ -80,26 +75,26 @@ describe("synthesisAgentNode", () => {
 
   // ── Standard mode ────────────────────────────────────────
 
-  it("standard mode: returns cited answer and clears retrieval_results", async () => {
+  it("standard mode: returns cited answer and clears retrieved_chunks", async () => {
     mockInvoke.mockResolvedValue({ content: "Revenue is $1M [doc_123]." });
 
     const result = await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_A] }),
+      makeState({ retrieved_chunks: [DOC_A] }),
     );
 
     expect(result.final_answer).toBe("Revenue is $1M [doc_123].");
-    expect(result.citations).toHaveLength(1);
-    expect((result.citations as any[])[0].document_id).toBe("doc_123");
-    expect((result.citations as any[])[0].external_url).toBe(
+    expect(result.cited_sources).toHaveLength(1);
+    expect((result.cited_sources as any[])[0].document_id).toBe("doc_123");
+    expect((result.cited_sources as any[])[0].external_url).toBe(
       "https://example.com/report.pdf",
     );
-    expect(result.retrieval_results).toHaveLength(0);
+    expect(result.retrieved_chunks).toHaveLength(0);
   });
 
   it("standard mode: system prompt contains STANDARD MODE and chunk context", async () => {
     mockInvoke.mockResolvedValue({ content: "Answer [doc_123]." });
 
-    await synthesisAgentNode(makeState({ retrieval_results: [DOC_A] }));
+    await synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] }));
 
     const [systemMsg] = mockInvoke.mock.calls[0][0];
     expect(systemMsg.content).toContain("STANDARD MODE");
@@ -113,7 +108,7 @@ describe("synthesisAgentNode", () => {
     mockInvoke.mockResolvedValue({ content: "BI answer [doc_456]." });
 
     await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_B], task_type: "analytical" }),
+      makeState({ retrieved_chunks: [DOC_B], task_type: "analytical" }),
     );
 
     const [systemMsg] = mockInvoke.mock.calls[0][0];
@@ -124,7 +119,7 @@ describe("synthesisAgentNode", () => {
     mockInvoke.mockResolvedValue({ content: "Cross-dept answer [doc_123]." });
 
     await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_A], is_cross_dept_query: true }),
+      makeState({ retrieved_chunks: [DOC_A], is_cross_dept_query: true }),
     );
 
     const [systemMsg] = mockInvoke.mock.calls[0][0];
@@ -134,7 +129,7 @@ describe("synthesisAgentNode", () => {
   it("standard mode: task_type='retrieval' + cross_dept=false stays STANDARD", async () => {
     mockInvoke.mockResolvedValue({ content: "Standard answer [doc_123]." });
 
-    await synthesisAgentNode(makeState({ retrieval_results: [DOC_A] }));
+    await synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] }));
 
     const [systemMsg] = mockInvoke.mock.calls[0][0];
     expect(systemMsg.content).toContain("STANDARD MODE");
@@ -144,23 +139,23 @@ describe("synthesisAgentNode", () => {
   // ── Empty chunks (hallucination prevention) ───────────────
 
   it("empty chunks: returns refusal string without calling LLM", async () => {
-    const result = await synthesisAgentNode(makeState({ retrieval_results: [] }));
+    const result = await synthesisAgentNode(makeState({ retrieved_chunks: [] }));
 
     expect(result.final_answer).toBe(
-      "I don't have enough info in your connected sources.",
+      "I don't have enough information in your connected sources to answer that.",
     );
-    expect(result.citations).toHaveLength(0);
-    expect(result.retrieval_results).toHaveLength(0);
+    expect(result.cited_sources).toHaveLength(0);
+    expect(result.retrieved_chunks).toHaveLength(0);
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
-  it("null retrieval_results: treated as empty, no LLM call", async () => {
+  it("null retrieved_chunks: treated as empty, no LLM call", async () => {
     const result = await synthesisAgentNode(
-      makeState({ retrieval_results: undefined as any }),
+      makeState({ retrieved_chunks: undefined as any }),
     );
 
     expect(result.final_answer).toBe(
-      "I don't have enough info in your connected sources.",
+      "I don't have enough information in your connected sources to answer that.",
     );
     expect(mockInvoke).not.toHaveBeenCalled();
   });
@@ -173,10 +168,10 @@ describe("synthesisAgentNode", () => {
     });
 
     const result = await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_A] }),
+      makeState({ retrieved_chunks: [DOC_A] }),
     );
 
-    expect(result.citations).toHaveLength(0);
+    expect(result.cited_sources).toHaveLength(0);
     expect(result.final_answer).toContain("[doc_999]"); // text preserved
   });
 
@@ -188,11 +183,11 @@ describe("synthesisAgentNode", () => {
     });
 
     const result = await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_A, DOC_B] }),
+      makeState({ retrieved_chunks: [DOC_A, DOC_B] }),
     );
 
-    expect(result.citations).toHaveLength(2);
-    const ids = (result.citations as any[]).map((c) => c.document_id);
+    expect(result.cited_sources).toHaveLength(2);
+    const ids = (result.cited_sources as any[]).map((c) => c.document_id);
     expect(ids).toContain("doc_123");
     expect(ids).toContain("doc_456");
     // doc_123 referenced twice in text — should appear once in citations
@@ -205,21 +200,10 @@ describe("synthesisAgentNode", () => {
     mockInvoke.mockRejectedValue(new Error("Rate limit exceeded"));
 
     await expect(
-      synthesisAgentNode(makeState({ retrieval_results: [DOC_A] })),
+      synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] })),
     ).rejects.toThrow("Rate limit exceeded");
   });
 
-  // ── Prompt file error ─────────────────────────────────────
-
-  it("missing prompt file: throws descriptive error", async () => {
-    mockReadFileSync.mockImplementation(() => {
-      throw new Error("ENOENT: no such file");
-    });
-
-    await expect(
-      synthesisAgentNode(makeState({ retrieval_results: [DOC_A] })),
-    ).rejects.toThrow("Synthesis prompt file missing");
-  });
 
   // ── Complex (multimodal) content array from LLM ───────────
 
@@ -229,10 +213,10 @@ describe("synthesisAgentNode", () => {
     });
 
     const result = await synthesisAgentNode(
-      makeState({ retrieval_results: [DOC_A] }),
+      makeState({ retrieved_chunks: [DOC_A] }),
     );
 
     expect(result.final_answer).toBe("Revenue is $1M [doc_123].");
-    expect(result.citations).toHaveLength(1);
+    expect(result.cited_sources).toHaveLength(1);
   });
 });

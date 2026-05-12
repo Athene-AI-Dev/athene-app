@@ -178,4 +178,4 @@ export async function generateMorningBriefing(
       briefing: null,
     };
   }
-}
+}

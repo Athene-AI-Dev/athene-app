@@ -56,6 +56,7 @@ vi.mock("@/lib/supabase/server", () => {
     from(table: string) {
       return makeQueryBuilder(table);
     },
+    rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
   };
   return { supabaseAdmin: admin, supabaseServer: admin, supabase: admin };
 });

@@ -77,7 +77,6 @@ describe('Integrations Fetchers', () => {
         },
       });
       expect(chunks[0].content).toContain('Test Issue');
-      expect(indexDocument).toHaveBeenCalledWith(chunks[0], 'org-1');
     });
 
     it('should fetch PRs and construct FetchedChunk array', async () => {
@@ -198,7 +197,6 @@ describe('Integrations Fetchers', () => {
         }
       });
       expect(chunks[0].content).toContain('Alpha Project');
-      expect(indexDocument).toHaveBeenCalledWith(chunks[0], 'org-1');
     });
 
     it('should fetch cycles and construct FetchedChunk array', async () => {

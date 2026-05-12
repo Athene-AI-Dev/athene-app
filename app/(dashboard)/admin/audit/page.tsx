@@ -27,27 +27,36 @@ export default function AuditPage() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [mounted, setMounted] = useState(false);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const limit = 50;
 
     useEffect(() => {
         setMounted(true);
         const fetchAll = async () => {
-
             setLoading(true);
             try {
                 const [biRes, adminRes] = await Promise.all([
-                    fetch('/api/admin/bi-audit'),
-                    fetch('/api/admin/audit-log')
+                    fetch(`/api/admin/bi-audit?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`),
+                    fetch(`/api/admin/audit-log?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`)
                 ]);
                 
-                if (biRes.ok) setBiLogs(await biRes.json());
-                if (adminRes.ok) setAdminLogs(await adminRes.json());
+                if (biRes.ok) {
+                    const data = await biRes.json();
+                    setBiLogs(data.logs || data);
+                }
+                if (adminRes.ok) {
+                    const data = await adminRes.json();
+                    setAdminLogs(data.logs || data);
+                    if (data.total) setTotal(data.total);
+                }
             } catch (e) {
                 console.error("Failed to fetch audit logs", e);
             }
             setLoading(false);
         };
         fetchAll();
-    }, []);
+    }, [page, search]);
 
     const getActionIcon = (action: string) => {
       switch (action) {
@@ -64,77 +73,77 @@ export default function AuditPage() {
     };
 
     return (
-        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk']">
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk'] transition-colors duration-300">
             
             {/* Header */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-white/5">
-                    <History className="w-7 h-7 text-purple-400" />
+                  <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border border-border shadow-lg">
+                    <History className="w-7 h-7 text-primary" />
                   </div>
-                  <h1 className="text-4xl font-black tracking-tighter text-white uppercase">
-                    Audit <span className="text-purple-400">Ledger</span>
+                  <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase">
+                    Audit <span className="text-primary">Ledger</span>
                   </h1>
                 </div>
-                <p className="text-slate-400 text-lg max-w-2xl font-medium leading-relaxed">
+                <p className="text-muted-foreground text-lg max-w-2xl font-medium leading-relaxed">
                   Transparent record of all administrative modifications and high-privilege analytical access within the organization.
                 </p>
               </div>
             </div>
 
             <Tabs defaultValue="admin" className="space-y-8">
-              <div className="flex flex-col sm:flex-row gap-6 items-center justify-between p-2 rounded-2xl bg-white/5 border border-white/5 backdrop-blur-sm">
+              <div className="flex flex-col sm:flex-row gap-6 items-center justify-between p-2 rounded-2xl bg-muted/10 border border-border backdrop-blur-xl">
                 <TabsList className="bg-transparent border-none gap-2">
                   <TabsTrigger 
                     value="admin" 
-                    className="h-11 px-6 rounded-xl data-[state=active]:bg-purple-500 data-[state=active]:text-white text-slate-400 font-bold transition-all gap-2"
+                    className="h-11 px-6 rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground font-black uppercase tracking-widest text-[10px] transition-all gap-2"
                   >
                     <Shield className="w-4 h-4" /> Admin Actions
                   </TabsTrigger>
                   <TabsTrigger 
                     value="bi" 
-                    className="h-11 px-6 rounded-xl data-[state=active]:bg-blue-500 data-[state=active]:text-white text-slate-400 font-bold transition-all gap-2"
+                    className="h-11 px-6 rounded-xl data-[state=active]:bg-secondary data-[state=active]:text-secondary-foreground text-muted-foreground font-black uppercase tracking-widest text-[10px] transition-all gap-2"
                   >
                     <Activity className="w-4 h-4" /> BI Access
                   </TabsTrigger>
                 </TabsList>
 
                 <div className="relative flex-1 max-w-md group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 transition-colors group-focus-within:text-purple-400" />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
                   <input 
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search ledger..." 
-                    className="w-full h-11 pl-12 pr-4 bg-white/5 border border-white/10 rounded-xl outline-none text-sm font-medium text-white placeholder:text-slate-600 focus:border-purple-500/50 transition-all"
+                    className="w-full h-11 pl-12 pr-4 bg-muted/20 border border-border rounded-xl outline-none text-sm font-bold text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 transition-all"
                   />
                 </div>
               </div>
 
               <TabsContent value="admin" className="mt-0 outline-none">
-                <div className="rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden backdrop-blur-sm">
+                <div className="rounded-[2.5rem] bg-card/50 border border-border overflow-hidden backdrop-blur-xl shadow-2xl transition-colors duration-300">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                      <thead className="bg-white/5 border-b border-white/5">
+                      <thead className="bg-muted/30 border-b border-border">
                         <tr>
-                          <th className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-slate-500">Timestamp</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Administrator</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Action</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Target User</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Details</th>
+                          <th className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Timestamp</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Administrator</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Action</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Target User</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Details</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/5">
+                      <tbody className="divide-y divide-border">
                         {loading ? (
                           [...Array(3)].map((_, i) => (
                             <tr key={i} className="animate-pulse">
-                              <td colSpan={5} className="py-8 px-8 h-20 bg-white/[0.01]" />
+                              <td colSpan={5} className="py-8 px-8 h-20 bg-muted/5" />
                             </tr>
                           ))
                         ) : adminLogs.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="py-20 text-center">
-                              <div className="flex flex-col items-center gap-4 text-slate-500">
+                              <div className="flex flex-col items-center gap-4 text-muted-foreground">
                                 <AlertCircle className="w-10 h-10 opacity-20" />
                                 <p className="font-bold">No administrative actions recorded yet.</p>
                               </div>
@@ -142,28 +151,28 @@ export default function AuditPage() {
                           </tr>
                         ) : (
                           adminLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-white/[0.02] transition-colors group">
+                            <tr key={log.id} className="hover:bg-muted/20 transition-colors group">
                               <td className="py-6 px-8 whitespace-nowrap">
                                 <div className="flex flex-col">
-                                  <span className="text-xs font-black text-white">{mounted ? new Date(log.performed_at).toLocaleDateString() : '---'}</span>
-                                  <span className="text-[10px] text-slate-500 font-bold">{mounted ? new Date(log.performed_at).toLocaleTimeString() : '---'}</span>
+                                  <span className="text-xs font-black text-foreground">{mounted ? new Date(log.performed_at).toLocaleDateString() : '---'}</span>
+                                  <span className="text-[10px] text-muted-foreground font-bold">{mounted ? new Date(log.performed_at).toLocaleTimeString() : '---'}</span>
                                 </div>
 
                               </td>
                               <td className="py-6">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[10px] font-black text-purple-400 border border-purple-500/20">
-                                    {log.admin?.full_name?.charAt(0) || log.admin?.email?.charAt(0)}
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-black text-white leading-none">{log.admin?.full_name}</span>
-                                    <span className="text-[10px] text-slate-500 font-bold mt-1">{log.admin?.email}</span>
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary border border-primary/20 shadow-sm">
+                                      {log.admin?.display_name?.charAt(0) || log.admin?.email?.charAt(0)}
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-black text-foreground leading-none">{log.admin?.display_name}</span>
+                                      <span className="text-[10px] text-muted-foreground font-bold mt-1">{log.admin?.email}</span>
                                   </div>
                                 </div>
                               </td>
                               <td>
                                 <div className="flex items-center gap-2">
-                                  <Badge className="bg-white/5 text-slate-300 border-white/10 rounded-lg px-2 py-1 gap-1.5 font-bold text-[10px]">
+                                  <Badge className="bg-muted border-border text-muted-foreground rounded-lg px-2 py-1 gap-1.5 font-bold text-[9px] uppercase tracking-widest">
                                     {getActionIcon(log.action)}
                                     {formatAction(log.action)}
                                   </Badge>
@@ -172,21 +181,21 @@ export default function AuditPage() {
                               <td className="py-6">
                                 {log.target ? (
                                   <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black text-slate-400 border border-white/5">
-                                      {log.target?.full_name?.charAt(0) || log.target?.email?.charAt(0)}
+                                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-[10px] font-black text-muted-foreground border border-border">
+                                      {log.target?.display_name?.charAt(0) || log.target?.email?.charAt(0)}
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-black text-white leading-none">{log.target?.full_name}</span>
-                                      <span className="text-[10px] text-slate-500 font-bold mt-1">{log.target?.email}</span>
+                                      <span className="text-xs font-black text-foreground leading-none">{log.target?.display_name}</span>
+                                      <span className="text-[10px] text-muted-foreground font-bold mt-1">{log.target?.email}</span>
                                     </div>
                                   </div>
                                 ) : (
-                                  <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">System</span>
+                                  <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">System</span>
                                 )}
                               </td>
                               <td className="py-6 pr-8">
                                 <div className="max-w-xs overflow-hidden">
-                                   <pre className="text-[9px] font-mono text-slate-500 truncate bg-black/20 p-2 rounded-lg">
+                                   <pre className="text-[9px] font-mono text-muted-foreground/60 truncate bg-background/50 p-2 rounded-lg border border-border">
                                      {JSON.stringify(log.details)}
                                    </pre>
                                 </div>
@@ -201,28 +210,28 @@ export default function AuditPage() {
               </TabsContent>
 
               <TabsContent value="bi" className="mt-0 outline-none">
-                <div className="rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden backdrop-blur-sm">
+                <div className="rounded-[2.5rem] bg-card/50 border border-border overflow-hidden backdrop-blur-xl shadow-2xl transition-colors duration-300">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                      <thead className="bg-white/5 border-b border-white/5">
+                      <thead className="bg-muted/30 border-b border-border">
                         <tr>
-                          <th className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-slate-500">Timestamp</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Analyst ID</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Analytical Query</th>
-                          <th className="text-[10px] font-black uppercase tracking-widest text-slate-500">Source Object</th>
+                          <th className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Timestamp</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Analyst ID</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Analytical Query</th>
+                          <th className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Source Object</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/5">
+                      <tbody className="divide-y divide-border">
                         {loading ? (
                           [...Array(3)].map((_, i) => (
                             <tr key={i} className="animate-pulse">
-                              <td colSpan={4} className="py-8 px-8 h-20 bg-white/[0.01]" />
+                              <td colSpan={4} className="py-8 px-8 h-20 bg-muted/5" />
                             </tr>
                           ))
                         ) : biLogs.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-20 text-center">
-                              <div className="flex flex-col items-center gap-4 text-slate-500">
+                              <div className="flex flex-col items-center gap-4 text-muted-foreground">
                                 <AlertCircle className="w-10 h-10 opacity-20" />
                                 <p className="font-bold">No high-privilege access events recorded.</p>
                               </div>
@@ -230,27 +239,27 @@ export default function AuditPage() {
                           </tr>
                         ) : (
                           biLogs.map((log) => (
-                            <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
+                            <tr key={log.id} className="hover:bg-muted/20 transition-colors">
                               <td className="py-6 px-8 whitespace-nowrap">
                                 <div className="flex flex-col">
-                                  <span className="text-xs font-black text-white">{mounted ? new Date(log.created_at || log.timestamp).toLocaleDateString() : '---'}</span>
-                                  <span className="text-[10px] text-slate-500 font-bold">{mounted ? new Date(log.created_at || log.timestamp).toLocaleTimeString() : '---'}</span>
+                                  <span className="text-xs font-black text-foreground">{mounted ? new Date(log.created_at || log.timestamp).toLocaleDateString() : '---'}</span>
+                                  <span className="text-[10px] text-muted-foreground font-bold">{mounted ? new Date(log.created_at || log.timestamp).toLocaleTimeString() : '---'}</span>
                                 </div>
 
                               </td>
                               <td className="py-6">
-                                <div className="flex items-center gap-2 font-mono text-[10px] text-blue-400 bg-blue-400/5 px-2 py-1 rounded-lg border border-blue-400/10 w-fit">
+                                <div className="flex items-center gap-2 font-mono text-[10px] text-primary bg-primary/5 px-2 py-1 rounded-lg border border-primary/10 w-fit">
                                   <UserCircle className="w-3 h-3" />
                                   {log.user_id.slice(0, 8)}...
                                 </div>
                               </td>
                               <td className="py-6">
-                                <p className="text-xs font-medium text-slate-300 max-w-md line-clamp-2 leading-relaxed">
+                                <p className="text-xs font-bold text-muted-foreground max-w-md line-clamp-2 leading-relaxed">
                                   {log.query}
                                 </p>
                               </td>
                               <td className="py-6 pr-8">
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
                                   <Database className="w-3 h-3" />
                                   {log.doc_id || "Cross-Department Synthesizer"}
                                 </div>
@@ -265,5 +274,6 @@ export default function AuditPage() {
               </TabsContent>
             </Tabs>
         </div>
-    );
+  );
 }
+

@@ -1,0 +1,97 @@
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import { resolveUserAccess } from "@/lib/auth/rbac";
+import { supabaseAdmin } from "@/lib/supabase/server";
+
+/**
+ * GET /api/threads
+ * List threads for the authenticated user in their current org.
+ */
+export async function GET(request: NextRequest) {
+  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
+  if (!clerkUserId || !clerkOrgId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const access = await resolveUserAccess(clerkUserId, clerkOrgId);
+  if (!access.internal_user_id) {
+    return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+  }
+
+  // Resolve internal org UUID from Clerk org ID
+  const { data: orgData } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("clerk_org_id", clerkOrgId)
+    .single();
+
+  if (!orgData) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("threads")
+    .select("id, title, last_message_at, message_count, created_at")
+    .eq("org_id", orgData.id)
+    .eq("user_id", access.internal_user_id)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("[threads] GET error:", error);
+    return NextResponse.json({ error: "Failed to fetch threads" }, { status: 500 });
+  }
+
+  return NextResponse.json({ threads: data });
+}
+
+/**
+ * POST /api/threads
+ * Create a new conversation thread.
+ * Body: { title?: string }
+ */
+export async function POST(request: NextRequest) {
+  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
+  if (!clerkUserId || !clerkOrgId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const access = await resolveUserAccess(clerkUserId, clerkOrgId);
+  if (!access.internal_user_id) {
+    return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+  }
+
+  // Resolve internal org UUID
+  const { data: orgData, error: orgError } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("clerk_org_id", clerkOrgId)
+    .single();
+
+  if (orgError || !orgData) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  let body: { title?: string } = {};
+  try {
+    body = await request.json();
+  } catch {
+    // empty body is fine -- title is optional
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("threads")
+    .insert({
+      org_id: orgData.id,
+      user_id: access.internal_user_id,
+      title: body.title || null,
+    })
+    .select("id, title, last_message_at, message_count, created_at")
+    .single();
+
+  if (error) {
+    console.error("[threads] POST error:", error);
+    return NextResponse.json({ error: "Failed to create thread" }, { status: 500 });
+  }
+
+  return NextResponse.json({ thread: data });
+}

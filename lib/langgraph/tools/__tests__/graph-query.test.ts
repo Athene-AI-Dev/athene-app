@@ -11,7 +11,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ---- Mock ChatOpenAI ----------------------------------------
 
-const mockMiniInvoke = vi.fn()
+const { mockMiniInvoke } = vi.hoisted(() => ({
+  mockMiniInvoke: vi.fn(),
+}))
 
 vi.mock('@langchain/openai', () => ({
   ChatOpenAI: class FakeChatOpenAI {
@@ -29,27 +31,48 @@ vi.mock('@/lib/langgraph/tools/registry', () => ({
 
 // ---- Mock supabaseAdmin -------------------------------------
 
-const mockFrom = vi.fn()
-const mockSelect = vi.fn()
-const mockEq = vi.fn()
-const mockIn = vi.fn()
-const mockOr = vi.fn()
-const mockLimit = vi.fn()
-const mockSingle = vi.fn()
+const {
+  mockFrom,
+  mockSelect,
+  mockEq,
+  mockIn,
+  mockOr,
+  mockLimit,
+  mockSingle,
+  chainable,
+} = vi.hoisted(() => {
+  const mockFrom = vi.fn()
+  const mockSelect = vi.fn()
+  const mockEq = vi.fn()
+  const mockIn = vi.fn()
+  const mockOr = vi.fn()
+  const mockLimit = vi.fn()
+  const mockSingle = vi.fn()
 
-const chainable = {
-  select: mockSelect,
-  eq: mockEq,
-  in: mockIn,
-  or: mockOr,
-  limit: mockLimit,
-  single: mockSingle,
-}
+  const chainable = {
+    select: mockSelect,
+    eq: mockEq,
+    in: mockIn,
+    or: mockOr,
+    limit: mockLimit,
+    single: mockSingle,
+  }
 
-// Make every method return `chainable` so calls can be chained
-Object.values(chainable).forEach((fn) => fn.mockReturnValue(chainable))
+  // Make every method return `chainable` so calls can be chained
+  Object.values(chainable).forEach((fn) => fn.mockReturnValue(chainable))
+  mockFrom.mockReturnValue(chainable)
 
-mockFrom.mockReturnValue(chainable)
+  return {
+    mockFrom,
+    mockSelect,
+    mockEq,
+    mockIn,
+    mockOr,
+    mockLimit,
+    mockSingle,
+    chainable,
+  }
+})
 
 vi.mock('@/lib/supabase/server', () => ({
   supabaseAdmin: { from: mockFrom },

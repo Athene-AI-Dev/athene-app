@@ -20,6 +20,8 @@ describe('notion client', () => {
   it('should include correct headers', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ results: [] })
     })
 
@@ -39,10 +41,12 @@ describe('notion client', () => {
   it('should retry on 429', async () => {
     mockFetch.mockResolvedValueOnce({
       status: 429,
-      headers: new Map([['Retry-After', '0']])
+      headers: new Headers({ 'Retry-After': '0' })
     })
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
       json: async () => ({ success: true })
     })
 
@@ -59,9 +63,11 @@ describe('notion client', () => {
       ok: false,
       status: 404,
       statusText: 'Not Found',
-      json: async () => ({ error: 'Not found' })
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ error: 'Not found' }),
+      text: async () => JSON.stringify({ error: 'Not found' })
     })
 
-    await expect(notionFetch('conn-123', 'org-123', '/invalid')).rejects.toThrow('Notion API Error: 404')
+    await expect(notionFetch('conn-123', 'org-123', '/invalid')).rejects.toThrow('→ 404')
   })
 })

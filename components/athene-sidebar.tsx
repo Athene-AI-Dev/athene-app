@@ -20,6 +20,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/auth/rbac";
+import { 
+  Sidebar, 
+  SidebarContent, 
+  SidebarHeader, 
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton
+} from "@/components/ui/sidebar";
 
 interface SidebarItemProps {
   icon: React.ElementType;
@@ -29,21 +40,34 @@ interface SidebarItemProps {
 }
 
 const SidebarItem = ({ icon: Icon, label, href, active = false }: SidebarItemProps) => (
-  <Link href={href}>
-    <div className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200 group relative ${
-      active ? 'text-[#66ADE4] bg-[#66ADE4]/10 rounded-xl mx-2 shadow-[0_0_20px_rgba(102,173,228,0.05)]' : 'text-slate-400 hover:text-white hover:bg-white/5 mx-2 rounded-xl'
-    }`}>
-      {active && <div className="absolute left-[-8px] top-3 bottom-3 w-1 bg-[#66ADE4] rounded-full shadow-[0_0_15px_#66ADE4]" />}
-      <Icon size={18} className={active ? 'drop-shadow-[0_0_8px_rgba(102,173,228,0.5)]' : ''} />
-      <span className="text-[11px] font-black tracking-widest uppercase font-['Space_Grotesk']">{label}</span>
-    </div>
-  </Link>
+  <SidebarMenuItem>
+    <SidebarMenuButton asChild isActive={active} tooltip={label} className={cn(
+      "h-12 px-4 transition-all duration-300 group relative rounded-xl mx-2",
+      active 
+        ? 'bg-primary/10 text-primary shadow-[0_0_20px_rgba(var(--primary),0.05)]' 
+        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+    )}>
+      <Link href={href}>
+        {active && (
+          <div className="absolute left-[-8px] top-3 bottom-3 w-1 bg-primary rounded-full shadow-[0_0_15px_rgba(var(--primary),0.8)]" />
+        )}
+        <Icon 
+          size={18} 
+          className={cn(
+            "transition-all duration-300",
+            active ? 'drop-shadow-[0_0_8px_rgba(var(--primary),0.5)]' : 'group-hover:scale-110'
+          )} 
+        />
+        <span className="text-[11px] font-black tracking-widest uppercase font-['Space_Grotesk'] ml-3">{label}</span>
+      </Link>
+    </SidebarMenuButton>
+  </SidebarMenuItem>
 );
 
 const isRouteActive = (pathname: string, href: string) =>
   pathname === href || pathname.startsWith(`${href}/`);
 
-export function AppSidebar({ role, className }: { role: UserRole; className?: string }) {
+function AppSidebar({ role, className }: { role: UserRole; className?: string }) {
   const pathname = usePathname();
   
   const primaryItems = [
@@ -65,45 +89,29 @@ export function AppSidebar({ role, className }: { role: UserRole; className?: st
   ];
 
   return (
-    <aside className={cn("w-72 border-r border-white/5 bg-[#06080c] flex flex-col h-screen shrink-0 relative", className)}>
-      {/* Sidebar Header */}
-      <div className="p-8 pb-4">
+    <Sidebar className={cn("border-r border-border bg-card/50 backdrop-blur-xl transition-colors duration-300", className)}>
+      <SidebarHeader className="p-8 pb-4">
         <Link href="/dashboard">
           <div className="flex items-center gap-4 group transition-all">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center bg-white shadow-[0_0_30px_rgba(218,136,182,0.2)] group-hover:scale-105 transition-transform duration-500">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center bg-white shadow-xl group-hover:scale-105 transition-transform duration-500 border border-border/50">
                <img src="/logo.png" alt="A" className="w-9 h-9 object-contain" />
             </div>
-            <div>
+            <div className="group-data-[collapsible=icon]:hidden">
               <div className="flex items-center gap-1.5">
-                <span className="text-xl font-black tracking-tighter text-white font-['Space_Grotesk'] uppercase">Athene</span>
-                <span className="text-xl font-black tracking-tighter text-[#66ADE4] font-['Space_Grotesk'] uppercase">AI</span>
+                <span className="text-xl font-black tracking-tighter text-foreground font-['Space_Grotesk'] uppercase">Athene</span>
+                <span className="text-xl font-black tracking-tighter text-primary font-['Space_Grotesk'] uppercase">AI</span>
               </div>
-              <p className="text-[8px] text-slate-600 uppercase tracking-[0.3em] mt-1 font-bold">Neural Engine v1.4</p>
+              <p className="text-[8px] text-muted-foreground uppercase tracking-[0.3em] mt-1 font-bold opacity-60">Neural Engine v1.4</p>
             </div>
           </div>
         </Link>
-      </div>
+      </SidebarHeader>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-6 space-y-8">
-        {/* Primary Navigation */}
-        <nav className="space-y-1">
-          <p className="px-4 text-[9px] font-black uppercase tracking-[0.3em] text-slate-700 mb-4 ml-2">Core Hub</p>
-          {primaryItems.map((item) => (
-            <SidebarItem
-              key={item.href}
-              icon={item.icon}
-              label={item.label}
-              href={item.href}
-              active={isRouteActive(pathname, item.href)}
-            />
-          ))}
-        </nav>
-
-        {/* Administration Section */}
-        {role === "admin" && (
-          <nav className="space-y-1 pt-6 border-t border-white/5">
-            <p className="px-4 text-[9px] font-black uppercase tracking-[0.3em] text-slate-700 mb-4 ml-2">Admin Control</p>
-            {adminItems.map((item) => (
+      <SidebarContent className="px-4 py-6 space-y-8 no-scrollbar">
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-4 text-[9px] font-black uppercase tracking-[0.4em] text-muted-foreground/40 mb-4 ml-2">Core Hub</SidebarGroupLabel>
+          <SidebarMenu className="space-y-1">
+            {primaryItems.map((item) => (
               <SidebarItem
                 key={item.href}
                 icon={item.icon}
@@ -112,25 +120,42 @@ export function AppSidebar({ role, className }: { role: UserRole; className?: st
                 active={isRouteActive(pathname, item.href)}
               />
             ))}
-          </nav>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {role === "admin" && (
+          <SidebarGroup className="pt-6 border-t border-border/50">
+            <SidebarGroupLabel className="px-4 text-[9px] font-black uppercase tracking-[0.4em] text-muted-foreground/40 mb-4 ml-2">Admin Control</SidebarGroupLabel>
+            <SidebarMenu className="space-y-1">
+              {adminItems.map((item) => (
+                <SidebarItem
+                  key={item.href}
+                  icon={item.icon}
+                  label={item.label}
+                  href={item.href}
+                  active={isRouteActive(pathname, item.href)}
+                />
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
         )}
 
-        {/* Laboratory Section */}
-        <nav className="space-y-1 pt-6 border-t border-white/5">
-          <p className="px-4 text-[9px] font-black uppercase tracking-[0.3em] text-slate-700 mb-4 ml-2">Experimental</p>
-          <SidebarItem
-            icon={FlaskConical}
-            label="Agent Laboratory"
-            href="/builder"
-            active={isRouteActive(pathname, "/builder")}
-          />
-        </nav>
-      </div>
+        <SidebarGroup className="pt-6 border-t border-border/50">
+          <SidebarGroupLabel className="px-4 text-[9px] font-black uppercase tracking-[0.4em] text-muted-foreground/40 mb-4 ml-2">Experimental</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarItem
+              icon={FlaskConical}
+              label="Agent Laboratory"
+              href="/builder"
+              active={isRouteActive(pathname, "/builder")}
+            />
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
 
-      {/* Deploy Button Pin */}
-      <div className="p-6 bg-[#06080c] border-t border-white/5">
+      <SidebarFooter className="p-6 bg-transparent border-t border-border/50">
         <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-secondary rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
           <button 
             onClick={() => {
               import("sonner").then(({ toast }) => {
@@ -139,15 +164,18 @@ export function AppSidebar({ role, className }: { role: UserRole; className?: st
                 });
               });
             }}
-            className="relative w-full h-14 bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:shadow-lg hover:shadow-blue-500/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 overflow-visible shadow-xl">
-            <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-2 border-[#06080c] bg-white flex items-center justify-center shadow-lg">
+            className="relative w-full h-14 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 overflow-visible shadow-xl">
+            <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-2 border-card bg-white flex items-center justify-center shadow-lg group-data-[collapsible=icon]:hidden">
                <img src="/logo.png" alt="A" className="w-7 h-7 object-contain" />
             </div>
-            <span className="ml-6">Deploy Agent</span>
+            <span className="ml-6 group-data-[collapsible=icon]:hidden">Deploy Agent</span>
+            <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
+               <img src="/logo.png" alt="A" className="w-6 h-6 object-contain invert" />
+            </div>
           </button>
         </div>
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   );
 }
 

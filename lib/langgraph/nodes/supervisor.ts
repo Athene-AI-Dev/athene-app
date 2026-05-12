@@ -10,6 +10,7 @@ const ALL_AGENTS = [
   "cross_dept_retrieval",
   "email_agent",
   "calendar_agent",
+  "report_agent",
   "synthesis",
   "END",
 ] as const;
@@ -25,6 +26,7 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 - cross_dept_retrieval: Cross-department BI analysis — revenue insights, multi-team trends. **Restricted: super_user and admin roles only.**
 - email_agent: Read, draft, or send emails.
 - calendar_agent: Read calendar, find free slots, or create events.
+- report_agent: Plan and write structured, multi-section reports using vectorized and graph data.
 - synthesis: Synthesize a final answer from accumulated retrieved context and finish.
 - END: The request has been fully answered — stop the graph.
 
@@ -45,7 +47,7 @@ export async function supervisor(state: AtheneStateType) {
   // ── Hop-limit guard: skip LLM entirely at max hops ──
   if (hopCount >= MAX_HOPS) {
     return {
-      active_agent: "END",
+      next_node: "END",
       reasoning: `[Guard] Max hop limit (${MAX_HOPS}) reached.`,
       hop_count: hopCount,
     };
@@ -93,8 +95,7 @@ export async function supervisor(state: AtheneStateType) {
   }
 
   return {
-    active_agent: nextAgent === "END" ? "END" : nextAgent,
-    next: nextAgent === "END" ? "END" : nextAgent,
+    next_node: nextAgent === "END" ? "END" : nextAgent,
     task_type: taskType,
     complexity: response.complexity,
     reasoning,
@@ -103,4 +104,3 @@ export async function supervisor(state: AtheneStateType) {
       nextAgent === "cross_dept_retrieval" ? true : isCrossDeptQuery,
   };
 }
-

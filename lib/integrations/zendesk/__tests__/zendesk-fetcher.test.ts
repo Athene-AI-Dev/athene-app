@@ -45,10 +45,12 @@ describe('Zendesk Integration', () => {
     it('returns FetchedChunk[] with comments (Happy Path)', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: { get: (n: string) => n === 'content-type' ? 'application/json' : null },
         json: async () => ({ tickets: [{ id: 1, subject: 'S', status: 'o', updated_at: '2024', url: 'https://h.z.com/api/v2/tickets/1.json' }], next_page: null }),
       })
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: { get: (n: string) => n === 'content-type' ? 'application/json' : null },
         json: async () => ({ comments: [{ id: 101, public: true, body: 'C' }] }),
       })
 
@@ -63,6 +65,7 @@ describe('Zendesk Integration', () => {
     it('fetches articles and strips HTML', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: { get: (n: string) => n === 'content-type' ? 'application/json' : null },
         json: async () => ({ articles: [{ id: 50, title: 'F', body: '<p>H</p>', draft: false, updated_at: '2024', html_url: 'u' }], next_page: null }),
       })
 
@@ -76,6 +79,7 @@ describe('Zendesk Integration', () => {
     it('returns search results', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
+        headers: { get: (n: string) => n === 'content-type' ? 'application/json' : null },
         json: async () => ({ results: [{ id: 1, result_type: 'ticket', subject: 'S', description: 'D', url: 'u' }] }),
       })
 

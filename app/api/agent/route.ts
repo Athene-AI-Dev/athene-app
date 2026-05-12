@@ -38,25 +38,61 @@ export async function POST(req: NextRequest) {
     const effectiveThreadId = threadId;
 
     // Resolve internal org and user for thread persistence
-    const { data: orgRow } = await supabaseAdmin
+    let { data: orgRow } = await supabaseAdmin
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
+    // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+      const { data: newOrg, error: orgCreateError } = await supabaseAdmin
+        .from("organizations")
+        .insert({ 
+          clerk_org_id: orgId,
+          name: "Organization " + orgId.slice(-4), // Fallback name
+          slug: "org-" + orgId.slice(-8)
+        })
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+      
+      if (orgCreateError) {
+        logger.error({ orgId, err: orgCreateError.message }, "[agent] Org sync failed");
+        return NextResponse.json({ error: "Failed to sync organization" }, { status: 500 });
+      }
+      orgRow = newOrg;
     }
 
-    const { data: memberRow } = await supabaseAdmin
+    let { data: memberRow } = await supabaseAdmin
       .from("org_members")
       .select("id")
       .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow.id)
-      .single();
+      .eq("org_id", orgRow!.id)
+      .limit(1)
+      .maybeSingle();
 
+    // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
-      return NextResponse.json({ error: "User not found in organization" }, { status: 403 });
+      const { data: newMember, error: memberCreateError } = await supabaseAdmin
+        .from("org_members")
+        .insert({
+          org_id: orgRow!.id,
+          clerk_user_id: userId,
+          email: "unknown@sync.athene.ai", // Placeholder, ideally fetch from Clerk if needed
+          display_name: "User " + userId.slice(-4),
+          role: mapRole(orgRole ?? undefined) ?? "member",
+        })
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      if (memberCreateError) {
+        logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
+        return NextResponse.json({ error: "Failed to sync user membership" }, { status: 500 });
+      }
+      memberRow = newMember;
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
@@ -64,15 +100,15 @@ export async function POST(req: NextRequest) {
       .from("threads")
       .upsert({
         id: effectiveThreadId,
-        org_id: orgRow.id,
-        user_id: memberRow.id,
+        org_id: orgRow!.id,
+        user_id: memberRow!.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 
     if (threadError) {
-      logger.error({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed");
-      // If it's not a valid UUID, this will fail here instead of crashing the graph later
-      return NextResponse.json({ error: "Invalid thread ID format or persistence failure." }, { status: 400 });
+      logger.warn({ threadId: effectiveThreadId, err: threadError.message }, "[agent] Thread persistence failed - continuing with in-memory state only");
+      // ATH-PROD: Do not return 500. Let the graph proceed even if DB sync fails
+      // This prevents "Legacy Ghost" FK issues from blocking the entire chat.
     }
 
     const graph = await getAgentGraph();
@@ -90,11 +126,12 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId,
-      userId,
+      orgId: orgRow!.id,
+      userId: memberRow!.id,
       role,
       user: {
-        id: userId,
+        id: userId, // Keep Clerk ID for display/identity if needed
+        internalId: memberRow!.id,
         timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",
@@ -122,15 +159,23 @@ export async function POST(req: NextRequest) {
               final_answer: chunk.final_answer ?? null,
               cited_sources: chunk.cited_sources ?? [],
               awaiting_approval: chunk.awaiting_approval ?? false,
-              active_agent: chunk.next ?? null,
+              pending_write_action: chunk.pending_write_action ?? null,
+              active_agent: chunk.next_node ?? null,
             });
             await writer.write(encoder.encode(`data: ${data}\n\n`));
           }
         }
         await writer.close();
-      } catch (err: unknown) {
+      } catch (err: any) {
         console.error("[agent] Stream error:", err);
-        await writer.abort(err);
+        const errorData = JSON.stringify({
+          error: true,
+          content: err.message.includes("quota") 
+            ? "Synthesis Halted: OpenAI Quota Exhausted. Please check your billing or provide a BYOK key in Admin settings." 
+            : `System Error: ${err.message}`,
+        });
+        await writer.write(encoder.encode(`data: ${errorData}\n\n`));
+        await writer.close();
       }
     })();
 

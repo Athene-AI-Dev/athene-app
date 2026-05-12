@@ -27,27 +27,36 @@ export default function AuditPage() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [mounted, setMounted] = useState(false);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const limit = 50;
 
     useEffect(() => {
         setMounted(true);
         const fetchAll = async () => {
-
             setLoading(true);
             try {
                 const [biRes, adminRes] = await Promise.all([
-                    fetch('/api/admin/bi-audit'),
-                    fetch('/api/admin/audit-log')
+                    fetch(`/api/admin/bi-audit?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`),
+                    fetch(`/api/admin/audit-log?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`)
                 ]);
                 
-                if (biRes.ok) setBiLogs(await biRes.json());
-                if (adminRes.ok) setAdminLogs(await adminRes.json());
+                if (biRes.ok) {
+                    const data = await biRes.json();
+                    setBiLogs(data.logs || data);
+                }
+                if (adminRes.ok) {
+                    const data = await adminRes.json();
+                    setAdminLogs(data.logs || data);
+                    if (data.total) setTotal(data.total);
+                }
             } catch (e) {
                 console.error("Failed to fetch audit logs", e);
             }
             setLoading(false);
         };
         fetchAll();
-    }, []);
+    }, [page, search]);
 
     const getActionIcon = (action: string) => {
       switch (action) {
@@ -152,12 +161,12 @@ export default function AuditPage() {
                               </td>
                               <td className="py-6">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[10px] font-black text-purple-400 border border-purple-500/20">
-                                    {log.admin?.full_name?.charAt(0) || log.admin?.email?.charAt(0)}
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-xs font-black text-white leading-none">{log.admin?.full_name}</span>
-                                    <span className="text-[10px] text-slate-500 font-bold mt-1">{log.admin?.email}</span>
+                                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-[10px] font-black text-purple-400 border border-purple-500/20">
+                                      {log.admin?.display_name?.charAt(0) || log.admin?.email?.charAt(0)}
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-black text-white leading-none">{log.admin?.display_name}</span>
+                                      <span className="text-[10px] text-slate-500 font-bold mt-1">{log.admin?.email}</span>
                                   </div>
                                 </div>
                               </td>
@@ -173,10 +182,10 @@ export default function AuditPage() {
                                 {log.target ? (
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black text-slate-400 border border-white/5">
-                                      {log.target?.full_name?.charAt(0) || log.target?.email?.charAt(0)}
+                                      {log.target?.display_name?.charAt(0) || log.target?.email?.charAt(0)}
                                     </div>
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-black text-white leading-none">{log.target?.full_name}</span>
+                                      <span className="text-xs font-black text-white leading-none">{log.target?.display_name}</span>
                                       <span className="text-[10px] text-slate-500 font-bold mt-1">{log.target?.email}</span>
                                     </div>
                                   </div>

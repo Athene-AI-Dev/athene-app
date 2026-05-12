@@ -16,7 +16,7 @@ export default clerkMiddleware(async (auth, request) => {
   const { userId, orgId, orgRole } = await auth.protect();
 
   // 2. Resolve RBAC context
-  const access = await resolveUserAccess(userId, orgId ?? "");
+  const access = await resolveUserAccess(userId, orgId ?? "", orgRole);
 
   const requestHeaders = new Headers(request.headers);
 

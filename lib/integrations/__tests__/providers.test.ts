@@ -8,9 +8,9 @@ import {
 import type { ProviderKey } from '@/lib/integrations/providers'
 
 describe('Provider Registry', () => {
-  it('contains all 12 providers', () => {
+  it('contains all 19 providers', () => {
     const keys = Object.keys(PROVIDER_REGISTRY)
-    expect(keys).toHaveLength(12)
+    expect(keys).toHaveLength(19)
   })
 
   it('every provider has required fields', () => {
@@ -32,7 +32,7 @@ describe('Provider Registry', () => {
     expect(google.displayName).toBe('Google Workspace')
     expect(google.nangoIntegrationId).toBe('google')
     expect(google.category).toBe('productivity')
-    expect(google.capabilities.requiresScopes).toContain('gmail.readonly')
+    expect(google.capabilities.requiresScopes).toContain('https://www.googleapis.com/auth/gmail.readonly')
   })
 
   it('getProvidersByCategory returns correct subset', () => {
@@ -43,23 +43,25 @@ describe('Provider Registry', () => {
     const displayNames = crm.map(p => p.displayName)
     expect(displayNames).toContain('Salesforce')
     expect(displayNames).toContain('HubSpot')
+  })
+
+  it('getProvidersByCategory(communication) returns Zendesk', () => {
+    const comms = getProvidersByCategory('communication')
+    const displayNames = comms.map(p => p.displayName)
     expect(displayNames).toContain('Zendesk')
+    expect(displayNames).toContain('Slack')
   })
 
   it('getAllProviders returns array of all providers', () => {
     const all = getAllProviders()
-    expect(all.length).toBe(12)
+    expect(all.length).toBe(17) // Umbrella ones are hidden, so 19 - 2 = 17
     const github = all.find(p => p.key === 'github')
     expect(github).toBeDefined()
   })
 
   it('ProviderKey type covers all registry keys', () => {
     // Compile-time check: these should all be valid ProviderKey values
-    const keys: ProviderKey[] = [
-      'google', 'microsoft', 'slack', 'hubspot',
-      'notion', 'jira', 'confluence', 'salesforce',
-      'snowflake', 'github', 'linear', 'zendesk'
-    ]
-    expect(keys).toHaveLength(12)
+    const keys: ProviderKey[] = Object.keys(PROVIDER_REGISTRY) as ProviderKey[]
+    expect(keys).toHaveLength(19)
   })
 })

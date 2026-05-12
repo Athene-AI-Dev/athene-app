@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,6 +9,8 @@ import {
   useNodesState,
   useEdgesState,
   MarkerType,
+  useReactFlow,
+  ReactFlowProvider,
   type Node,
   type Edge,
   type NodeMouseHandler,
@@ -43,7 +45,7 @@ interface APINode {
   department_ids?: string[];
   source_documents?: string[];
   visibility?: string;
-  community?: string;
+  community?: number | null;
   updated_at?: string;
 }
 
@@ -67,6 +69,7 @@ interface NeighborInfo {
 
 interface KnowledgeGraphCanvasProps {
   userRole: string;
+  focusNodeId?: string;
 }
 
 // ── React Flow node data shape ──────────────────────────────
@@ -103,7 +106,7 @@ function jitter(id: string, scale: number): number {
 
 /** Simple grid-based layout grouped by community clusters */
 function layoutNodes(apiNodes: APINode[]): GraphNode[] {
-  const communities = new Map<string, APINode[]>();
+  const communities = new Map<number | "__none__", APINode[]>();
   apiNodes.forEach((n) => {
     const key = n.community ?? "__none__";
     if (!communities.has(key)) communities.set(key, []);
@@ -215,7 +218,9 @@ async function fetchEdgesInBatches(nodeIds: string[]): Promise<APIEdge[]> {
 
 // ── Main Component ──────────────────────────────────────────
 
-export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
+// ── Internal Component for Provider ─────────────────────────
+function KnowledgeGraphCanvasInternal({ userRole, focusNodeId }: KnowledgeGraphCanvasProps) {
+  const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>([]);
   const [apiNodes, setApiNodes] = useState<APINode[]>([]);
@@ -225,8 +230,8 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
   const [neighbors, setNeighbors] = useState<NeighborInfo[]>([]);
   const [neighborsLoading, setNeighborsLoading] = useState(false);
   // FIX #7: highlightedIds removed — was set but never read
-  const [communities, setCommunities] = useState<string[]>([]);
-  const [loadedCommunities, setLoadedCommunities] = useState<Set<string>>(new Set());
+  const [communities, setCommunities] = useState<number[]>([]);
+  const [loadedCommunities, setLoadedCommunities] = useState<Set<number>>(new Set());
   const [totalNodes, setTotalNodes] = useState(0);
   const [isBuildingGraph, setIsBuildingGraph] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -240,7 +245,7 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
 
   // ── Fetch nodes (FIX #1: reads apiNodesRef.current, not apiNodes) ──
   const fetchNodes = useCallback(
-    async (page = 1, community?: string, append = false) => {
+    async (page = 1, community?: number, append = false) => {
       setIsLoading(true);
       try {
         let url = `/api/graph/nodes?page=${page}&limit=200`;
@@ -300,6 +305,20 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
     fetchNodes(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentFilter]);
+
+  // FIX #8: Focus mode logic
+  useEffect(() => {
+    if (!isLoading && focusNodeId && nodes.length > 0) {
+      const node = nodes.find((n) => n.id === focusNodeId);
+      if (node) {
+        // We use a small timeout to ensure the canvas has rendered the nodes
+        setTimeout(() => {
+          fitView({ nodes: [node], duration: 1000, padding: 2 });
+          setSelectedNode(apiNodesRef.current.find((n) => n.id === focusNodeId) || null);
+        }, 500);
+      }
+    }
+  }, [isLoading, focusNodeId, nodes, fitView]);
 
   // ── Node click → side panel ───────────────────────────────
   const handleNodeClick: NodeMouseHandler<GraphNode> = useCallback(
@@ -573,5 +592,14 @@ export function KnowledgeGraphCanvas({ userRole }: KnowledgeGraphCanvasProps) {
         onNavigateToNode={handleNavigateToNode}
       />
     </div>
+  );
+}
+
+// ── Main Export with Provider ───────────────────────────────
+export function KnowledgeGraphCanvas(props: KnowledgeGraphCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <KnowledgeGraphCanvasInternal {...props} />
+    </ReactFlowProvider>
   );
 }

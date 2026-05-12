@@ -5,7 +5,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { vectorSearch } from "../../tools/vector-search";
 
 // Mock the vector search
-vi.mock("../../tools/vector-search", () => ({
+vi.mock("@/lib/tools/vector-search", () => ({
   vectorSearch: vi.fn()
 }));
 

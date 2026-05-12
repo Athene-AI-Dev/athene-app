@@ -42,10 +42,25 @@ export default function BuilderPage() {
   const [nodes, setNodes] = useState(INITIAL_NODES);
   const [isDeploying, setIsDeploying] = useState(false);
 
-  const handleStoreConfig = () => {
-    toast.success("Configuration Stored", {
-      description: "Pipeline #ATH-FLOW-88 saved to cloud vault.",
-    });
+  const handleStoreConfig = async () => {
+    try {
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Neural Pipeline " + new Date().toLocaleDateString(),
+          config: nodes,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save configuration");
+
+      toast.success("Configuration Stored", {
+        description: "Pipeline configuration saved to cloud vault.",
+      });
+    } catch (error: any) {
+      toast.error(error.message);
+    }
   };
 
   const handleDeployFleet = () => {

@@ -64,10 +64,12 @@ export async function generateMorningBriefing(
 ) {
   try {
     // 1. Fetch the real role first to ensure correct data scoping
+    // userId here is automations.user_id — a UUID FK to org_members.id (internal UUID).
+    // org_members has no "user_id" column; Clerk IDs live in "clerk_user_id".
     const { data: member, error: roleErr } = await supabaseAdmin
       .from("org_members")
       .select("role")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .eq("org_id", orgId)
       .maybeSingle();
 
@@ -176,4 +178,4 @@ export async function generateMorningBriefing(
       briefing: null,
     };
   }
-}
+}

@@ -20,9 +20,10 @@ export async function GET() {
       .from("organizations")
       .select("id")
       .eq("clerk_org_id", orgId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
-    if (!orgData) {
+    if (!orgData || !orgData.id) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
@@ -37,6 +38,7 @@ export async function GET() {
     return NextResponse.json({ departments });
 
   } catch (err: any) {
+    console.error("[admin-departments] GET failed:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

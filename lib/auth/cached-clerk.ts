@@ -1,9 +1,13 @@
 import { auth as clerkAuth } from "@clerk/nextjs/server";
-import type { SessionAuthObject } from "@clerk/backend";
 import { cached } from "@/lib/redis/client";
 import crypto from "crypto";
 
-type MinimalAuth = Pick<SessionAuthObject, "userId" | "orgId" | "orgRole" | "sessionId">;
+type MinimalAuth = {
+  userId: string | null;
+  orgId: string | null | undefined;
+  orgRole: string | null | undefined;
+  sessionId: string | null;
+};
 
 /**
  * Try to derive a cache key from the Clerk session cookie in the request.

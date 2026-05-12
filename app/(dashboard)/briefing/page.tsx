@@ -153,29 +153,29 @@ export default function BriefingPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-2 duration-1000">
+    <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-1000 font-['Space_Grotesk'] transition-colors duration-300">
       {/* Page Header */}
-      <header className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-primary/10 via-background to-background border border-white/5 p-10 lg:p-14 transition-all duration-500 hover:shadow-[0_0_50px_-12px_rgba(217,111,171,0.2)] group">
+      <header className="relative overflow-hidden rounded-[3.5rem] bg-card/50 border border-border p-10 lg:p-14 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/5 group backdrop-blur-3xl">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/10 blur-[140px] -z-10 translate-x-1/3 -translate-y-1/3 animate-pulse" />
         
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] font-black">
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-5 py-2 text-[10px] uppercase tracking-[0.4em] font-black rounded-xl">
                 Cognitive Intelligence
               </Badge>
               {briefing && (
-                <Badge variant="secondary" className="bg-accent/50 text-accent-foreground border-white/5 px-3 py-1 text-[10px] uppercase tracking-wider font-bold">
+                <Badge variant="secondary" className="bg-accent/20 text-accent border-accent/20 px-4 py-2 text-[10px] uppercase tracking-[0.2em] font-black rounded-xl shadow-sm">
                   Active Session
                 </Badge>
               )}
             </div>
             
-            <div className="space-y-2">
-              <h1 className="text-5xl lg:text-7xl font-black tracking-tighter text-gradient leading-tight">
-                Morning <span className="text-foreground">Briefing</span>
+            <div className="space-y-3">
+              <h1 className="text-5xl lg:text-8xl font-black tracking-tighter leading-[0.85] uppercase">
+                Morning <span className="text-primary">Briefing</span>
               </h1>
-              <p className="text-muted-foreground text-lg max-w-xl leading-relaxed font-medium">
+              <p className="text-muted-foreground text-xl max-w-xl leading-relaxed font-bold tracking-tight">
                 {briefing && mounted
                   ? `Your customized intelligence summary, synthesized at ${new Date(briefing.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
                   : "Welcome back. Athene is ready to synthesize your cross-platform updates into a high-density morning summary."
@@ -184,40 +184,42 @@ export default function BriefingPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-4 bg-card/40 border border-white/10 p-5 rounded-[2rem] glass shadow-xl">
-              <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
-                <Calendar className="h-6 w-6 text-primary" />
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-5 bg-muted/30 border border-border p-6 rounded-[2.5rem] shadow-xl backdrop-blur-xl group/temporal hover:border-primary/20 transition-all">
+              <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-lg group-hover/temporal:scale-110 transition-transform">
+                <Calendar className="h-7 w-7 text-primary" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] font-black text-muted-foreground/60 leading-none mb-1.5">Temporal Context</p>
-                <p className="text-lg font-black text-foreground leading-none">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-black text-muted-foreground/40 leading-none mb-2">Temporal Context</p>
+                <p className="text-xl font-black text-foreground leading-none uppercase tracking-tighter">
                   {mounted ? new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '---'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-16 w-16 rounded-3xl glass border-white/10 hover:border-primary/40 group shadow-lg">
-                    <History className="w-6 h-6 group-hover:scale-110 transition-transform duration-500" />
+                  <Button variant="outline" size="icon" className="h-20 w-20 rounded-[2rem] border-border bg-card/50 hover:bg-muted hover:border-primary/40 group shadow-2xl transition-all active:scale-95">
+                    <History className="w-7 h-7 text-muted-foreground group-hover:text-primary group-hover:scale-110 transition-all duration-500" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="w-[400px] sm:w-[540px] border-l border-white/10 glass shadow-2xl">
-                  <SheetHeader className="pb-8 border-b border-white/5">
-                    <SheetTitle className="text-3xl font-black tracking-tight flex items-center gap-3">
-                      <Clock className="w-8 h-8 text-primary" />
-                      Briefing History
+                <SheetContent side="right" className="w-[400px] sm:w-[540px] border-l border-border bg-card/90 backdrop-blur-3xl shadow-2xl font-['Space_Grotesk']">
+                  <SheetHeader className="pb-10 border-b border-border">
+                    <SheetTitle className="text-4xl font-black tracking-tighter flex items-center gap-4 uppercase">
+                      <div className="p-3 bg-primary/10 rounded-2xl border border-primary/20">
+                        <Clock className="w-8 h-8 text-primary" />
+                      </div>
+                      History
                     </SheetTitle>
-                    <p className="text-muted-foreground text-sm font-medium">Access your intelligence archive from the last 7 cycles.</p>
+                    <p className="text-muted-foreground text-sm font-bold uppercase tracking-widest opacity-60">Intelligence archive — last 7 cycles.</p>
                   </SheetHeader>
-                  <div className="mt-8 space-y-6 overflow-y-auto max-h-[calc(100vh-200px)] pr-4 scrollbar-hide">
+                  <div className="mt-10 space-y-6 overflow-y-auto max-h-[calc(100vh-220px)] pr-4 custom-scrollbar">
                     {historyError && (
-                      <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-center">
-                        <p className="text-xs text-destructive font-bold mb-2">Failed to load history</p>
-                        <Button variant="outline" size="sm" onClick={fetchHistory} className="h-8 text-[10px] uppercase tracking-widest font-black">
-                          Retry
+                      <div className="p-8 rounded-3xl bg-destructive/5 border border-destructive/20 text-center space-y-4">
+                        <p className="text-xs text-destructive font-black uppercase tracking-[0.2em]">Synchronization Failure</p>
+                        <Button variant="outline" size="sm" onClick={fetchHistory} className="h-10 px-6 text-[10px] uppercase tracking-widest font-black rounded-xl border-destructive/20 hover:bg-destructive/10 hover:text-destructive">
+                          Retry Node Link
                         </Button>
                       </div>
                     )}
@@ -226,37 +228,42 @@ export default function BriefingPage() {
                         <div 
                           key={item.id} 
                           className={cn(
-                            "group flex flex-col gap-3 p-5 rounded-3xl border transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-right-4",
+                            "group flex flex-col gap-4 p-6 rounded-[2.5rem] border transition-all duration-500 cursor-pointer animate-in fade-in slide-in-from-right-4 shadow-sm",
                             item.id === briefing?.id 
-                              ? "bg-primary/10 border-primary/30 shadow-lg shadow-primary/5" 
-                              : "bg-muted/20 border-white/5 hover:bg-muted/40 hover:border-white/20"
+                              ? "bg-primary/10 border-primary/40 shadow-xl shadow-primary/5" 
+                              : "bg-muted/10 border-border hover:bg-muted/30 hover:border-primary/20"
                           )}
                           style={{ animationDelay: `${i * 100}ms` }}
                           onClick={() => handleHistoryItemClick(item)}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-black text-base tracking-tight">
-                              {mounted ? new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }) : '---'}
+                            <span className="font-black text-lg tracking-tighter uppercase">
+                              {mounted ? new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '---'}
                             </span>
-                            <Badge variant={item.id === briefing?.id ? "default" : "outline"} className="rounded-full text-[9px] px-2 py-0">
+                            <Badge variant={item.id === briefing?.id ? "default" : "outline"} className={cn(
+                              "rounded-lg text-[9px] px-3 py-1 font-black uppercase tracking-widest",
+                              item.id === briefing?.id ? "bg-primary text-primary-foreground border-none" : "border-border text-muted-foreground"
+                            )}>
                               {item.id === briefing?.id ? 'Current' : 'Archive'}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 font-medium">{item.summary || 'Strategic summary indexing...'}</p>
-                          <div className="flex items-center gap-3 pt-1">
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/60">
-                              <Calendar className="w-3 h-3" /> {item.calendar_items || 0}
+                          <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-2 font-bold">{item.summary || 'Strategic summary indexing...'}</p>
+                          <div className="flex items-center gap-5 pt-2">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">
+                              <Calendar className="w-3.5 h-3.5 text-primary" /> {item.calendar_items || 0} Events
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground/60">
-                              <Mail className="w-3 h-3" /> {item.email_items || 0}
+                            <div className="flex items-center gap-2 text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">
+                              <Mail className="w-3.5 h-3.5 text-secondary" /> {item.email_items || 0} Messages
                             </div>
                           </div>
                         </div>
                       ))
                     ) : !historyError ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 opacity-50">
-                        <BookOpen className="h-12 w-12 text-muted-foreground" />
-                        <p className="text-sm font-bold text-muted-foreground tracking-tight">Archive currently empty.</p>
+                      <div className="flex flex-col items-center justify-center py-32 text-center space-y-6 opacity-30">
+                        <div className="p-6 bg-muted rounded-[2rem] border border-border">
+                          <BookOpen className="h-12 w-12 text-muted-foreground" />
+                        </div>
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-[0.3em]">Archive Vacuum Detected</p>
                       </div>
                     ) : null}
                   </div>
@@ -267,11 +274,11 @@ export default function BriefingPage() {
                 onClick={fetchTodayBriefing} 
                 variant="outline" 
                 size="icon" 
-                className="h-16 w-16 rounded-3xl glass border-white/10 hover:border-primary/40 group shadow-lg"
+                className="h-20 w-20 rounded-[2rem] border-border bg-card/50 hover:bg-muted hover:border-primary/40 group shadow-2xl transition-all active:scale-95"
                 disabled={loading || enqueuing}
                 title={enqueuing ? "Generation in progress — check back shortly" : "Refresh"}
               >
-                <RefreshCw className={cn("w-6 h-6 group-hover:rotate-180 transition-transform duration-700", loading && "animate-spin")} />
+                <RefreshCw className={cn("w-7 h-7 text-muted-foreground group-hover:text-primary group-hover:rotate-180 transition-all duration-700", loading && "animate-spin")} />
               </Button>
             </div>
           </div>
@@ -279,29 +286,29 @@ export default function BriefingPage() {
       </header>
 
       {!briefing ? (
-        <Card className="frosted-card p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-10 border-dashed border-white/10 group overflow-hidden relative">
-          <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-          <div className="h-32 w-32 bg-primary/10 rounded-[3rem] flex items-center justify-center mb-2 transition-all duration-700 group-hover:scale-110 group-hover:rotate-12 border border-primary/20 shadow-2xl relative z-10">
-            <Sparkles className="h-16 w-16 text-primary animate-pulse" />
+        <Card className="p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-12 border-dashed border-border bg-card/30 rounded-[3.5rem] group overflow-hidden relative backdrop-blur-xl shadow-2xl transition-all hover:border-primary/20">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+          <div className="h-40 w-40 bg-muted/50 rounded-[3rem] flex items-center justify-center mb-4 transition-all duration-700 group-hover:scale-110 group-hover:rotate-6 border border-border shadow-2xl relative z-10 group-hover:bg-primary/5 group-hover:border-primary/20">
+            <Sparkles className="h-20 w-20 text-primary animate-pulse" />
           </div>
-          <div className="space-y-4 relative z-10">
-            <h3 className="text-4xl font-black tracking-tighter text-foreground leading-none">Synthesis Required</h3>
-            <p className="text-muted-foreground text-lg max-w-md mx-auto leading-relaxed font-medium">
+          <div className="space-y-5 relative z-10">
+            <h3 className="text-4xl lg:text-6xl font-black tracking-tighter text-foreground leading-none uppercase">Synthesis Required</h3>
+            <p className="text-muted-foreground text-xl max-w-lg mx-auto leading-relaxed font-bold tracking-tight">
               Athene hasn't generated your briefing for this cycle. Trigger our agents now to process your unread data.
             </p>
           </div>
           <Button 
             size="lg" 
-            className="h-16 px-12 rounded-[2rem] glow-primary font-black uppercase tracking-[0.2em] text-xs gap-4 group relative z-10"
+            className="h-20 px-16 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-[0.3em] text-[11px] gap-5 group relative z-10 shadow-2xl shadow-primary/20 transition-all active:scale-95"
             onClick={handleGenerateNow}
             disabled={enqueuing}
           >
-            <Sparkles className="w-5 h-5 group-hover:animate-pulse" />
-            {enqueuing ? 'Synthesizing...' : 'Trigger Generation'}
+            <Sparkles className="w-6 h-6 group-hover:animate-pulse" />
+            {enqueuing ? 'Synthesizing Intelligence...' : 'Trigger Neural Synthesis'}
           </Button>
         </Card>
       ) : (
-        <div className="grid gap-10 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+        <div className="grid gap-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
           <BriefingSection 
             type="calendar" 
             title="Calendar & Strategic Alignment" 
@@ -329,5 +336,6 @@ export default function BriefingPage() {
         </div>
       )}
     </div>
+
   );
 }

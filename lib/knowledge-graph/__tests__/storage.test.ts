@@ -161,7 +161,6 @@ function queryBuilder(table: string) {
       return { data: null, error: null };
     }
 
-    // select
     if (table === 'documents') {
       // Mock documents table to always pass ownership check
       const inFilter = filters.find(f => f.kind === 'in' && f.col === 'id') as { kind: "in", col: string, vals: unknown[] } | undefined;

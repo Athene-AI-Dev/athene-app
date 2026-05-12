@@ -81,11 +81,12 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [connecting, setConnecting] = useState<string | null>(null); 
+  const [search, setSearch] = useState("");
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [disconnecting, setDisconnecting] = useState<Integration | null>(null);
   const [disconnectLoading, setDisconnectLoading] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -202,20 +203,26 @@ export default function IntegrationsPage() {
     }
   }, []);
 
+  const filteredIntegrations = integrations.filter(i => {
+    const meta = getProvider(i.provider as any);
+    const searchStr = (meta?.displayName || i.displayName || "").toLowerCase();
+    return searchStr.includes(search.toLowerCase());
+  });
+
   const connectedKeys = new Set(integrations.map((i) => i.provider));
 
   if (!mounted) return null;
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk']">
       {/* Toast Notification */}
       {toast && (
         <div className={cn(
           "fixed bottom-10 right-10 z-[100] flex items-center gap-4 px-6 py-4 rounded-2xl border shadow-2xl animate-in slide-in-from-right-10 duration-500",
-          toast.type === "success" ? "bg-[#EEF6FC] border-[#7AADCF]/30 text-[#5290B8]" : "bg-red-50 border-red-200 text-red-800"
+          toast.type === "success" ? "bg-accent/20 border-accent/30 text-accent" : "bg-destructive/10 border-destructive/30 text-destructive"
         )}>
           {toast.type === "success" ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <span className="font-bold text-sm">{toast.msg}</span>
+          <span className="font-bold text-sm tracking-tight">{toast.msg}</span>
           <button onClick={() => setToast(null)} className="ml-4 opacity-50 hover:opacity-100 transition-opacity">
              <X className="w-4 h-4" />
           </button>
@@ -242,11 +249,11 @@ export default function IntegrationsPage() {
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-[#D96FAB]/10 to-[#7AADCF]/10 border border-white/5">
-              <Blocks className="w-7 h-7 text-[#D96FAB]" />
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 border border-border shadow-lg">
+              <Blocks className="w-7 h-7 text-primary" />
             </div>
-            <h1 className="text-4xl font-black tracking-tighter text-foreground">
-              System <span className="text-gradient">Connectors</span>
+            <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase">
+              System <span className="text-primary">Connectors</span>
             </h1>
           </div>
           <p className="text-muted-foreground text-lg max-w-2xl font-medium leading-relaxed">
@@ -258,14 +265,14 @@ export default function IntegrationsPage() {
         <div className="flex items-center gap-4">
            <div className="flex flex-col items-end mr-4 hidden sm:flex">
               <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40 mb-1">Status</span>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/20 border border-white/5">
-                <div className="h-2 w-2 rounded-full bg-[#7AADCF] animate-pulse" />
-                <span className="text-xs font-bold text-foreground">{integrations.length} Active Feeds</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/20 border border-border">
+                <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+                <span className="text-xs font-bold text-foreground tracking-tight">{integrations.length} Active Feeds</span>
               </div>
            </div>
            <Button 
             onClick={() => setShowAddDialog(true)}
-            className="h-14 px-8 rounded-2xl bg-[#D96FAB] hover:bg-[#ECA8CC] text-white font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-pink-500/10 group"
+            className="h-14 px-8 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-primary/10 group"
            >
              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
              Integrate Tool
@@ -274,15 +281,17 @@ export default function IntegrationsPage() {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center p-2 rounded-2xl bg-accent/10 border border-white/5">
+      <div className="flex flex-col sm:flex-row gap-4 items-center p-2 rounded-2xl bg-muted/10 border border-border">
          <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-[#D96FAB]" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
             <input 
-              placeholder="Filter integrations..." 
-              className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-medium placeholder:text-muted-foreground/40"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter system connectors..." 
+              className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-bold placeholder:text-muted-foreground/40 text-foreground"
             />
          </div>
-         <Button variant="ghost" className="h-12 px-6 rounded-xl gap-2 text-muted-foreground font-bold hover:bg-white/5">
+         <Button variant="ghost" className="h-12 px-6 rounded-xl gap-2 text-muted-foreground font-black uppercase tracking-widest text-[10px] hover:bg-muted/50">
             <Filter className="w-4 h-4" />
             Categories
          </Button>
@@ -292,32 +301,37 @@ export default function IntegrationsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {loading ? (
           [...Array(6)].map((_, i) => (
-            <div key={i} className="h-64 rounded-[2.5rem] bg-accent/10 border border-white/5 animate-pulse" />
+            <div key={i} className="h-64 rounded-[2.5rem] bg-muted/20 border border-border animate-pulse" />
           ))
         ) : error ? (
-          <div className="col-span-full py-20 text-center space-y-4">
+          <div className="col-span-full py-20 text-center space-y-4 bg-muted/10 rounded-[3rem] border border-border">
              <AlertCircle className="w-12 h-12 text-destructive mx-auto opacity-20" />
              <p className="text-muted-foreground font-bold">{error}</p>
-             <Button variant="outline" onClick={fetchIntegrations} className="rounded-xl border-white/10">Try Again</Button>
+             <Button variant="outline" onClick={fetchIntegrations} className="rounded-xl border-border">Try Again</Button>
           </div>
-        ) : integrations.length === 0 ? (
-          <div className="col-span-full py-32 flex flex-col items-center justify-center bg-accent/5 rounded-[3rem] border-2 border-dashed border-white/5 text-center">
-            <div className="w-20 h-20 rounded-3xl bg-accent/10 flex items-center justify-center mb-6">
+        ) : filteredIntegrations.length === 0 ? (
+          <div className="col-span-full py-32 flex flex-col items-center justify-center bg-muted/5 rounded-[3rem] border-2 border-dashed border-border text-center">
+            <div className="w-20 h-20 rounded-3xl bg-muted/10 flex items-center justify-center mb-6">
               <Blocks className="w-10 h-10 text-muted-foreground/20" />
             </div>
-            <h3 className="text-2xl font-black text-foreground mb-2">No Active Connectors</h3>
+            <h3 className="text-2xl font-black text-foreground mb-2">
+              {search ? "No matches found" : "No Active Connectors"}
+            </h3>
             <p className="text-muted-foreground max-w-sm font-medium">
-              Start by adding your first enterprise integration to build Athene's knowledge base.
+              {search ? "Adjust your search parameters to find the connector you're looking for." : "Start by adding your first enterprise integration to build Athene's knowledge base."}
             </p>
             <Button 
-              onClick={() => setShowAddDialog(true)}
-              className="mt-8 h-12 px-8 rounded-xl bg-white text-black hover:bg-white/90 font-bold"
+              onClick={() => {
+                if (search) setSearch("");
+                else setShowAddDialog(true);
+              }}
+              className="mt-8 h-12 px-8 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-bold"
             >
-              Integrate SharePoint →
+              {search ? "Clear Search" : "Integrate Tool →"}
             </Button>
           </div>
         ) : (
-          integrations.map((integration) => {
+          filteredIntegrations.map((integration) => {
             const meta = getProvider(integration.provider as any);
             return (
               <IntegrationCard
@@ -335,3 +349,4 @@ export default function IntegrationsPage() {
     </div>
   );
 }
+

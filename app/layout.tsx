@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { cn } from "@/lib/utils";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,11 +38,16 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
+        className="h-full antialiased"
         suppressHydrationWarning
       >
         <body
-          className="min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary"
+          className={cn(
+            "min-h-full flex flex-col bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary",
+            geistSans.variable,
+            geistMono.variable,
+            spaceGrotesk.variable
+          )}
         >
           <ThemeProvider
             attribute="class"

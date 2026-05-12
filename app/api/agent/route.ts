@@ -105,8 +105,8 @@ export async function POST(req: NextRequest) {
       .from("threads")
       .upsert({
         id: effectiveThreadId,
-        org_id: orgRow.id,
-        user_id: memberRow.id,
+        org_id: orgRow!.id,
+        user_id: memberRow!.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 
@@ -131,12 +131,12 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId: orgRow.id,
-      userId: memberRow.id,
+      orgId: orgRow!.id,
+      userId: memberRow!.id,
       role,
       user: {
         id: userId, // Keep Clerk ID for display/identity if needed
-        internalId: memberRow.id,
+        internalId: memberRow!.id,
         timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",

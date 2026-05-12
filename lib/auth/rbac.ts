@@ -166,9 +166,9 @@ export const resolveUserAccess = cache(async (
       }
 
       result = {
-        internal_user_id: newMember.id,
+        internal_user_id: newMember!.id,
         internal_org_id: orgData!.id,
-        role: newMember.role as UserRole,
+        role: newMember!.role as UserRole,
         dept_id: null,
         accessible_dept_ids: null,
         bi_grant_id: null,

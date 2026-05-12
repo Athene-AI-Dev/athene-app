@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
+import { cached } from "@/lib/redis/client";
 
 export async function GET() {
   const { userId, orgId, orgRole } = await auth();
@@ -27,11 +28,19 @@ export async function GET() {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const { data: departments, error } = await supabaseAdmin
-      .from("departments")
-      .select("id, name")
-      .eq("org_id", orgData.id)
-      .order("name");
+    const { data: departments, error } = await cached(
+      `org:departments:${orgData.id}`,
+      300,
+      async () => {
+        const { data, error } = await supabaseAdmin
+          .from("departments")
+          .select("id, name")
+          .eq("org_id", orgData.id)
+          .order("name");
+        if (error) throw error;
+        return data;
+      }
+    );
 
     if (error) throw error;
 

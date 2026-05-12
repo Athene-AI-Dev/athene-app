@@ -9,6 +9,7 @@ import { SystemMessage } from "@langchain/core/messages";
 import type { MessageContentComplex } from "@langchain/core/messages";
 import type { AtheneState, AtheneStateUpdate, CitedSource, RetrievedChunk } from "../state";
 import { model } from "../llm-factory";
+import { withLLMSpan } from "../../telemetry/spans";
 
 const SYNTHESIS_PROMPT = `You are an AI assistant synthesizing retrieved information into a clear, cited answer.
 
@@ -55,7 +56,6 @@ function isVectorChunk(item: unknown): item is RetrievedChunk & { type?: string 
 
 /**
  * Builds the graph context section for the synthesis prompt.
- * Returns empty string if no graph results are present.
  */
 function buildGraphContext(graphResults: GraphResult[]): string {
   if (graphResults.length === 0) return "";
@@ -68,7 +68,6 @@ function buildGraphContext(graphResults: GraphResult[]): string {
         sections.push(`  ${rel} [EXTRACTED]`);
       }
     }
-    // Include the full raw output for additional entity context
     if (gr.raw && !gr.raw.startsWith("No ")) {
       const entityLine = gr.raw.split("\n").find((l) => l.startsWith("Entities found:"));
       if (entityLine) {
@@ -81,6 +80,15 @@ function buildGraphContext(graphResults: GraphResult[]): string {
 }
 
 // ---- Main ---------------------------------------------------
+
+/**
+ * Resolve the model name from the LangChain model object for span attribution.
+ * Different providers expose the name via different fields.
+ */
+function getModelName(): string {
+  const m = model as Record<string, unknown>;
+  return (m.modelName as string) || (m.model as string) || "unknown";
+}
 
 export async function synthesisAgentNode(
   state: AtheneState,
@@ -99,13 +107,11 @@ export async function synthesisAgentNode(
   const vectorChunks: RetrievedChunk[] = retrieved_chunks.filter(isVectorChunk);
   const graphResults: GraphResult[] = retrieved_chunks.filter(isGraphResult);
 
-  // Check if any graph result has boundary_reached
   const boundaryReached = graphResults.some((gr) => gr.boundaryReached);
 
   const isBIMode = task_type === "analytical" || is_cross_dept_query === true;
   const mode = isBIMode ? "BI (BUSINESS INTELLIGENCE) MODE" : "STANDARD MODE";
 
-  // Build vector context
   const context =
     vectorChunks.length > 0
       ? vectorChunks
@@ -116,10 +122,8 @@ export async function synthesisAgentNode(
           .join("\n\n---\n\n")
       : "No document chunks retrieved.";
 
-  // Build graph context
   const graphContext = buildGraphContext(graphResults);
 
-  // Build boundary note
   const boundaryNote = boundaryReached
     ? "IMPORTANT: The knowledge graph traversal reached a boundary. Append this note to your answer: \"Note: there may be related information in areas you don't have access to.\""
     : "";
@@ -130,19 +134,48 @@ export async function synthesisAgentNode(
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);
 
-  const response = await model.invoke([
-    new SystemMessage(systemPrompt),
-    ...messages,
-  ]);
+  const llmResult = await withLLMSpan(
+    getModelName(),
+    systemPrompt.length + messages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0),
+    async (span) => {
+      const stream = await model.stream([
+        new SystemMessage(systemPrompt),
+        ...messages,
+      ]);
 
-  const finalAnswer =
-    typeof response.content === "string"
-      ? response.content
-      : (response.content as MessageContentComplex[])
-          .map((c: MessageContentComplex) =>
-            typeof c === "string" ? c : (c as { type: string; text?: string }).text ?? ""
-          )
-          .join("");
+      let fullContent = "";
+      let tokenCount = 0;
+
+      for await (const chunk of stream) {
+        const token = typeof chunk.content === "string"
+          ? chunk.content
+          : Array.isArray(chunk.content)
+            ? chunk.content.map((c: any) => c.text || "").join("")
+            : "";
+
+        if (token) {
+          fullContent += token;
+          tokenCount++;
+        }
+      }
+
+      span.setAttribute("llm.token_count", tokenCount);
+      span.setAttribute("llm.total_chars", fullContent.length);
+
+      return {
+        content: fullContent,
+        lc_kwargs: { content: fullContent },
+      };
+    }
+  );
+
+  // Extract final answer from streamed result
+  const rawContent = (llmResult as any).content ?? (llmResult as any).lc_kwargs?.content ?? "";
+  const finalAnswer = typeof rawContent === "string"
+    ? rawContent
+    : Array.isArray(rawContent)
+      ? rawContent.map((c: any) => (typeof c === "string" ? c : c.text ?? "")).join("")
+      : String(rawContent);
 
   const cited_sources = extractCitations(finalAnswer, vectorChunks);
 
@@ -159,7 +192,6 @@ function extractCitations(text: string, chunks: RetrievedChunk[]): CitedSource[]
     new Set([...text.matchAll(docIdRegex)].map((m) => m[1]))
   );
 
-  // Filter out special tags like "EXTRACTED" and "document_id"
   const realDocIds = uniqueDocIds.filter(
     (id) => id !== "EXTRACTED" && id !== "document_id"
   );

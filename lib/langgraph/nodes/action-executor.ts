@@ -7,14 +7,18 @@
 // ============================================================
 
 import type { AtheneState, AtheneStateUpdate, PendingWriteAction } from "../state";
-import { sendEmail } from "@/lib/integrations/microsoft/outlook-fetcher";
-import type { EmailDraft } from "@/lib/integrations/microsoft/outlook-fetcher";
-import { createEvent } from "@/lib/integrations/microsoft/calendar-fetcher";
-import type { EventDraft } from "@/lib/integrations/microsoft/calendar-fetcher";
+import { sendEmail as sendMicrosoftEmail } from "@/lib/integrations/microsoft/outlook-fetcher";
+import type { EmailDraft as MicrosoftEmailDraft } from "@/lib/integrations/microsoft/outlook-fetcher";
+import { createEvent as createMicrosoftEvent } from "@/lib/integrations/microsoft/calendar-fetcher";
+import type { EventDraft as MicrosoftEventDraft } from "@/lib/integrations/microsoft/calendar-fetcher";
+import { sendEmail as sendGoogleEmail } from "@/lib/integrations/google/gmail-fetcher";
+import { createCalendarEvent as createGoogleEvent } from "@/lib/integrations/google/calendar-fetcher";
+import type { EventDraft as GoogleEventDraft } from "@/lib/integrations/google/calendar-fetcher";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 
 const MS_PROVIDER_KEY = "microsoft";
+const GOOGLE_PROVIDER_KEY = "google";
 
 /** Default timeout for external integration calls (30 seconds). */
 const INTEGRATION_TIMEOUT_MS = 30_000;
@@ -51,27 +55,45 @@ function withTimeout<T>(
   });
 }
 
-async function resolveMicrosoftConnectionId(orgId: string): Promise<string> {
-  const { data: connectionRow, error: connectionError } = await supabaseAdmin
+/**
+ * Resolves an active connection for the organization, prioritizing providers
+ * that support the requested tool.
+ */
+async function resolveConnection(
+  orgId: string,
+  tool: string
+): Promise<{ connectionId: string; provider: string }> {
+  // Map tools to candidate providers
+  const candidates = tool.startsWith("email")
+    ? [GOOGLE_PROVIDER_KEY, MS_PROVIDER_KEY]
+    : [GOOGLE_PROVIDER_KEY, MS_PROVIDER_KEY];
+
+  const { data: connections, error } = await supabaseAdmin
     .from("nango_connections")
-    .select("connection_id")
+    .select("connection_id, provider_config_key")
     .eq("org_id", orgId)
-    .eq("provider_config_key", MS_PROVIDER_KEY)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .in("provider_config_key", candidates)
+    .order("created_at", { ascending: false });
 
-  if (connectionError) {
-    throw new Error(`Failed to resolve Microsoft connection: ${connectionError.message}`);
-  }
-  if (!connectionRow?.connection_id) {
-    throw new Error("No Microsoft connection configured for this organization");
+  if (error) {
+    throw new Error(`Failed to resolve connections: ${error.message}`);
   }
 
-  return connectionRow.connection_id;
+  if (!connections || connections.length === 0) {
+    throw new Error(`No active connections (Google/Microsoft) found for this organization`);
+  }
+
+  // Use the most recent connection that matches one of our candidates
+  const bestMatch = connections[0];
+  return {
+    connectionId: bestMatch.connection_id,
+    provider: bestMatch.provider_config_key,
+  };
 }
 
-function toEmailDraft(payload: Record<string, unknown>): EmailDraft {
+// ─── Microsoft Mappers ────────────────────────────────────────────────────────
+
+function toMicrosoftEmailDraft(payload: Record<string, unknown>): MicrosoftEmailDraft {
   const to = Array.isArray(payload.to) ? payload.to.filter((value): value is string => typeof value === "string") : [];
   const cc = Array.isArray(payload.cc) ? payload.cc.filter((value): value is string => typeof value === "string") : [];
   const subject = typeof payload.subject === "string" ? payload.subject : "";
@@ -96,7 +118,7 @@ function toEmailDraft(payload: Record<string, unknown>): EmailDraft {
   };
 }
 
-function toEventDraft(payload: Record<string, unknown>): EventDraft {
+function toMicrosoftEventDraft(payload: Record<string, unknown>): MicrosoftEventDraft {
   const summary = typeof payload.summary === "string" ? payload.summary : "";
   const description = typeof payload.description === "string" ? payload.description : undefined;
   const location = typeof payload.location === "string" ? payload.location : undefined;
@@ -139,6 +161,70 @@ function toEventDraft(payload: Record<string, unknown>): EventDraft {
   };
 }
 
+// ─── Google Mappers ───────────────────────────────────────────────────────────
+
+function toGoogleEmailDraft(payload: Record<string, unknown>): string {
+  const to = Array.isArray(payload.to) ? payload.to.filter((value): value is string => typeof value === "string") : [];
+  const cc = Array.isArray(payload.cc) ? payload.cc.filter((value): value is string => typeof value === "string") : [];
+  const subject = typeof payload.subject === "string" ? payload.subject : "";
+  const body = typeof payload.body === "string" ? payload.body : "";
+
+  if (to.length === 0) {
+    throw new Error("Approved email draft is missing recipients");
+  }
+
+  // Build RFC 822 message
+  const lines = [
+    `To: ${to.join(", ")}`,
+    cc.length > 0 ? `Cc: ${cc.join(", ")}` : null,
+    `Subject: ${subject}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    body,
+  ].filter((l) => l !== null);
+
+  const raw = lines.join("\r\n");
+
+  // Base64url encode
+  return Buffer.from(raw)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function toGoogleEventDraft(payload: Record<string, unknown>): GoogleEventDraft {
+  const summary = typeof payload.summary === "string" ? payload.summary : "";
+  const description = typeof payload.description === "string" ? payload.description : undefined;
+  const location = typeof payload.location === "string" ? payload.location : undefined;
+  const start = payload.start as { dateTime?: unknown; timeZone?: unknown } | undefined;
+  const end = payload.end as { dateTime?: unknown; timeZone?: unknown } | undefined;
+  const attendees = Array.isArray(payload.attendees)
+    ? payload.attendees.filter((attendee): attendee is { email?: unknown } => typeof attendee === "object" && attendee !== null)
+    : [];
+
+  if (!summary || !start?.dateTime || !end?.dateTime) {
+    throw new Error("Approved calendar draft is missing required event fields");
+  }
+
+  return {
+    summary,
+    description,
+    location,
+    start: {
+      dateTime: String(start.dateTime),
+      timeZone: typeof start.timeZone === "string" ? start.timeZone : undefined,
+    },
+    end: {
+      dateTime: String(end.dateTime),
+      timeZone: typeof end.timeZone === "string" ? end.timeZone : undefined,
+    },
+    attendees: attendees
+      .filter((a) => typeof a.email === "string")
+      .map((a) => ({ email: String(a.email) })),
+  };
+}
+
 export async function actionExecutorNode(
   state: AtheneState
 ): Promise<AtheneStateUpdate> {
@@ -153,32 +239,54 @@ export async function actionExecutorNode(
 
   try {
     let result: unknown;
-    const connectionId = await withTimeout(
-      resolveMicrosoftConnectionId(state.orgId),
-      "Microsoft connection lookup"
+    const { connectionId, provider } = await withTimeout(
+      resolveConnection(state.orgId, action.tool),
+      "Connection lookup"
     );
 
     switch (action.tool) {
       case "email-send": {
-        result = await withTimeout(
-          sendEmail(
-            connectionId,
-            state.orgId,
-            toEmailDraft(action.payload)
-          ),
-          "email-send"
-        );
+        if (provider === MS_PROVIDER_KEY) {
+          result = await withTimeout(
+            sendMicrosoftEmail(
+              connectionId,
+              state.orgId,
+              toMicrosoftEmailDraft(action.payload)
+            ),
+            "email-send (microsoft)"
+          );
+        } else {
+          result = await withTimeout(
+            sendGoogleEmail(
+              connectionId,
+              state.orgId,
+              toGoogleEmailDraft(action.payload)
+            ),
+            "email-send (google)"
+          );
+        }
         break;
       }
       case "calendar-create": {
-        result = await withTimeout(
-          createEvent(
-            connectionId,
-            state.orgId,
-            toEventDraft(action.payload)
-          ),
-          "calendar-create"
-        );
+        if (provider === MS_PROVIDER_KEY) {
+          result = await withTimeout(
+            createMicrosoftEvent(
+              connectionId,
+              state.orgId,
+              toMicrosoftEventDraft(action.payload)
+            ),
+            "calendar-create (microsoft)"
+          );
+        } else {
+          result = await withTimeout(
+            createGoogleEvent(
+              connectionId,
+              state.orgId,
+              toGoogleEventDraft(action.payload)
+            ),
+            "calendar-create (google)"
+          );
+        }
         break;
       }
       default:

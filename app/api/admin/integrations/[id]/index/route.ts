@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { dispatchThrottled } from '@/lib/qstash/client'
+import { getServerBaseUrl } from '@/lib/url/server-base-url'
 
 /**
  * 🛡️ ADMIN ROLE ENFORCEMENT
@@ -36,7 +37,7 @@ export async function POST(
     }
 
     // 🚀 Trigger full sync via QStash
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/worker/nango-fetch`
+    const workerUrl = `${getServerBaseUrl()}/api/worker/nango-fetch`
     
     const { dispatched, msgId } = await dispatchThrottled({
       orgId,

@@ -20,8 +20,8 @@
 
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
-import { ChatOpenAI } from '@langchain/openai'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { resolveModelClient } from '../llm-factory'
 import { registerTool } from './registry'
 
 /**
@@ -31,10 +31,6 @@ import { registerTool } from './registry'
 function sanitizeForPostgrest(value: string): string {
   return value.replace(/[",\\.()]/g, '')
 }
-
-// ---- Mini model for cheap entity extraction -----------------
-
-const mini = new ChatOpenAI({ modelName: 'gpt-4o-mini', temperature: 0 })
 
 // ---- Types --------------------------------------------------
 
@@ -61,8 +57,12 @@ interface GraphEdge {
  * Uses gpt-4o-mini to extract entity names from the question.
  * Returns [] on parse failure — never throws.
  */
-async function extractEntityLabels(question: string): Promise<string[]> {
+async function extractEntityLabels(
+  question: string,
+  orgId: string,
+): Promise<string[]> {
   try {
+    const mini = await resolveModelClient('simple', orgId, 0)
     const response = await mini.invoke([
       {
         role: 'system',
@@ -257,7 +257,7 @@ export const graphQueryTool = new DynamicStructuredTool({
     if (!orgId) return 'Knowledge graph unavailable: missing org context.'
 
     try {
-      const labels = await extractEntityLabels(question)
+      const labels = await extractEntityLabels(question, orgId)
       if (labels.length === 0) {
         return 'No entities found in your question to look up in the knowledge graph.'
       }

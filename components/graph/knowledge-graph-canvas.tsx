@@ -424,7 +424,7 @@ function KnowledgeGraphCanvasInternal({ userRole, focusNodeId }: KnowledgeGraphC
   const handleBuildGraph = useCallback(async () => {
     setIsBuildingGraph(true);
     try {
-      const res = await fetch("/api/worker/graph-build", {
+      const res = await fetch("/api/graph/build", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_type: "full" }),

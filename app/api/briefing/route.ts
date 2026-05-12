@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getContextFromHeaders, withRLS } from '@/lib/supabase/rls-client';
 import { qstash } from '@/lib/qstash/client';
+import { getServerBaseUrl } from '@/lib/url/server-base-url';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
 
   try {
     // Enqueue job via QStash
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/worker/morning-briefing`;
+    const workerUrl = `${getServerBaseUrl()}/api/worker/morning-briefing`;
     
     // We send context so the worker knows who to generate for
     const body = {
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('[briefing/post]', error);
-    return NextResponse.json({ error: 'Failed to enqueue job' }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Failed to enqueue job: ${message}` }, { status: 500 });
   }
 }

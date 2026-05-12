@@ -1,12 +1,7 @@
 import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 import { SystemMessage, HumanMessage, type MessageContent } from "@langchain/core/messages";
-import { getModel } from "../langgraph/llm-factory";
-
-// Lightweight model for the planning step — only produces a JSON array of titles.
-const plannerModel = getModel("simple", 0);
-// Slightly higher temperature for prose generation
-const synthesisModel = getModel("simple", 0.2);
+import { resolveModelClient } from "../langgraph/llm-factory";
 
 // Inlined prompt template — avoids fs.readFileSync which crashes in Edge Runtime.
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
@@ -67,6 +62,9 @@ export async function reportAgent(
         lastMessage.content as MessageContent
       )
     : "Generate a report";
+
+  const plannerModel = await resolveModelClient("simple", orgId, 0);
+  const synthesisModel = await resolveModelClient("simple", orgId, 0.2);
 
   // 1. Plan sections using LLM or use pre-defined sections from state
   let sections: string[] = (state as any).sections || [];

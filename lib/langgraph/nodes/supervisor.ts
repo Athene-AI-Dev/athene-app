@@ -67,7 +67,9 @@ export async function supervisor(state: AtheneStateType) {
     .replace("{user_role}", String(userRole))
     .replace("{hops_left}", String(hopsLeft));
 
-  const structuredModel = (await resolveModelClient("medium")).withStructuredOutput(responseSchema);
+  const structuredModel = (
+    await resolveModelClient("medium", state.orgId)
+  ).withStructuredOutput(responseSchema);
 
   const response = await structuredModel.invoke([
     { role: "system", content: systemContent },

@@ -240,7 +240,9 @@ export async function saveConnectionMapping(
       .upsert({
         org_id: orgId,
         connection_id: connectionId,
-        provider_config_key: providerConfigKey
+        provider_config_key: providerConfigKey,
+        sync_status: 'connected',
+        last_synced_at: null,
       }, {
         onConflict: 'org_id, connection_id, provider_config_key'
       })

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { qstash } from "@/lib/qstash/client";
 import { BRIEFING_HOUR_LOCAL } from "./constants";
+import { getServerBaseUrl } from "@/lib/url/server-base-url";
 
 
 /**
@@ -22,8 +23,7 @@ type BriefingAutomation = {
 };
 
 function getBriefingEndpoint() {
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
-  return `${appUrl}/api/worker/morning-briefing`;
+  return `${getServerBaseUrl()}/api/worker/morning-briefing`;
 }
 
 /**
@@ -164,9 +164,9 @@ export async function scheduleMorningBriefings(now = new Date()) {
       await qstash.publishJSON({
         url: endpoint,
         body: {
-          userId: automation.user_id,
-          orgId: automation.org_id,
-          automationId: automation.id,
+          user_id: automation.user_id,
+          org_id: automation.org_id,
+          automation_id: automation.id,
           timezone,
           deliveryMethod,
           scheduledFor: scheduledFor.toISOString(),

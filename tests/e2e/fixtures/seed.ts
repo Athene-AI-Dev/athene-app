@@ -131,7 +131,7 @@ export type SeedFixture = {
 // places seed in the test-scoped slot, which conflicts with scope:"worker" at runtime.
 export const test = base.extend<object, SeedFixture>({
   seed: [
-    async ({}, use) => {
+    async ({}, use: any) => {
       /* Only seed when env vars are present (skips if running against mocks) */
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -8,7 +8,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import type { MessageContentComplex } from "@langchain/core/messages";
 import type { AtheneState, AtheneStateUpdate, CitedSource, RetrievedChunk } from "../state";
-import { model } from "../llm-factory";
+import { resolveModelClient } from "../llm-factory";
 
 const SYNTHESIS_PROMPT = `You are an AI assistant synthesizing retrieved information into a clear, cited answer.
 
@@ -85,7 +85,7 @@ function buildGraphContext(graphResults: GraphResult[]): string {
 export async function synthesisAgentNode(
   state: AtheneState,
 ): Promise<AtheneStateUpdate> {
-  const { retrieved_chunks, messages, task_type, is_cross_dept_query } = state;
+  const { retrieved_chunks, messages, task_type, is_cross_dept_query, orgId } = state;
 
   if (!retrieved_chunks || retrieved_chunks.length === 0) {
     return {
@@ -130,7 +130,8 @@ export async function synthesisAgentNode(
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);
 
-  const response = await model.invoke([
+  const chatModel = await resolveModelClient("gpt-4o", orgId, 0);
+  const response = await chatModel.invoke([
     new SystemMessage(systemPrompt),
     ...messages,
   ]);

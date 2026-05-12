@@ -22,10 +22,10 @@ export async function requireAdmin<T>(
     throw new Error('Forbidden')
   }
 
-  // KMS Guard (Issue #5)
-  const kmsKey = process.env.KMS_KEY || "fallback_dummy_kms_key_for_stability_only";
-  if (!process.env.KMS_KEY) {
-    console.warn("[Admin] KMS_KEY environment variable is missing - using insecure fallback dummy key");
+  // KMS Guard (required for BYOK encryption/decryption)
+  const kmsKey = process.env.KMS_KEY
+  if (!kmsKey) {
+    throw new Error('KMS_KEY is missing on the server; BYOK key operations are disabled.')
   }
 
   // Inject context and run callback

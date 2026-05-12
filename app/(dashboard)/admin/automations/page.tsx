@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { headers } from "next/headers";
 import { getContextFromHeaders, withRLS } from "@/lib/supabase/rls-client";
 import { AutomationCard } from "@/components/automation-card";
-import { Button } from "@/components/ui/button";
+import { CreateAutomationButton } from "@/components/create-automation-button";
 import { Plus } from "lucide-react";
 
 /**
@@ -31,10 +31,9 @@ async function AutomationList() {
         <p className="text-muted-foreground max-w-sm mt-2">
           Create your first automated workflow to stay on top of your schedule and insights.
         </p>
-        <Button className="mt-6">
-          <Plus className="w-4 h-4 mr-2" />
+        <CreateAutomationButton className="mt-6">
           Create Automation
-        </Button>
+        </CreateAutomationButton>
       </div>
     );
   }
@@ -60,10 +59,9 @@ export default function AutomationsPage() {
             Configure recurring tasks like briefings and weekly reports.
           </p>
         </div>
-        <Button size="lg" className="shadow-lg shadow-accent/20">
-          <Plus className="w-5 h-5 mr-2" />
+        <CreateAutomationButton size="lg" className="shadow-lg shadow-accent/20" iconClassName="w-5 h-5 mr-2">
           New Automation
-        </Button>
+        </CreateAutomationButton>
       </div>
 
       <Suspense fallback={

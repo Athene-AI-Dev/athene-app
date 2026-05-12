@@ -21,7 +21,9 @@ const mockInvoke = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/langgraph/llm-factory", () => ({
-  model: { invoke: mockInvoke },
+  resolveModelClient: vi.fn().mockResolvedValue({
+    invoke: mockInvoke,
+  }),
 }));
 
 // ---- Import after mocks ------------------------------------

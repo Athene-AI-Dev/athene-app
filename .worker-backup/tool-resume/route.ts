@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server'
 import { verifyQStashSignature, checkIdempotency } from '@/lib/qstash/verify'
 import { logger } from '@/lib/logger'
@@ -57,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     // 4. Load the graph and update state with the tool result
     const graph = await getAgentGraph()
-    
+
     // Construct the tool result message
     const toolMessage = new ToolMessage({
       tool_call_id: tool_call_id,
@@ -73,7 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // 5. Resume execution
     // In many cases, we want to kick off the next step of the graph automatically.
     // This background worker route resumes the agent so it can finish its thought.
-    
+
     // Fire-and-forget resume (don't wait for completion in this HTTP request to avoid timeout)
     graph.invoke(null, { configurable: { thread_id } }).catch((err: any) => {
       logger.error({ thread_id, err: err.message }, "[tool-resume] Async resume failed")

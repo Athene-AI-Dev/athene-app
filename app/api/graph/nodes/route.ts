@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
 
     // Parse query params
     const { searchParams } = new URL(req.url);
-    const community = searchParams.get("community");
+    const communityRaw = searchParams.get("community");
+    const community = communityRaw ? parseInt(communityRaw, 10) : null;
     const search = searchParams.get("search");
     const entityType = searchParams.get("entityType");
     const departmentId = searchParams.get("departmentId");
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
       .order("updated_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (community) {
+    if (community !== null && !isNaN(community)) {
       query = query.eq("community", community);
     }
 
@@ -140,7 +141,7 @@ export async function GET(req: NextRequest) {
 
     const { data: communities } = await commQuery;
 
-    const uniqueCommunities = [...new Set((communities ?? []).map((c: { community: string }) => c.community))];
+    const uniqueCommunities = [...new Set((communities ?? []).map((c: { community: number }) => c.community))];
 
     return NextResponse.json({
       nodes: nodes ?? [],

@@ -58,26 +58,26 @@ function AddInsightDialog({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md animate-in fade-in duration-300"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div 
-        className="bg-card border border-white/10 shadow-2xl p-8 max-w-lg w-full mx-4 rounded-[2rem] animate-in zoom-in-95 duration-300 space-y-6"
+        className="bg-card border border-border shadow-2xl p-8 max-w-lg w-full mx-4 rounded-[2rem] animate-in zoom-in-95 duration-300 space-y-6"
         onKeyDown={(e) => e.key === "Escape" && onClose()}
       >
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-[#D96FAB]/10 to-[#7AADCF]/10 border border-white/5 flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-[#D96FAB]" />
+              <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border border-border flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-primary" />
               </div>
-              <h3 className="text-xl font-black text-foreground tracking-tight">New Insight Card</h3>
+              <h3 className="text-xl font-black text-foreground tracking-tight uppercase font-['Space_Grotesk']">New Insight Card</h3>
             </div>
             <p className="text-sm text-muted-foreground font-medium leading-relaxed">
               Save a BI query and its synthesized answer as a reusable card.
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-white/5 shrink-0">
+          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-muted shrink-0">
             <X className="w-5 h-5 text-muted-foreground" />
           </Button>
         </div>
@@ -93,7 +93,7 @@ function AddInsightDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Q3 Revenue vs Headcount"
-              className="w-full h-12 px-4 rounded-2xl bg-background border border-white/10 text-sm font-medium text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-[#D96FAB]/40 transition-colors"
+              className="w-full h-12 px-4 rounded-2xl bg-muted/30 border border-border text-sm font-bold text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-primary/40 transition-colors"
             />
           </div>
 
@@ -107,7 +107,7 @@ function AddInsightDialog({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="What is the correlation between headcount growth and revenue per department in Q3?"
               rows={4}
-              className="w-full px-4 py-3 rounded-2xl bg-background border border-white/10 text-sm font-medium text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-[#7AADCF]/40 transition-colors resize-none"
+              className="w-full px-4 py-3 rounded-2xl bg-muted/30 border border-border text-sm font-bold text-foreground placeholder:text-muted-foreground/30 outline-none focus:border-secondary/40 transition-colors resize-none"
             />
           </div>
         </div>
@@ -116,14 +116,14 @@ function AddInsightDialog({
           <Button
             variant="outline"
             onClick={onClose}
-            className="flex-1 h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold"
+            className="flex-1 h-12 rounded-xl border-border hover:bg-muted font-bold"
           >
             Cancel
           </Button>
           <Button
             onClick={() => onSubmit(title, query)}
             disabled={submitting || !title.trim() || !query.trim()}
-            className="flex-[2] h-12 rounded-xl bg-[#D96FAB] hover:bg-[#ECA8CC] text-white font-black uppercase tracking-widest text-[11px] gap-2 shadow-xl shadow-pink-500/10"
+            className="flex-[2] h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[11px] gap-2 shadow-xl shadow-primary/10"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             {submitting ? "Saving..." : "Save Card"}
@@ -249,18 +249,18 @@ export default function InsightsPage() {
   );
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk']">
       {toast && (
         <div
           className={cn(
             "fixed bottom-10 right-10 z-[100] flex items-center gap-4 px-6 py-4 rounded-2xl border shadow-2xl animate-in slide-in-from-right-10 duration-500",
             toast.type === "success"
-              ? "bg-[#EEF6FC] border-[#7AADCF]/30 text-[#5290B8]"
-              : "bg-red-50 border-red-200 text-red-800"
+              ? "bg-accent/20 border-accent/30 text-accent"
+              : "bg-destructive/10 border-destructive/30 text-destructive"
           )}
         >
           {toast.type === "success" ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <span className="font-bold text-sm">{toast.msg}</span>
+          <span className="font-bold text-sm tracking-tight">{toast.msg}</span>
           <button onClick={() => setToast(null)} className="ml-4 opacity-50 hover:opacity-100 transition-opacity">
             <X className="w-4 h-4" />
           </button>
@@ -273,11 +273,11 @@ export default function InsightsPage() {
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-[#D96FAB]/10 to-[#7AADCF]/10 border border-white/5">
-              <BarChart3 className="w-7 h-7 text-[#D96FAB]" />
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border border-border shadow-lg">
+              <BarChart3 className="w-7 h-7 text-primary" />
             </div>
-            <h1 className="text-4xl font-black tracking-tighter text-foreground">
-              BI <span className="text-gradient">Insights</span>
+            <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase">
+              BI <span className="text-primary">Insights</span>
             </h1>
           </div>
           <p className="text-muted-foreground text-lg max-w-2xl font-medium leading-relaxed">
@@ -288,14 +288,14 @@ export default function InsightsPage() {
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end mr-4 hidden sm:flex">
             <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40 mb-1">Cards</span>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/20 border border-white/5">
-              <div className="h-2 w-2 rounded-full bg-[#D96FAB] animate-pulse" />
-              <span className="text-xs font-bold text-foreground">{insights.length} Active</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/20 border border-border">
+              <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-xs font-bold text-foreground tracking-tight">{insights.length} Active</span>
             </div>
           </div>
           <Button
             onClick={() => setShowAdd(true)}
-            className="h-14 px-8 rounded-2xl bg-[#D96FAB] hover:bg-[#ECA8CC] text-white font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-pink-500/10 group"
+            className="h-14 px-8 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-primary/10 group"
           >
             <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
             New Card
@@ -304,14 +304,14 @@ export default function InsightsPage() {
       </div>
 
       {/* Search bar */}
-      <div className="flex items-center p-2 rounded-2xl bg-accent/10 border border-white/5">
+      <div className="flex items-center p-2 rounded-2xl bg-muted/10 border border-border">
         <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-[#D96FAB]" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search cards by title or query..."
-            className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-medium placeholder:text-muted-foreground/40"
+            className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-bold text-foreground placeholder:text-muted-foreground/40"
           />
         </div>
       </div>
@@ -320,17 +320,17 @@ export default function InsightsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {loading ? (
           [...Array(3)].map((_, i) => (
-            <div key={i} className="h-72 rounded-[2.5rem] bg-accent/10 border border-white/5 animate-pulse" />
+            <div key={i} className="h-72 rounded-[2.5rem] bg-muted/20 border border-border animate-pulse" />
           ))
         ) : error ? (
-          <div className="col-span-full py-20 text-center space-y-4">
+          <div className="col-span-full py-20 text-center space-y-4 bg-muted/10 rounded-[3rem] border border-border">
             <AlertCircle className="w-12 h-12 text-destructive mx-auto opacity-20" />
             <p className="text-muted-foreground font-bold">{error}</p>
-            <Button variant="outline" onClick={fetchInsights} className="rounded-xl border-white/10">Try Again</Button>
+            <Button variant="outline" onClick={fetchInsights} className="rounded-xl border-border">Try Again</Button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="col-span-full py-32 flex flex-col items-center justify-center bg-accent/5 rounded-[3rem] border-2 border-dashed border-white/5 text-center">
-            <div className="w-20 h-20 rounded-3xl bg-accent/10 flex items-center justify-center mb-6">
+          <div className="col-span-full py-32 flex flex-col items-center justify-center bg-muted/5 rounded-[3rem] border-2 border-dashed border-border text-center">
+            <div className="w-20 h-20 rounded-3xl bg-muted/10 flex items-center justify-center mb-6">
               <BarChart3 className="w-10 h-10 text-muted-foreground/20" />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-2">
@@ -340,7 +340,7 @@ export default function InsightsPage() {
               {search ? "Try a different search term." : "Create your first BI insight card to start tracking cross-department metrics."}
             </p>
             {!search && (
-              <Button onClick={() => setShowAdd(true)} className="mt-8 h-12 px-8 rounded-xl bg-[#D96FAB] hover:bg-[#ECA8CC] text-white font-bold">
+              <Button onClick={() => setShowAdd(true)} className="mt-8 h-12 px-8 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-bold">
                 Create First Card
               </Button>
             )}
@@ -362,3 +362,4 @@ export default function InsightsPage() {
     </div>
   );
 }
+

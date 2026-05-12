@@ -104,59 +104,59 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] bg-[#06080c] border-white/10 text-white rounded-[2rem]">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-black tracking-tight">Invite Teammate</DialogTitle>
-          <DialogDescription className="text-slate-400 font-medium">
-            Send an invitation to join your organization.
+      <DialogContent className="sm:max-w-[450px] bg-card/95 backdrop-blur-2xl border-border text-foreground rounded-[2.5rem] shadow-2xl p-0 overflow-hidden font-['Space_Grotesk']">
+        <DialogHeader className="p-8 pb-0">
+          <DialogTitle className="text-3xl font-black tracking-tighter uppercase">Invite <span className="text-primary">Teammate</span></DialogTitle>
+          <DialogDescription className="text-muted-foreground font-bold text-xs uppercase tracking-widest opacity-60">
+            Provision access to the AtheneAI neural grid.
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleInvite} className="space-y-6 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-              <Mail className="w-3 h-3" />
-              Email Address
+        <form onSubmit={handleInvite} className="space-y-8 p-8">
+          <div className="space-y-3">
+            <Label htmlFor="email" className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/60 flex items-center gap-3 px-2">
+              <Mail className="w-3.5 h-3.5" />
+              Intelligence Node Email
             </Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@company.com"
+              placeholder="operator@athene.ai"
               required
-              className="h-12 bg-white/5 border-white/10 rounded-xl focus:ring-[#66ADE4] focus:border-[#66ADE4] text-sm"
+              className="h-14 bg-muted/20 border-border rounded-2xl focus:ring-primary/20 focus:border-primary/40 text-sm font-bold transition-all px-6"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <Users className="w-3 h-3" />
-                Role
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/60 flex items-center gap-3 px-2">
+                <Users className="w-3.5 h-3.5" />
+                Access Tier
               </Label>
               <Select value={role} onValueChange={setRole}>
-                <SelectTrigger className="h-12 bg-white/5 border-white/10 rounded-xl">
-                  <SelectValue placeholder="Select role" />
+                <SelectTrigger className="h-14 bg-muted/20 border-border rounded-2xl font-bold text-xs px-6 hover:bg-muted/30 transition-all">
+                  <SelectValue placeholder="Select Tier" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0c1015] border-white/10 text-white">
-                  <SelectItem value="member">Member</SelectItem>
+                <SelectContent className="bg-card border-border text-foreground rounded-xl">
+                  <SelectItem value="member">Network Member</SelectItem>
                   <SelectItem value="super_user">BI Analyst</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="admin">System Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                <Building2 className="w-3 h-3" />
-                Department
+            <div className="space-y-3">
+              <Label className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/60 flex items-center gap-3 px-2">
+                <Building2 className="w-3.5 h-3.5" />
+                Sector Node
               </Label>
               <Select value={departmentId} onValueChange={setDepartmentId} disabled={fetchingDepts || departments.length === 0}>
-                <SelectTrigger className="h-12 bg-white/5 border-white/10 rounded-xl">
-                  <SelectValue placeholder={fetchingDepts ? "Loading..." : departments.length === 0 ? "No depts" : "Select dept"} />
+                <SelectTrigger className="h-14 bg-muted/20 border-border rounded-2xl font-bold text-xs px-6 hover:bg-muted/30 transition-all">
+                  <SelectValue placeholder={fetchingDepts ? "Syncing..." : departments.length === 0 ? "No Nodes" : "Select Sector"} />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0c1015] border-white/10 text-white">
+                <SelectContent className="bg-card border-border text-foreground rounded-xl">
                   {departments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       {dept.name}
@@ -165,34 +165,35 @@ export function InviteModal({ isOpen, onClose, onSuccess }: InviteModalProps) {
                 </SelectContent>
               </Select>
               {departments.length === 0 && !fetchingDepts && (
-                <p className="text-[9px] text-rose-400 font-bold mt-1">Setup departments first.</p>
+                <p className="text-[9px] text-destructive font-black uppercase tracking-widest mt-2 px-2">Initialize sectors first.</p>
               )}
-
             </div>
           </div>
 
-          <DialogFooter className="pt-4">
+          <DialogFooter className="pt-4 gap-4">
             <Button 
               type="button" 
               variant="ghost" 
               onClick={onClose}
-              className="rounded-xl font-bold text-slate-400 hover:text-white"
+              className="h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted transition-all px-8"
             >
               Cancel
             </Button>
             <Button 
               type="submit" 
               disabled={loading || fetchingDepts || !departmentId || !email}
-              className="bg-[#66ADE4] hover:bg-[#599bc9] text-black font-black uppercase tracking-widest text-[10px] rounded-xl px-8 shadow-lg shadow-blue-500/20"
+              className="h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl px-12 shadow-2xl shadow-primary/20 transition-all active:scale-95 flex items-center gap-3"
             >
-
               {loading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Synthesizing...
                 </>
               ) : (
-                "Send Invite"
+                <>
+                  <Mail className="h-4 w-4" />
+                  Dispatch Invite
+                </>
               )}
             </Button>
           </DialogFooter>

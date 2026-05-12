@@ -22,11 +22,11 @@ vi.mock("@/lib/supabase/rls-client", () => ({
   withRLS: vi.fn((_ctx, fn) => fn({ rpc: vi.fn() })),
 }));
 
-vi.mock("../langgraph/nodes/report-agent", () => ({
+vi.mock("../../langgraph/nodes/report-agent", () => ({
   reportAgent: mockReportAgent,
 }));
 
-vi.mock("../knowledge-graph/query", () => ({
+vi.mock("../../knowledge-graph/query", () => ({
   getNeighbors: mockGetNeighbors,
 }));
 
@@ -69,6 +69,11 @@ describe("Briefing System Tests", () => {
     mockMaybeSingle.mockResolvedValue({ data: { role: "member" }, error: null });
 
     mockFrom.mockImplementation((table: string) => {
+      // org_members role query uses .maybeSingle() — route to mockMaybeSingle.
+      // All other tables use the promise-resolving buildChain.
+      if (table === "org_members") {
+        return buildChain(null); // .maybeSingle() is already set up in beforeEach
+      }
       const defaultData: Record<string, any[]> = {
         automations: [{
           id: "auto-1",
@@ -76,7 +81,6 @@ describe("Briefing System Tests", () => {
           user_id: "u1",
           org_members: { timezone: "UTC", briefing_delivery: "in_app" }
         }],
-        org_members: [{ role: "member" }],
         kg_nodes: [],
         briefings: [],
       };
@@ -97,10 +101,11 @@ describe("Briefing System Tests", () => {
       
       mockFrom.mockImplementation((table: string) => {
         if (table === "kg_nodes") {
-           return buildChain([{ id: "n1", label: "Project Alpha" }]);
+          return buildChain([{ id: "n1", label: "Project Alpha" }]);
         }
+        // org_members uses .maybeSingle() — handled by mockMaybeSingle from beforeEach
         if (table === "org_members") {
-           return buildChain([{ role: "member" }]);
+          return buildChain(null);
         }
         return buildChain([]);
       });
@@ -128,6 +133,8 @@ describe("Briefing System Tests", () => {
     it("Scenario 3: Boundary - skips highlights when nodes are updated but no NEW edges exist", async () => {
       mockFrom.mockImplementation((table: string) => {
         if (table === "kg_nodes") return buildChain([{ id: "n1", label: "Old Project" }]);
+        // org_members uses .maybeSingle() — handled by mockMaybeSingle from beforeEach
+        if (table === "org_members") return buildChain(null);
         return buildChain([]);
       });
 
@@ -157,6 +164,8 @@ describe("Briefing System Tests", () => {
     it("surfaces knowledgeError when getNeighbors throws", async () => {
       mockFrom.mockImplementation((table: string) => {
         if (table === "kg_nodes") return buildChain([{ id: "n1", label: "Node 1" }]);
+        // org_members uses .maybeSingle() — handled by mockMaybeSingle from beforeEach
+        if (table === "org_members") return buildChain(null);
         return buildChain([]);
       });
       mockGetNeighbors.mockRejectedValue(new Error("Graph DB down"));

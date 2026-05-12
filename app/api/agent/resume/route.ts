@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { HumanMessage } from '@langchain/core/messages'
 import { getAgentGraph } from '@/lib/langgraph/graph'
+import { resolveUserAccess } from '@/lib/auth/rbac'
 
 export async function POST(req: NextRequest) {
-  const { userId, orgId } = await auth()
-  if (!userId || !orgId) return new NextResponse('Unauthorized', { status: 401 })
+  const { userId: clerkUserId, orgId: clerkOrgId } = await auth()
+  if (!clerkUserId || !clerkOrgId) return new NextResponse('Unauthorized', { status: 401 })
+
+  // Resolve internal user ID and org
+  const access = await resolveUserAccess(clerkUserId, clerkOrgId)
+  if (!access.internal_user_id) {
+    return NextResponse.json({ error: 'User not found in organization' }, { status: 403 })
+  }
 
   let body: { threadId?: string; userInput?: string }
   try {
@@ -28,10 +35,10 @@ export async function POST(req: NextRequest) {
   if (!state?.orgId) {
     return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
   }
-  if (state.orgId !== orgId) {
+  if (state.orgId !== access.internal_org_id) {
     return new NextResponse('Forbidden', { status: 403 })
   }
-  if (state.userId !== userId) {
+  if (state.userId !== access.internal_user_id) {
     return new NextResponse('Forbidden', { status: 403 })
   }
   if (state.run_status !== 'paused' && state.run_status !== 'awaiting_approval') {

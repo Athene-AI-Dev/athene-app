@@ -53,7 +53,7 @@ function makeState(overrides: Record<string, unknown> = {}) {
         content: "What does the Payment Service depend on?",
       },
     ],
-    next: "",
+    next_node: "",
     retrievedDocs: [],
     awaiting_approval: false,
     pending_write_action: null,

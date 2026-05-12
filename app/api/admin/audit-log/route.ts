@@ -23,8 +23,8 @@ export async function GET(req: Request) {
     .from('admin_actions')
     .select(`
       *,
-      admin:admin_user_id (id, full_name, email),
-      target:target_user_id (id, full_name, email)
+      admin:admin_user_id (id, display_name, email),
+      target:target_user_id (id, display_name, email)
     `)
     .eq('org_id', access.internal_org_id)
     .order('performed_at', { ascending: false })

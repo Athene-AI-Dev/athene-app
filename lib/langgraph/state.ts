@@ -9,7 +9,7 @@ export const AtheneState = Annotation.Root({
   orgId: Annotation<string>(),
   userId: Annotation<string>(),
   role: Annotation<string>(),
-  next: Annotation<string>(),
+  next_node: Annotation<string>(),
   retrievedDocs: Annotation<any[]>({
     reducer: (x, y) => x.concat(y),
     default: () => [],
@@ -69,14 +69,9 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => false,
   }),
-  // Supervisor fields
   hop_count: Annotation<number>({
     reducer: (_x, y) => y,
     default: () => 0,
-  }),
-  active_agent: Annotation<string | null>({
-    reducer: (_x, y) => y,
-    default: () => null,
   }),
   complexity: Annotation<string | null>({
     reducer: (_x, y) => y,

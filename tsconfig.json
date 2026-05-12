@@ -35,6 +35,7 @@
     "scratch",
     "vitest.config.ts",
     "tests",
-    ".next"
+    ".next",
+    "**/__tests__/**"
   ]
 }

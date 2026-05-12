@@ -336,7 +336,7 @@ export async function getRecentNodes(
  */
 export async function getCommunity(
   ctx: RLSContext,
-  communityId: string
+  communityId: number
 ): Promise<QueryResult> {
   return withRLS(ctx, async (supabase) => {
     const { data, error } = await supabase

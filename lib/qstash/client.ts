@@ -4,31 +4,31 @@ import { incrWithExpire, redis } from '@/lib/redis/client';
 
 const qstashToken = process.env.QSTASH_TOKEN;
 
-// Lazily initialised — callers that invoke qstash methods will get a clear
-// error; but simply importing this module won't crash the process when the
-// token is absent (e.g. local dev without QStash configured).
-let _qstashClient: Client | null = null;
-
+/**
+ * Lazily initialised QStash client.
+ * Returns a mock client if the token is missing during build time
+ * to prevent top-level instantiation errors.
+ */
 function getQStashClient(): Client {
-  if (_qstashClient) return _qstashClient;
   if (!qstashToken) {
-    throw new Error(
-      "QSTASH_TOKEN is not set. Configure it in .env.local to enable background jobs."
-    );
+    // Return a mock that throws only when called
+    return {
+      publishJSON: async () => {
+        throw new Error("QSTASH_TOKEN is missing. Background jobs are disabled.");
+      }
+    } as unknown as Client;
   }
-  _qstashClient = new Client({ token: qstashToken });
-  return _qstashClient;
+  return new Client({ token: qstashToken });
 }
 
-// Keep the named export so existing call-sites that do `qstash.publishJSON`
-// continue to work — they'll get the lazy-init error only when they actually call it.
+let _qstashClient: Client | null = null;
+
 export const qstash = new Proxy({} as Client, {
   get(_target, prop) {
-    const client = getQStashClient();
-    return (client as any)[prop];
+    if (!_qstashClient) _qstashClient = getQStashClient();
+    return (_qstashClient as any)[prop];
   },
 });
-
 
 export type DispatchOptions = {
   orgId: string;
@@ -38,7 +38,7 @@ export type DispatchOptions = {
 };
 
 const CONCURRENCY_LIMIT = 3;
-const CONCURRENCY_TTL_SECONDS = 900; // 15 min max-age prevents leaked slots from blocking forever
+const CONCURRENCY_TTL_SECONDS = 900;
 
 export async function dispatchThrottled({
   orgId,
@@ -57,7 +57,6 @@ export async function dispatchThrottled({
     }
 
     if (count > CONCURRENCY_LIMIT) {
-      // Give back the slot we just took — we're not going to use it
       await redis.decr(key);
 
       const { error } = await supabaseAdmin.from('pending_background_jobs').insert({
@@ -68,7 +67,6 @@ export async function dispatchThrottled({
         status: 'waiting',
       });
 
-
       if (error) {
         console.error('[QStash] Failed to queue pending job:', error);
       }
@@ -76,7 +74,6 @@ export async function dispatchThrottled({
       return { dispatched: false };
     }
 
-    // Publish — decrement our slot if the publish call itself fails so it isn't leaked
     try {
       const response = await qstash.publishJSON({ url, body });
       return { dispatched: true, msgId: response.messageId };
@@ -99,9 +96,6 @@ export async function releaseSlot(orgId: string, sourceType: string) {
       await redis.set(key, 0);
     }
 
-    // Atomically claim the oldest waiting job by updating its status only if it is
-    // still 'waiting'. This prevents two concurrent releaseSlot calls from both
-    // claiming the same job (the second UPDATE matches 0 rows and gets no data back).
     const { data: jobs, error: selectErr } = await supabaseAdmin
       .from('pending_background_jobs')
       .select('id, org_id, source_type, url, body')
@@ -120,19 +114,17 @@ export async function releaseSlot(orgId: string, sourceType: string) {
 
     const job = jobs[0];
 
-    // Claim atomically — only succeeds if status is still 'waiting'
     const { data: claimed } = await supabaseAdmin
       .from('pending_background_jobs')
       .update({ status: 'processing' })
       .eq('id', job.id)
-      .eq('status', 'waiting') // guard: prevents double-claim
+      .eq('status', 'waiting')
       .select('id')
       .maybeSingle();
 
-    if (!claimed) return; // Another worker claimed it first
+    if (!claimed) return;
 
     await supabaseAdmin.from('pending_background_jobs').delete().eq('id', job.id);
-
 
     await dispatchThrottled({
       orgId: job.org_id,

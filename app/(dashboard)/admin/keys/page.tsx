@@ -28,9 +28,41 @@ interface LLMKey {
 }
 
 const PROVIDERS = [
-  { id: 'anthropic', name: 'Anthropic', icon: 'https://cdn.brandfetch.io/id_2W7X4W0/theme/dark/logo.svg' },
-  { id: 'openai', name: 'OpenAI', icon: 'https://cdn.brandfetch.io/id_X8Z_R-U/theme/dark/logo.svg' },
-  { id: 'google', name: 'Google Vertex', icon: 'https://cdn.brandfetch.io/id_6mN-v_p/theme/dark/logo.svg' }
+  { 
+    id: 'anthropic', 
+    name: 'Anthropic', 
+    icon: 'https://cdn.brandfetch.io/id_2W7X4W0/theme/dark/logo.svg',
+    gatewayUrl: 'https://api.anthropic.com/v1',
+    models: [
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet' },
+      { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
+      { id: 'claude-3-opus', name: 'Claude 3 Opus' },
+      { id: 'claude-3-haiku', name: 'Claude 3 Haiku' }
+    ]
+  },
+  { 
+    id: 'openai', 
+    name: 'OpenAI', 
+    icon: 'https://cdn.brandfetch.io/id_X8Z_R-U/theme/dark/logo.svg',
+    gatewayUrl: 'https://api.openai.com/v1',
+    models: [
+      { id: 'gpt-4o', name: 'GPT-4o' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
+      { id: 'o1', name: 'o1' },
+      { id: 'o3-mini', name: 'o3-mini' }
+    ]
+  },
+  { 
+    id: 'google', 
+    name: 'Google Vertex', 
+    icon: 'https://cdn.brandfetch.io/id_6mN-v_p/theme/dark/logo.svg',
+    gatewayUrl: 'https://us-central1-aiplatform.googleapis.com',
+    models: [
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
+    ]
+  }
 ]
 
 export default function KeysPage() {
@@ -49,7 +81,21 @@ export default function KeysPage() {
   }, [])
 
   
-  const [newKey, setNewKey] = useState({ provider: 'anthropic', key: '', label: '' })
+  const [newKey, setNewKey] = useState({ 
+    provider: 'anthropic', 
+    model: 'claude-3-7-sonnet',
+    key: '', 
+    label: '' 
+  })
+
+  function handleProviderChange(providerId: string) {
+    const selectedProvider = PROVIDERS.find(p => p.id === providerId)
+    setNewKey({
+      ...newKey,
+      provider: providerId,
+      model: selectedProvider?.models?.[0]?.id || ''
+    })
+  }
 
   // 🛡️ Client-side Admin Gate (Issue #10)
   const isAdmin = membership?.role === 'org:admin'
@@ -87,7 +133,10 @@ export default function KeysPage() {
       const res = await fetch('/api/admin/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newKey)
+        body: JSON.stringify({
+          ...newKey,
+          label: newKey.label || `${newKey.provider} key (${newKey.model})`
+        })
       })
       
       if (!res.ok) {
@@ -96,7 +145,7 @@ export default function KeysPage() {
       }
       
       toast.success(`${newKey.provider} key added successfully`)
-      setNewKey({ provider: 'anthropic', key: '', label: '' })
+      setNewKey({ provider: 'anthropic', model: 'claude-3-7-sonnet', key: '', label: '' })
       setIsAdding(false)
       fetchKeys()
     } catch (err: any) {
@@ -168,10 +217,44 @@ export default function KeysPage() {
                 <select 
                   className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={newKey.provider}
-                  onChange={(e) => setNewKey({ ...newKey, provider: e.target.value })}
+                  onChange={(e) => handleProviderChange(e.target.value)}
                 >
                   {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+              </div>
+
+              {/* LLM Model Dropdown */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">Target LLM</label>
+                <select 
+                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={newKey.model}
+                  onChange={(e) => setNewKey({ ...newKey, model: e.target.value })}
+                >
+                  {PROVIDERS.find(p => p.id === newKey.provider)?.models?.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Embedded Gateway URL */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--sidebar-text-secondary)] flex items-center gap-1">
+                  API Gateway URL
+                  <a 
+                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="hover:text-blue-400 transition-colors"
+                    title="Open API Gateway Docs"
+                  >
+                    <ExternalLink className="w-3 h-3 text-blue-500" />
+                  </a>
+                </label>
+                <div className="p-2 rounded-lg bg-[var(--nav-hover)]/50 border border-[var(--sidebar-border)] text-xs font-mono text-[var(--sidebar-text-secondary)] flex items-center justify-between select-all overflow-x-auto">
+                  <span>{PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || 'N/A'}</span>
+                  <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-sans font-medium uppercase tracking-wider shrink-0 ml-2">Gateway</span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -286,7 +369,13 @@ export default function KeysPage() {
                             className="p-2 rounded-lg hover:bg-blue-500/10 text-[var(--sidebar-text-secondary)] hover:text-blue-500 transition-all"
                             title="Rotate Key"
                             onClick={() => {
-                                setNewKey({ provider: k.provider, key: '', label: k.label })
+                                const matchedProvider = PROVIDERS.find(p => p.id === k.provider)
+                                setNewKey({ 
+                                  provider: k.provider as any, 
+                                  model: matchedProvider?.models?.[0]?.id || 'claude-3-7-sonnet',
+                                  key: '', 
+                                  label: k.label 
+                                })
                                 toast.info(`Enter new key for ${k.provider} to rotate.`)
                             }}
                           >

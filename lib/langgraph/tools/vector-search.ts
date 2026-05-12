@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { vectorSearch, crossDeptVectorSearch } from "@/lib/tools/vector-search";
+import { withToolSpan } from "@/lib/telemetry/spans";
 
 export const vectorSearchTool = new DynamicStructuredTool({
   name: "vectorSearch",
@@ -22,8 +23,11 @@ export const vectorSearchTool = new DynamicStructuredTool({
     const role =
       config?.configurable?.role ?? config?.metadata?.role ?? "member";
 
-    const results = await vectorSearch({ orgId, userId, user_role: role, query, topK });
-    return JSON.stringify({ tool: "vectorSearch", query, results });
+    return withToolSpan("vectorSearch", async (span) => {
+      const results = await vectorSearch({ orgId, userId, user_role: role, query, topK });
+      span.setAttribute("tool.results_count", results.length);
+      return JSON.stringify({ tool: "vectorSearch", query, results });
+    });
   },
 });
 
@@ -47,13 +51,16 @@ export const crossDeptVectorSearchTool = new DynamicStructuredTool({
     const role =
       config?.configurable?.role ?? config?.metadata?.role ?? "member";
 
-    const results = await crossDeptVectorSearch({
-      orgId,
-      userId,
-      user_role: role,
-      query,
-      topK,
+    return withToolSpan("crossDeptVectorSearch", async (span) => {
+      const results = await crossDeptVectorSearch({
+        orgId,
+        userId,
+        user_role: role,
+        query,
+        topK,
+      });
+      span.setAttribute("tool.results_count", results.length);
+      return JSON.stringify({ tool: "crossDeptVectorSearch", query, results });
     });
-    return JSON.stringify({ tool: "crossDeptVectorSearch", query, results });
   },
 });

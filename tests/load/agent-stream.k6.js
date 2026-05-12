@@ -12,9 +12,9 @@
 // Run: k6 run --vus 50 --duration 30s tests/load/agent-stream.k6.js
 
 import http from "k6/http";
-import { check } from "k6";
+import { check, group } from "k6";
 import { Trend, Rate } from "k6/metrics";
-import { textSummary } from "k6/x/summary";
+import { textSummary } from "k6/summary";
 
 // Custom metrics
 const firstTokenLatency = new Trend("first_token_latency");
@@ -48,21 +48,43 @@ function getParams() {
 }
 
 export const options = {
-  stages: [
-    { duration: "10s", target: 10 },
-    { duration: "20s", target: 50 },
-    { duration: "30s", target: 50 },
-    { duration: "10s", target: 0 },
-  ],
+  scenarios: {
+    agent_stream: {
+      executor: "ramping-vus",
+      stages: [
+        { duration: "10s", target: 10 },
+        { duration: "20s", target: 50 },
+        { duration: "30s", target: 50 },
+        { duration: "10s", target: 0 },
+      ],
+      tags: { scenario: "agent" },
+      exec: "agentStream",
+    },
+    dashboard_load: {
+      executor: "ramping-vus",
+      stages: [
+        { duration: "10s", target: 20 },
+        { duration: "30s", target: 50 },
+        { duration: "10s", target: 0 },
+      ],
+      tags: { scenario: "dashboard" },
+      exec: "dashboardLoad",
+    },
+  },
   thresholds: {
-    "http_req_duration{page:agent}": ["p(95)<30000"], // 95% under 30s (LLM streaming is slow)
-    "ttfb{page:agent}": ["p(95)<3000"],             // TTFB under 3000ms for LLM streaming endpoint
-    "first_token_latency": ["p(95)<1500"],           // 95% under 1.5s
-    "error_rate": ["rate<0.05"],                       // <5% errors
+    // Agent streaming targets
+    "http_req_duration{scenario:agent}": ["p(95)<30000"], // 95% under 30s (LLM streaming)
+    "first_token_latency": ["p(95)<1500"],               // 95% first token <1.5s
+    "ttfb{scenario:agent}": ["p(95)<3000"],              // Agent TTFB <3s (approx first token)
+    // Dashboard TTFB target
+    "http_req_duration{scenario:dashboard}": ["p(95)<500"], // 95% dashboard TTFB <500ms
+    // Global error rate
+    "error_rate": ["rate<0.05"],                          // <5% errors
+    // Note: Vector search p95 <300ms is measured via OpenTelemetry spans, not k6
   },
 };
 
-export default function () {
+export function agentStream() {
   const url = `${BASE_URL}/api/agent`;
   const payload = JSON.stringify({
     message: "What are the latest Q1 sales figures?",
@@ -120,6 +142,27 @@ export default function () {
   check(res, {
     "final_answer received": () => finalAnswerReceived,
   });
+}
+
+export function dashboardLoad() {
+  const url = `${BASE_URL}/dashboard`;
+  const params = {
+    headers: CLERK_TOKEN ? { "Authorization": `Bearer ${CLERK_TOKEN}` } : {},
+    tags: { scenario: "dashboard" },
+    timeout: "10s",
+  };
+
+  const res = http.get(url, params);
+  const success = check(res, {
+    "dashboard status is 200": (r) => r.status === 200,
+    "dashboard TTFB <500ms": (r) => r.timings.waiting < 500,
+  });
+
+  if (!success) {
+    errorRate.add(1, { scenario: "dashboard" });
+  } else {
+    errorRate.add(0, { scenario: "dashboard" });
+  }
 }
 
 export function handleSummary(data) {

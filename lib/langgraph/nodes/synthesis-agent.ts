@@ -134,26 +134,48 @@ export async function synthesisAgentNode(
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);
 
-  const response = await withLLMSpan(
+  const llmResult = await withLLMSpan(
     getModelName(),
     systemPrompt.length + messages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0),
     async (span) => {
-      const result = await model.invoke([
+      const stream = await model.stream([
         new SystemMessage(systemPrompt),
         ...messages,
       ]);
-      return result;
+
+      let fullContent = "";
+      let tokenCount = 0;
+
+      for await (const chunk of stream) {
+        const token = typeof chunk.content === "string"
+          ? chunk.content
+          : Array.isArray(chunk.content)
+            ? chunk.content.map((c: any) => c.text || "").join("")
+            : "";
+
+        if (token) {
+          fullContent += token;
+          tokenCount++;
+        }
+      }
+
+      span.setAttribute("llm.token_count", tokenCount);
+      span.setAttribute("llm.total_chars", fullContent.length);
+
+      return {
+        content: fullContent,
+        lc_kwargs: { content: fullContent },
+      };
     }
   );
 
-  const finalAnswer =
-    typeof response.content === "string"
-      ? response.content
-      : (response.content as MessageContentComplex[])
-          .map((c: MessageContentComplex) =>
-            typeof c === "string" ? c : (c as { type: string; text?: string }).text ?? ""
-          )
-          .join("");
+  // Extract final answer from streamed result
+  const rawContent = (llmResult as any).content ?? (llmResult as any).lc_kwargs?.content ?? "";
+  const finalAnswer = typeof rawContent === "string"
+    ? rawContent
+    : Array.isArray(rawContent)
+      ? rawContent.map((c: any) => (typeof c === "string" ? c : c.text ?? "")).join("")
+      : String(rawContent);
 
   const cited_sources = extractCitations(finalAnswer, vectorChunks);
 

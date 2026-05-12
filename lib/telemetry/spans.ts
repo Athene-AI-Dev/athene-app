@@ -5,9 +5,53 @@ import {
   type Span,
   type Tracer,
 } from "@opentelemetry/api";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  SEMRESATTRS_SERVICE_NAME,
+  SEMRESATTRS_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions";
 
-// Lazy tracer — avoids module-level side effects if no tracer is registered yet.
+const OTEL_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+const OTEL_ENABLED = !!OTEL_ENDPOINT;
+
 let _tracer: Tracer | null = null;
+let _sdkInitialized = false;
+
+/**
+ * Initialize OpenTelemetry SDK with OTLP exporter.
+ * Call this once at app startup (e.g., in next.config.ts or a top-level import).
+ */
+export function initTelemetry() {
+  if (_sdkInitialized || !OTEL_ENABLED) return;
+  _sdkInitialized = true;
+
+  const sdk = new NodeSDK({
+    resource: resourceFromAttributes({
+      [SEMRESATTRS_SERVICE_NAME]: "athene-app",
+      [SEMRESATTRS_SERVICE_VERSION]: "1.0.0",
+    }),
+    traceExporter: new OTLPTraceExporter({
+      url: OTEL_ENDPOINT,
+    }),
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        // Disable instrumentations that cause noise
+        "@opentelemetry/instrumentation-fs": { enabled: false },
+      }),
+    ],
+  });
+
+  sdk.start();
+  console.log(`[telemetry] OpenTelemetry initialized with endpoint: ${OTEL_ENDPOINT}`);
+
+  // Graceful shutdown on process exit
+  process.on("SIGTERM", () => {
+    sdk.shutdown().then(() => console.log("[telemetry] OpenTelemetry shut down")).catch(console.error);
+  });
+}
 
 function getTracerInstance(): Tracer {
   if (!_tracer) {

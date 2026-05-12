@@ -264,6 +264,7 @@ export default function GrantsPage() {
                     </Table>
                 </div>
             </div>
+        </div>
     );
 }
 

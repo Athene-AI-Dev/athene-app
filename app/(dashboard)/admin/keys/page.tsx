@@ -16,6 +16,17 @@ import {
   Activity
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 interface LLMKey {
   id: string
@@ -135,7 +146,9 @@ export default function KeysPage() {
 
   if (!isLoaded || isLoading) {
     return <div className="flex items-center justify-center min-h-[400px] animate-pulse text-[var(--sidebar-text-secondary)]">Loading configuration...</div>
-    return (
+  }
+
+  return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk'] transition-colors duration-300">
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div className="space-y-4">

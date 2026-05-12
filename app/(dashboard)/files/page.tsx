@@ -35,6 +35,7 @@ import {
   TooltipTrigger 
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const INITIAL_FILES = [
   { name: "Q4_Revenue_Synthesis.pdf", type: "PDF", size: "12.4 MB", date: "2 mins ago", status: "Indexed", risk: "Low" },

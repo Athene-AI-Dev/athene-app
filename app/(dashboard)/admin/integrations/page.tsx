@@ -82,6 +82,11 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [disconnecting, setDisconnecting] = useState<Integration | null>(null);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);

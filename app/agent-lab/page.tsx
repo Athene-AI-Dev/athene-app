@@ -27,6 +27,7 @@ import {
 import { Space_Grotesk } from 'next/font/google';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],

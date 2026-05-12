@@ -93,7 +93,7 @@ export default function KeysPage() {
     setNewKey({
       ...newKey,
       provider: providerId,
-      model: selectedProvider?.models[0].id || ''
+      model: selectedProvider?.models?.[0]?.id || ''
     })
   }
 
@@ -231,7 +231,7 @@ export default function KeysPage() {
                   value={newKey.model}
                   onChange={(e) => setNewKey({ ...newKey, model: e.target.value })}
                 >
-                  {PROVIDERS.find(p => p.id === newKey.provider)?.models.map(m => (
+                  {PROVIDERS.find(p => p.id === newKey.provider)?.models?.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
@@ -242,7 +242,7 @@ export default function KeysPage() {
                 <label className="text-xs font-medium text-[var(--sidebar-text-secondary)] flex items-center gap-1">
                   API Gateway URL
                   <a 
-                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl} 
+                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || '#'} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="hover:text-blue-400 transition-colors"
@@ -252,7 +252,7 @@ export default function KeysPage() {
                   </a>
                 </label>
                 <div className="p-2 rounded-lg bg-[var(--nav-hover)]/50 border border-[var(--sidebar-border)] text-xs font-mono text-[var(--sidebar-text-secondary)] flex items-center justify-between select-all overflow-x-auto">
-                  <span>{PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl}</span>
+                  <span>{PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || 'N/A'}</span>
                   <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-sans font-medium uppercase tracking-wider shrink-0 ml-2">Gateway</span>
                 </div>
               </div>
@@ -372,7 +372,7 @@ export default function KeysPage() {
                                 const matchedProvider = PROVIDERS.find(p => p.id === k.provider)
                                 setNewKey({ 
                                   provider: k.provider as any, 
-                                  model: matchedProvider?.models[0].id || 'claude-3-7-sonnet',
+                                  model: matchedProvider?.models?.[0]?.id || 'claude-3-7-sonnet',
                                   key: '', 
                                   label: k.label 
                                 })

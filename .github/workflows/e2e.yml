@@ -83,18 +83,18 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       # FIX: system deps (libglib, libnss, etc.) are OS-level packages NOT included
       # in the Playwright browser cache. When the cache hits, binaries are restored
       # but system deps are missing, causing 'missing shared library' launch errors.
       # Remove the condition so install-deps always runs regardless of cache state.
       - name: Install Playwright system deps
-        run: npx playwright install-deps chromium
+        run: pnpm exec playwright install-deps chromium
 
       # ── Run E2E tests ────────────────────────────────────────────────────
       - name: Run Playwright E2E tests
-        run: npx playwright test --config=tests/e2e/playwright.config.ts
+        run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
         env:
           CI: true
 

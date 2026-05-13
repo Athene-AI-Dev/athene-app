@@ -92,6 +92,10 @@ export default function IntegrationsPage() {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const fetchIntegrations = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/integrations");

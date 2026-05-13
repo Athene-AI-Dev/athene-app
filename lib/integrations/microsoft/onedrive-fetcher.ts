@@ -1,10 +1,5 @@
 import { paginate, graphDownload, graphFetch } from './graph-client'
-<<<<<<< Updated upstream
 import { parseDocument } from './document-parser'
-=======
-import { parseMicrosoftDoc } from './utils/parser'
->>>>>>> Stashed changes
-
 export async function listOneDriveDocs(connectionId: string, orgId: string, itemId: string = 'root') {
   const items: any[] = []
   const endpoint = itemId === 'root' 
@@ -31,12 +26,7 @@ export async function fetchOneDriveDocContent(connectionId: string, orgId: strin
   const arrayBuffer = await graphDownload(connectionId, orgId, `/me/drive/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
-<<<<<<< Updated upstream
-  return parseDocument(fileName, buffer)
-=======
-  return parseMicrosoftDoc(buffer, fileName)
->>>>>>> Stashed changes
-}
+  return parseDocument(fileName, buffer)}
 
 /**
  * Fetches the assigned permissions for a specific OneDrive item.

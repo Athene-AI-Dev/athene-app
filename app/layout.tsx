@@ -38,7 +38,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className="h-full antialiased"
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
         suppressHydrationWarning
       >
         <body

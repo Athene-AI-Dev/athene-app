@@ -41,8 +41,10 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    fetchThreads();
-  }, []);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

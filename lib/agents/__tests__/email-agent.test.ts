@@ -180,7 +180,7 @@ describe("emailAgentNode (ATH-37)", () => {
         return { content: JSON.stringify({ to: ["bob.smith@acmecorp.com"], cc: [], subject: "Test", body: "body" }) };
       }),
     };
-    vi.mocked(llmFactory.getModel).mockReturnValue(mockModel as any);
+    vi.mocked(llmFactory.resolveModelClient).mockResolvedValue(mockModel as any);
 
     await emailAgentNode(makeMockState() as any);
     expect(capturedPrompt).toContain("bob.smith@acmecorp.com");

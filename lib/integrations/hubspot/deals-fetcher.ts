@@ -15,6 +15,11 @@ interface HubSpotDeal {
     dealstage: string | null
     pipeline: string | null
     amount: string | null
+    closedate: string | null
+    dealtype: string | null
+    description: string | null
+    hs_deal_stage_probability: string | null
+    createdate: string | null
   }
 }
 
@@ -33,7 +38,7 @@ export async function fetchHubSpotDeals(
   while (true) {
     const qs = new URLSearchParams({
       limit: '100',
-      properties: 'dealname,dealstage,pipeline,amount',
+      properties: 'dealname,dealstage,pipeline,amount,closedate,dealtype,description,hs_deal_stage_probability,createdate',
       ...(after ? { after } : {}),
     })
 
@@ -43,14 +48,24 @@ export async function fetchHubSpotDeals(
       const p    = record.properties
       const name = p.dealname ?? 'Unnamed Deal'
 
+      const amount = p.amount ? `$${Number(p.amount).toLocaleString()}` : null
+      const probability = p.hs_deal_stage_probability
+        ? `${Math.round(Number(p.hs_deal_stage_probability) * 100)}%`
+        : null
+      const closeDate = p.closedate ? new Date(p.closedate).toLocaleDateString() : null
+
       chunks.push({
         chunk_id:   `hs-deal-${record.id}`,
         title:      name,
         content: [
           `Deal: ${name}`,
-          p.dealstage ? `Stage: ${p.dealstage}`   : null,
-          p.pipeline  ? `Pipeline: ${p.pipeline}` : null,
-          p.amount    ? `Amount: $${p.amount}`    : null,
+          p.dealstage  ? `Stage: ${p.dealstage}`       : null,
+          p.pipeline   ? `Pipeline: ${p.pipeline}`     : null,
+          amount       ? `Amount: ${amount}`            : null,
+          probability  ? `Win Probability: ${probability}` : null,
+          closeDate    ? `Close Date: ${closeDate}`    : null,
+          p.dealtype   ? `Type: ${p.dealtype}`         : null,
+          p.description ? `Description: ${p.description}` : null,
         ].filter(Boolean).join('\n'),
         source_url: `https://app.hubspot.com/contacts/deal/${record.id}`,
         metadata: {

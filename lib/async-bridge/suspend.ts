@@ -12,6 +12,7 @@
 
 import { qstash } from "@/lib/qstash/client";
 import { redis } from "@/lib/redis/client";
+import { getServerBaseUrl } from "@/lib/url/server-base-url";
 
 // ---- Types --------------------------------------------------
 
@@ -61,12 +62,7 @@ const SUSPEND_LOCK_TTL_SECONDS = 600; // 10 minutes
 
 /** Base URL for the async worker endpoint */
 function getWorkerUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000");
-  return `${base}/api/worker/async-tool`;
+  return `${getServerBaseUrl()}/api/worker/async-tool`;
 }
 
 // ---- Core ---------------------------------------------------

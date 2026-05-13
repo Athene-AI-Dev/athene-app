@@ -65,11 +65,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new Error('Briefing generation failed');
     }
 
-    return NextResponse.json({
-      status: 'ok',
-    })
-
-    // 7. Update automation last_run status
+    // 5. Update automation last_run status
     if (automation_id) {
       // Get current count first
       const { data: autoData } = await supabaseAdmin
@@ -91,13 +87,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     logger.info(
-      { org_id, user_id, briefing_id: briefing.id },
+      { org_id, user_id },
       "[morning-briefing] Briefing generated and stored"
     )
 
     return NextResponse.json({
       status: 'ok',
-      briefing_id: briefing.id,
     })
 
   } catch (err: unknown) {

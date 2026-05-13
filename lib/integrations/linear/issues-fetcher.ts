@@ -1,5 +1,5 @@
-import { linearFetch } from './client';
-import { FetchedChunk } from '../base';
+import { linearFetch } from './client'
+import { FetchedChunk } from '../base'
 
 const ISSUES_QUERY = `
   query GetIssues($cursor: String) {
@@ -10,57 +10,102 @@ const ISSUES_QUERY = `
       }
       nodes {
         id
+        identifier
         title
         description
         url
+        priority
         createdAt
+        updatedAt
+        state {
+          name
+          type
+        }
         assignee {
           name
         }
-        comments(first: 50) {
+        team {
+          name
+          key
+        }
+        labels {
+          nodes {
+            name
+          }
+        }
+        comments(first: 20) {
           nodes {
             body
+            createdAt
           }
         }
       }
     }
   }
-`;
+`
+
+const PRIORITY_LABELS: Record<number, string> = {
+  0: 'No priority',
+  1: 'Urgent',
+  2: 'High',
+  3: 'Medium',
+  4: 'Low',
+}
 
 export async function linearIssuesFetcher(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
-  const chunks: FetchedChunk[] = [];
-  let hasNextPage = true;
-  let cursor: string | null = null;
+  const chunks: FetchedChunk[] = []
+  let hasNextPage = true
+  let cursor: string | null = null
 
   while (hasNextPage) {
-    const data: any = await linearFetch(connectionId, orgId, ISSUES_QUERY, { cursor });
-    
-    const issuesResult = data.data?.issues;
-    if (!issuesResult) break;
+    const data: any = await linearFetch(connectionId, orgId, ISSUES_QUERY, { cursor })
+
+    const issuesResult = data.data?.issues
+    if (!issuesResult) break
 
     for (const issue of issuesResult.nodes) {
-      const assigneeName = issue.assignee?.name ? `Assignee: ${issue.assignee.name}` : 'Unassigned';
-      const allComments = issue.comments?.nodes?.map((c: any) => c.body).join('\n---\n') || '';
-      const fullContent = `Linear Issue: ${issue.title}\n${assigneeName}\n\n${issue.description || ''}\n\nComments:\n${allComments}`;
-      
-      const chunk: FetchedChunk = {
+      const state    = issue.state?.name ?? 'Unknown'
+      const priority = PRIORITY_LABELS[issue.priority as number] ?? 'Unknown'
+      const assignee = issue.assignee?.name
+      const team     = issue.team?.name
+      const labels   = (issue.labels?.nodes ?? []).map((l: any) => l.name).join(', ')
+      const comments = (issue.comments?.nodes ?? [])
+        .map((c: any) => c.body)
+        .filter(Boolean)
+        .join('\n---\n')
+
+      const lines: string[] = [
+        `Issue ${issue.identifier}: ${issue.title}`,
+        `Status: ${state}`,
+        `Priority: ${priority}`,
+      ]
+      if (team)     lines.push(`Team: ${team}`)
+      if (assignee) lines.push(`Assignee: ${assignee}`)
+      if (labels)   lines.push(`Labels: ${labels}`)
+      if (issue.description) lines.push('', issue.description)
+      if (comments) lines.push('', 'Comments:', comments)
+
+      chunks.push({
         chunk_id: issue.id,
-        title: issue.title,
-        content: fullContent,
+        title: `${issue.identifier}: ${issue.title}`,
+        content: lines.join('\n'),
         source_url: issue.url,
         metadata: {
           provider: 'linear',
           resource_type: 'issue',
           created_at: issue.createdAt,
-        }
-      };
-      
-      chunks.push(chunk);
+          last_modified: issue.updatedAt,
+          state,
+          priority,
+          team: team ?? null,
+          assignee: assignee ?? null,
+        },
+      })
     }
 
-    hasNextPage = issuesResult.pageInfo.hasNextPage;
-    cursor = issuesResult.pageInfo.endCursor;
+    hasNextPage = issuesResult.pageInfo.hasNextPage
+    cursor = issuesResult.pageInfo.endCursor
   }
 
-  return chunks;
+  return chunks
 }

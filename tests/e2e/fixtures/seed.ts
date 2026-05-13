@@ -59,6 +59,16 @@ const FIXTURE_DOCS = [
   },
 ];
 
+const FIXTURE_NODES = [
+  { id: "node-payment-gateway", org_id: SEED.orgId, label: "Payment Gateway", entity_type: "component", visibility: "org_wide" },
+  { id: "node-stripe", org_id: SEED.orgId, label: "Stripe", entity_type: "service", visibility: "org_wide" },
+];
+
+const FIXTURE_EDGES = [
+  { id: "edge-gateway-stripe", org_id: SEED.orgId, source_node: "node-payment-gateway", target_node: "node-stripe", relation: "DEPENDS_ON", provenance: "FIXTURE" },
+];
+
+
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 function adminSupabase(url: string, key: string): SupabaseClient {
   // url and key are guaranteed non-null by the call-site guard
@@ -121,6 +131,12 @@ async function seedAuditRows(db: SupabaseClient) {
     .throwOnError();
 }
 
+async function seedGraph(db: SupabaseClient) {
+  await db.from("kg_nodes").upsert(FIXTURE_NODES, { onConflict: "id" }).throwOnError();
+  await db.from("kg_edges").upsert(FIXTURE_EDGES, { onConflict: "id" }).throwOnError();
+}
+
+
 /* ─── exported fixture ─────────────────────────────────────────────────── */
 export type SeedFixture = {
   seed: typeof SEED;
@@ -131,7 +147,7 @@ export type SeedFixture = {
 // places seed in the test-scoped slot, which conflicts with scope:"worker" at runtime.
 export const test = base.extend<object, SeedFixture>({
   seed: [
-    async ({}, use) => {
+    async ({}, use: any) => {
       /* Only seed when env vars are present (skips if running against mocks) */
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -142,7 +158,9 @@ export const test = base.extend<object, SeedFixture>({
         await seedMembers(db);
         await seedDocuments(db);
         await seedAuditRows(db);
+        await seedGraph(db);
       }
+
 
       await use(SEED);
 

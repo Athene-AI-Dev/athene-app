@@ -28,9 +28,11 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
+type ProviderID = 'anthropic' | 'openai' | 'google' | 'deepseek'
+
 interface LLMKey {
   id: string
-  provider: 'anthropic' | 'openai' | 'google'
+  provider: ProviderID
   key_hint: string
   label: string
   is_active: boolean
@@ -38,10 +40,16 @@ interface LLMKey {
   updated_at: string
 }
 
-const PROVIDERS = [
-  { 
-    id: 'anthropic', 
-    name: 'Anthropic', 
+const PROVIDERS: Array<{
+  id: ProviderID
+  name: string
+  icon: string
+  gatewayUrl: string
+  models: Array<{ id: string; name: string }>
+}> = [
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
     icon: 'https://cdn.brandfetch.io/id_2W7X4W0/theme/dark/logo.svg',
     gatewayUrl: 'https://api.anthropic.com/v1',
     models: [
@@ -51,9 +59,9 @@ const PROVIDERS = [
       { id: 'claude-3-haiku', name: 'Claude 3 Haiku' }
     ]
   },
-  { 
-    id: 'openai', 
-    name: 'OpenAI', 
+  {
+    id: 'openai',
+    name: 'OpenAI',
     icon: 'https://cdn.brandfetch.io/id_X8Z_R-U/theme/dark/logo.svg',
     gatewayUrl: 'https://api.openai.com/v1',
     models: [
@@ -63,9 +71,9 @@ const PROVIDERS = [
       { id: 'o3-mini', name: 'o3-mini' }
     ]
   },
-  { 
-    id: 'google', 
-    name: 'Google Vertex', 
+  {
+    id: 'google',
+    name: 'Google Vertex',
     icon: 'https://cdn.brandfetch.io/id_6mN-v_p/theme/dark/logo.svg',
     gatewayUrl: 'https://us-central1-aiplatform.googleapis.com',
     models: [
@@ -73,7 +81,17 @@ const PROVIDERS = [
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
     ]
-  }
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    icon: 'https://cdn.brandfetch.io/id_deepseek/theme/dark/logo.svg',
+    gatewayUrl: 'https://api.deepseek.com/v1',
+    models: [
+      { id: 'deepseek-chat', name: 'DeepSeek V3 (Chat)' },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoner)' },
+    ]
+  },
 ]
 
 export default function KeysPage() {
@@ -92,19 +110,20 @@ export default function KeysPage() {
   }, [])
 
   
-  const [newKey, setNewKey] = useState({ 
-    provider: 'anthropic', 
+  const [newKey, setNewKey] = useState<{ provider: ProviderID; model: string; key: string; label: string }>({
+    provider: 'anthropic',
     model: 'claude-3-7-sonnet',
-    key: '', 
-    label: '' 
+    key: '',
+    label: '',
   })
 
   function handleProviderChange(providerId: string) {
     const selectedProvider = PROVIDERS.find(p => p.id === providerId)
+    if (!selectedProvider) return
     setNewKey({
       ...newKey,
-      provider: providerId,
-      model: selectedProvider?.models?.[0]?.id || ''
+      provider: selectedProvider.id,
+      model: selectedProvider.models[0]?.id || '',
     })
   }
 
@@ -385,11 +404,11 @@ export default function KeysPage() {
                             title="Rotate Key"
                             onClick={() => {
                                 const matchedProvider = PROVIDERS.find(p => p.id === k.provider)
-                                setNewKey({ 
-                                  provider: k.provider as any, 
+                                setNewKey({
+                                  provider: k.provider,
                                   model: matchedProvider?.models?.[0]?.id || 'claude-3-7-sonnet',
-                                  key: '', 
-                                  label: k.label 
+                                  key: '',
+                                  label: k.label,
                                 })
                                 toast.info(`Enter new key for ${k.provider} to rotate.`)
                             }}

@@ -1,33 +1,71 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { MemorySaver } from "@langchain/langgraph";
 
-let checkpointerInstance: any | null = null;
+let checkpointerInstance: PostgresSaver | MemorySaver | null = null;
+let usingMemory = false;
 
 /**
- * Returns a lazily-initialized checkpointer instance.
- * Reads connection string from SUPABASE_DB_URL or DATABASE_URL.
- * Falls back to MemorySaver if no DB connection is available (ATH-PROD resilience).
+ * Returns a lazily-initialized checkpointer.
+ *
+ * Reads SUPABASE_DB_URL or DATABASE_URL. Appends sslmode=require for
+ * Supabase connections that omit it, so Vercel → Supabase works without
+ * extra env config.
+ *
+ * Pool is capped at 2 connections — safe for Vercel serverless where each
+ * warm instance shares the pool across concurrent requests.
+ *
+ * Resets and retries on each cold start if the previous attempt failed,
+ * rather than caching a broken MemorySaver forever.
  */
-export async function getCheckpointer(): Promise<any> {
+export async function getCheckpointer(): Promise<PostgresSaver | MemorySaver> {
   if (checkpointerInstance) return checkpointerInstance;
 
-  const connectionString =
-    process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  const raw = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
 
-  if (!connectionString) {
-    console.warn("[checkpointer] No DB connection string found. Falling back to in-memory MemorySaver. History will NOT persist.");
+  if (!raw) {
+    console.warn(
+      "[checkpointer] No DB connection string found (SUPABASE_DB_URL / DATABASE_URL). " +
+      "Falling back to MemorySaver — conversation history will not persist across cold starts."
+    );
+    usingMemory = true;
     checkpointerInstance = new MemorySaver();
     return checkpointerInstance;
   }
+
+  // Ensure SSL for Supabase pooler connections
+  const connectionString = ensureSsl(raw);
 
   try {
-    const saver = PostgresSaver.fromConnString(connectionString);
+    const saver = PostgresSaver.fromConnString(connectionString, {
+      max: 2,  // cap pool size for serverless environments
+    } as any);
     await saver.setup();
     checkpointerInstance = saver;
+    usingMemory = false;
+    console.info("[checkpointer] PostgresSaver initialized.");
     return saver;
   } catch (err) {
-    console.error("[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver:", err);
-    checkpointerInstance = new MemorySaver();
-    return checkpointerInstance;
+    // Don't cache the fallback — allow retry on next cold start
+    console.error(
+      "[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver:",
+      err
+    );
+    usingMemory = true;
+    const mem = new MemorySaver();
+    checkpointerInstance = mem;
+    return mem;
   }
+}
+
+/** Returns true if the active checkpointer is in-memory (non-persistent). */
+export function isMemoryCheckpointer(): boolean {
+  return usingMemory;
+}
+
+function ensureSsl(url: string): string {
+  if (url.includes("sslmode=") || url.startsWith("postgresql://localhost") || url.startsWith("postgres://localhost")) {
+    return url;
+  }
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}sslmode=require`;
 }

@@ -21,7 +21,8 @@ vi.mock("../../langgraph/llm-factory", () => {
   };
   return {
     model: mockModel,
-    getModel: vi.fn(() => mockModel)
+    getModel: vi.fn(() => mockModel),
+    resolveModelClient: vi.fn().mockResolvedValue(mockModel),
   };
 });
 

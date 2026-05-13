@@ -14,7 +14,7 @@ export async function linearSearcher(
   // Use GraphQL to filter searchable issues
   const GQL = `
     query SearchIssues($query: String!) {
-      issues(first: 20, filter: { searchableContent: { containsIgnoreCase: $query } }) {
+      issueSearch(query: $query, first: 20) {
         nodes {
           id
           title
@@ -28,7 +28,7 @@ export async function linearSearcher(
 
   const data: any = await linearFetch(connectionId, orgId, GQL, { query });
   
-  const issues = data.data?.issues?.nodes;
+  const issues = data.data?.issueSearch?.nodes;
   if (!issues) return [];
 
   return issues.map((issue: any) => ({

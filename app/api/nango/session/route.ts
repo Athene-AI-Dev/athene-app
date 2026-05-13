@@ -15,6 +15,19 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Fast-fail before making any Nango API call — avoids a ~10s timeout when
+  // the key is missing and Nango rejects the placeholder key with 401.
+  if (!process.env.NANGO_SECRET_KEY) {
+    return NextResponse.json(
+      {
+        error: 'not_configured',
+        message:
+          'Nango is not configured. Add NANGO_SECRET_KEY and NEXT_PUBLIC_NANGO_PUBLIC_KEY to your .env.local, then restart the dev server.',
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const nango = getNango();
 

@@ -81,6 +81,11 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => null,
   }),
+  // Report sections map
+  content: Annotation<Record<string, string> | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
 });
 
 export type AtheneStateType = typeof AtheneState.State;

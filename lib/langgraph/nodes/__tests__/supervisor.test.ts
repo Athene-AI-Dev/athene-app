@@ -11,6 +11,12 @@ vi.mock("@langchain/openai", () => ({
   }),
 }));
 
+vi.mock("@/lib/supabase/server", () => ({
+  supabaseAdmin: {
+    rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+  },
+}));
+
 import { supervisor } from "../supervisor";
 import type { AtheneState } from "../../state";
 

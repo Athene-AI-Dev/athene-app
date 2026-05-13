@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/admin'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * GET: List all LLM keys for the current organization.
@@ -7,10 +8,13 @@ import { requireAdmin } from '@/lib/auth/admin'
  */
 export async function GET() {
   try {
-    return await requireAdmin(async (supabase) => {
+    return await requireAdmin(async (supabase, { orgId, userId }) => {
+      const context = await resolveInternalAdminContext(orgId, userId)
+
       const { data, error } = await supabase
         .from('llm_keys')
         .select('id, provider, key_hint, label, is_active, last_used_at, updated_at')
+        .eq('org_id', context.orgId)
         .order('provider', { ascending: true })
 
       if (error) throw error
@@ -46,42 +50,41 @@ export async function POST(req: NextRequest) {
     }
 
     return await requireAdmin(async (supabase, { orgId, userId }) => {
-      // 1. Encrypt the key using the DB function (uses app.kms_key from session)
-      const { data: encryptedKey, error: encryptError } = await supabase.rpc('encrypt_llm_key', {
-        plaintext_key: key
+      // Store + rotate key via SECURITY DEFINER RPC (does not rely on session GUCs)
+      const kmsKey = process.env.KMS_KEY
+      if (!kmsKey) {
+        throw new Error('KMS_KEY is missing on the server; cannot encrypt BYOK keys.')
+      }
+
+      const context = await resolveInternalAdminContext(orgId, userId)
+
+      const { error: storeError } = await supabase.rpc('store_llm_key', {
+        p_org_id: context.orgId,
+        p_provider: provider,
+        p_plaintext: key,
+        p_kms_key: kmsKey,
       })
 
-      if (encryptError) throw encryptError
+      if (storeError) throw storeError
 
-      // 2. Deactivate any existing active key for this provider (Issue #2 rotation logic)
-      await supabase
+      // Return the newly-active key metadata (safe fields only)
+      const { data, error: fetchError } = await supabase
         .from('llm_keys')
-        .update({ is_active: false })
+        .select('id, provider, key_hint, label, is_active, last_used_at, updated_at')
+        .eq('org_id', context.orgId)
         .eq('provider', provider)
         .eq('is_active', true)
-
-      // 3. Insert new key
-      const { data, error: insertError } = await supabase
-        .from('llm_keys')
-        .insert({
-          org_id: orgId,
-          provider,
-          key_encrypted: encryptedKey,
-          key_hint: `...${key.slice(-4)}`,
-          label: label || `${provider} key`,
-          is_active: true,
-          created_by: userId
-        })
-        .select()
+        .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (insertError) throw insertError
+      if (fetchError) throw fetchError
+      if (!data) return NextResponse.json({ error: 'Key stored but could not be fetched' }, { status: 500 })
 
       // 4. Audit Log (Issue #6)
       await supabase.from('admin_actions').insert({
-        org_id: orgId,
-        admin_user_id: userId,
+        org_id: context.orgId,
+        admin_user_id: context.adminMemberId,
         action: 'add_key',
         details: { provider, key_id: data.id, label }
       })
@@ -103,10 +106,13 @@ export async function PATCH(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
     return await requireAdmin(async (supabase, { orgId, userId }) => {
+      const context = await resolveInternalAdminContext(orgId, userId)
+
       const { data: oldKey, error: fetchError } = await supabase
         .from('llm_keys')
         .select('provider, label, is_active')
         .eq('id', id)
+        .eq('org_id', context.orgId)
         .limit(1)
         .maybeSingle()
 
@@ -117,6 +123,7 @@ export async function PATCH(req: NextRequest) {
         .from('llm_keys')
         .update({ is_active, label })
         .eq('id', id)
+        .eq('org_id', context.orgId)
         .select()
         .limit(1)
         .maybeSingle()
@@ -125,8 +132,8 @@ export async function PATCH(req: NextRequest) {
 
       // Audit Log
       await supabase.from('admin_actions').insert({
-        org_id: orgId,
-        admin_user_id: userId,
+        org_id: context.orgId,
+        admin_user_id: context.adminMemberId,
         action: 'update_key',
         details: { 
           key_id: id, 
@@ -153,10 +160,13 @@ export async function DELETE(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
     return await requireAdmin(async (supabase, { orgId, userId }) => {
+      const context = await resolveInternalAdminContext(orgId, userId)
+
       const { data: key, error: fetchError } = await supabase
         .from('llm_keys')
         .select('provider')
         .eq('id', id)
+        .eq('org_id', context.orgId)
         .limit(1)
         .maybeSingle()
 
@@ -167,13 +177,14 @@ export async function DELETE(req: NextRequest) {
         .from('llm_keys')
         .delete()
         .eq('id', id)
+        .eq('org_id', context.orgId)
 
       if (deleteError) throw deleteError
 
       // Audit Log
       await supabase.from('admin_actions').insert({
-        org_id: orgId,
-        admin_user_id: userId,
+        org_id: context.orgId,
+        admin_user_id: context.adminMemberId,
         action: 'delete_key',
         details: { key_id: id, provider: key.provider }
       })
@@ -182,6 +193,34 @@ export async function DELETE(req: NextRequest) {
     })
   } catch (err: any) {
     return handleApiError(err)
+  }
+}
+
+async function resolveInternalAdminContext(clerkOrgId: string, clerkUserId: string) {
+  const { data: orgData, error: orgError } = await supabaseAdmin
+    .from('organizations')
+    .select('id')
+    .eq('clerk_org_id', clerkOrgId)
+    .limit(1)
+    .maybeSingle()
+
+  if (orgError) throw orgError
+  if (!orgData) throw new Error('Organization context not found')
+
+  const { data: adminMember, error: memberError } = await supabaseAdmin
+    .from('org_members')
+    .select('id')
+    .eq('clerk_user_id', clerkUserId)
+    .eq('org_id', orgData.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (memberError) throw memberError
+  if (!adminMember) throw new Error('Admin member context not found')
+
+  return {
+    orgId: orgData.id,
+    adminMemberId: adminMember.id,
   }
 }
 

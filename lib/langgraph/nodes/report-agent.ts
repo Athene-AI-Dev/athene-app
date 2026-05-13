@@ -2,12 +2,7 @@ import type { AtheneStateType, AtheneStateUpdate } from "../state";
 import { vectorSearch } from "@/lib/tools/vector-search";
 import { graphQueryTool } from "../tools/graph-query";
 import { SystemMessage, HumanMessage, type MessageContent } from "@langchain/core/messages";
-import { getModel } from "../llm-factory";
-
-// Lightweight model for the planning step — only produces a JSON array of titles.
-const plannerModel = getModel("simple", 0);
-// Slightly higher temperature for prose generation
-const synthesisModel = getModel("simple", 0.2);
+import { resolveModelClient } from "../llm-factory";
 
 /**
  * Parses the raw string output from the graphQueryTool into structured
@@ -123,6 +118,9 @@ export async function reportAgent(
         lastMessage.content as MessageContent
       )
     : "Generate a report";
+
+  const plannerModel = await resolveModelClient("simple", orgId, 0);
+  const synthesisModel = await resolveModelClient("simple", orgId, 0.2);
 
   // 1. Plan sections using LLM
   const planPrompt = PLAN_PROMPT_TEMPLATE.replace(

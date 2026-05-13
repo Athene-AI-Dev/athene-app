@@ -46,7 +46,7 @@ export async function linearCyclesFetcher(connectionId: string, orgId: string): 
         chunk_id: cycle.id,
         title: cycle.name,
         content: fullContent,
-        source_url: '',
+        source_url: `https://linear.app/cycle/${cycle.id}`,
         metadata: {
           provider: 'linear',
           resource_type: 'cycle',

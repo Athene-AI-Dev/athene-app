@@ -39,7 +39,7 @@ export async function fetchJiraIssues(
       cloudId,
       `/rest/api/3/search?jql=${encodeURIComponent(
         jql
-      )}&startAt=${startAt}&maxResults=${maxResults}&fields=summary,description,status,assignee,reporter,created,updated`,
+      )}&startAt=${startAt}&maxResults=${maxResults}&fields=summary,description,status,assignee,reporter,created,updated,priority,sprint`,
       orgId,
       "jira"
     );
@@ -49,20 +49,29 @@ export async function fetchJiraIssues(
 
     for (const issue of data.issues) {
       const description = extractTextFromADF(issue.fields.description);
+      const priority = issue.fields.priority?.name
+      const sprint   = issue.fields.sprint?.name ?? issue.fields.sprint?.displayName
+      const lines: string[] = [
+        `Summary: ${issue.fields.summary}`,
+        `Status: ${issue.fields.status?.name ?? 'Unknown'}`,
+        `Assignee: ${issue.fields.assignee?.displayName ?? 'Unassigned'}`,
+        `Reporter: ${issue.fields.reporter?.displayName ?? 'Unknown'}`,
+      ]
+      if (priority) lines.push(`Priority: ${priority}`)
+      if (sprint)   lines.push(`Sprint: ${sprint}`)
+      if (description) lines.push('', description)
+
       const chunk: FetchedChunk = {
         chunk_id: `jira_${issue.id}`,
         title: `[${issue.key}] ${issue.fields.summary}`,
-        content: `Summary: ${issue.fields.summary}\nStatus: ${
-          issue.fields.status?.name
-        }\nAssignee: ${
-          issue.fields.assignee?.displayName ?? "Unassigned"
-        }\n\n${description}`,
+        content: lines.join('\n'),
         source_url: `${cloudUrl}/browse/${issue.key}`,
         metadata: {
           provider: "jira",
           resource_type: "issue",
           issue_key: issue.key,
           status: issue.fields.status?.name,
+          priority: priority ?? null,
           last_modified: issue.fields.updated,
         },
       };

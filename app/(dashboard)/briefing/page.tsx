@@ -1,24 +1,23 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 import { BriefingSection } from '@/components/briefing/section';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { 
-  History, 
-  Sparkles, 
-  RefreshCw, 
-  Clock, 
+import {
+  History,
+  Sparkles,
+  RefreshCw,
+  Clock,
   Calendar,
   BookOpen,
-  Mail
+  Mail,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { BRIEFING_HOUR_LOCAL } from '@/lib/automations/constants';
 import { cn } from '@/lib/utils';
 
 interface BriefingContent {
@@ -26,7 +25,6 @@ interface BriefingContent {
   emails?: string;
   docs?: string;
   knowledge?: string;
-  summary?: string;
   [key: string]: string | undefined;
 }
 
@@ -44,36 +42,34 @@ interface Briefing {
 
 export default function BriefingPage() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);   // refresh button spinner
+  const [historyItemLoading, setHistoryItemLoading] = useState(false); // history click
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [history, setHistory] = useState<Briefing[]>([]);
   const [enqueuing, setEnqueuing] = useState(false);
   const [historyError, setHistoryError] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    const init = async () => {
-      setLoading(true);
-      await Promise.all([fetchTodayBriefing(), fetchHistory()]);
-      setLoading(false);
-    };
-    init();
-  }, []);
+  // Clean up polling on unmount
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  const fetchTodayBriefing = useCallback(async () => {
+  // Fetch today's briefing — quiet mode skips the toast (used for polling)
+  const fetchTodayBriefing = useCallback(async (quiet = false) => {
     try {
       const res = await fetch('/api/briefing?type=today');
-      
       if (!res.ok) {
-        toast.error(`Failed to load briefing (${res.status})`);
-        return;
+        if (!quiet) toast.error(`Failed to load briefing (${res.status})`);
+        return null;
       }
-
       const data = await res.json();
-      setBriefing(data && !data.error ? data : null);
+      const result = data && !data.error ? (data as Briefing) : null;
+      setBriefing(result);
+      return result;
     } catch (err) {
-      console.error('Failed to fetch briefing', err);
-      toast.error('An unexpected error occurred while loading briefing');
+      console.error('[briefing] fetch today failed:', err);
+      if (!quiet) toast.error('An unexpected error occurred while loading briefing');
+      return null;
     }
   }, []);
 
@@ -81,63 +77,98 @@ export default function BriefingPage() {
     try {
       setHistoryError(false);
       const res = await fetch('/api/briefing?type=history');
-      
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (!data.error) {
-        setHistory(data);
-      }
+      // Guard: data must be an array, not an error object
+      setHistory(Array.isArray(data) ? data : []);
     } catch (err) {
+      setHistory([]); // clear stale data so error banner is unambiguous
       setHistoryError(true);
-      console.error('Failed to fetch history', err);
+      console.error('[briefing] fetch history failed:', err);
     }
   }, []);
 
-  const handleHistoryItemClick = useCallback(async (item: Briefing) => {
-    try {
+  // Initial load
+  useEffect(() => {
+    const init = async () => {
       setLoading(true);
+      await Promise.all([fetchTodayBriefing(), fetchHistory()]);
+      setLoading(false);
+    };
+    init();
+  }, [fetchTodayBriefing, fetchHistory]);
+
+  // Manual refresh — spins the icon, refreshes both today + history
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([fetchTodayBriefing(), fetchHistory()]);
+    setRefreshing(false);
+  }, [fetchTodayBriefing, fetchHistory]);
+
+  // Click a history item: close sheet, load full content without full-page skeleton
+  const handleHistoryItemClick = useCallback(async (item: Briefing) => {
+    setSheetOpen(false);
+    setHistoryItemLoading(true);
+    try {
       const res = await fetch(`/api/briefing?id=${encodeURIComponent(item.id)}`);
-      
       if (!res.ok) {
         toast.error(`Failed to load past briefing (${res.status})`);
         return;
       }
-
       const data = await res.json();
-      if (!data.error) {
-        setBriefing(data);
+      if (data && !data.error) {
+        setBriefing(data as Briefing);
         toast.success(`Viewing briefing from ${new Date(item.generated_at).toLocaleDateString()}`);
+      } else {
+        toast.error('Could not load that briefing');
       }
     } catch (err) {
       toast.error('Failed to load past briefing');
     } finally {
-      setLoading(false);
+      setHistoryItemLoading(false);
     }
   }, []);
 
+  // Generate / trigger synthesis — check res.ok BEFORE res.json(), then poll for result
   const handleGenerateNow = useCallback(async () => {
+    setEnqueuing(true);
     try {
-      setEnqueuing(true);
       const res = await fetch('/api/briefing', { method: 'POST' });
-      const data = await res.json();
-      
-      if (res.ok) {
-        toast.success('Generation job enqueued! Check back in a few minutes.', {
-          description: 'Our agents are currently synthesizing your updates.',
-          icon: <Sparkles className="h-4 w-4 text-primary" />,
-        });
-      } else {
-        toast.error(data.error || 'Failed to enqueue job');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error((data as any).error || `Failed to trigger synthesis (${res.status})`);
+        return;
       }
+
+      toast.success('Synthesis started — polling for results…', {
+        description: 'This page will update automatically when the briefing is ready.',
+        icon: <Sparkles className="h-4 w-4 text-primary" />,
+      });
+
+      // Poll every 5 s for up to 90 s for the new briefing to appear
+      let attempts = 0;
+      const MAX_ATTEMPTS = 18; // 18 × 5s = 90s
+      pollRef.current = setInterval(async () => {
+        attempts++;
+        const result = await fetchTodayBriefing(true /* quiet */);
+        if (result) {
+          // New briefing found — stop polling and refresh history
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setEnqueuing(false);
+          await fetchHistory();
+          toast.success('Briefing ready!');
+        } else if (attempts >= MAX_ATTEMPTS) {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setEnqueuing(false);
+          toast.info('Synthesis is taking longer than expected. Try refreshing manually.');
+        }
+      }, 5_000);
+
     } catch (err) {
       toast.error('An unexpected error occurred');
-    } finally {
       setEnqueuing(false);
     }
-  }, []);
+  }, [fetchTodayBriefing, fetchHistory]);
 
   if (loading) {
     return (
@@ -157,7 +188,7 @@ export default function BriefingPage() {
       {/* Page Header */}
       <header className="relative overflow-hidden rounded-[3.5rem] bg-card/50 border border-border p-10 lg:p-14 transition-all duration-500 hover:shadow-2xl hover:shadow-primary/5 group backdrop-blur-3xl">
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/10 blur-[140px] -z-10 translate-x-1/3 -translate-y-1/3 animate-pulse" />
-        
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
           <div className="space-y-8">
             <div className="flex items-center gap-3">
@@ -170,15 +201,15 @@ export default function BriefingPage() {
                 </Badge>
               )}
             </div>
-            
+
             <div className="space-y-3">
               <h1 className="text-5xl lg:text-8xl font-black tracking-tighter leading-[0.85] uppercase">
                 Morning <span className="text-primary">Briefing</span>
               </h1>
               <p className="text-muted-foreground text-xl max-w-xl leading-relaxed font-bold tracking-tight">
-                {briefing && mounted
-                  ? `Your customized intelligence summary, synthesized at ${new Date(briefing.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
-                  : "Welcome back. Athene is ready to synthesize your cross-platform updates into a high-density morning summary."
+                {briefing
+                  ? `Synthesized at ${new Date(briefing.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+                  : 'Athene is ready to synthesize your cross-platform updates into a high-density morning summary.'
                 }
               </p>
             </div>
@@ -192,13 +223,14 @@ export default function BriefingPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.3em] font-black text-muted-foreground/40 leading-none mb-2">Temporal Context</p>
                 <p className="text-xl font-black text-foreground leading-none uppercase tracking-tighter">
-                  {mounted ? new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '---'}
+                  {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              <Sheet>
+              {/* History Sheet — controlled open state so clicks close it programmatically */}
+              <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon" className="h-20 w-20 rounded-[2rem] border-border bg-card/50 hover:bg-muted hover:border-primary/40 group shadow-2xl transition-all active:scale-95">
                     <History className="w-7 h-7 text-muted-foreground group-hover:text-primary group-hover:scale-110 transition-all duration-500" />
@@ -212,48 +244,51 @@ export default function BriefingPage() {
                       </div>
                       History
                     </SheetTitle>
-                    <p className="text-muted-foreground text-sm font-bold uppercase tracking-widest opacity-60">Intelligence archive — last 7 cycles.</p>
+                    <p className="text-muted-foreground text-sm font-bold uppercase tracking-widest opacity-60">Last 7 briefings</p>
                   </SheetHeader>
                   <div className="mt-10 space-y-6 overflow-y-auto max-h-[calc(100vh-220px)] pr-4 custom-scrollbar">
                     {historyError && (
                       <div className="p-8 rounded-3xl bg-destructive/5 border border-destructive/20 text-center space-y-4">
-                        <p className="text-xs text-destructive font-black uppercase tracking-[0.2em]">Synchronization Failure</p>
+                        <p className="text-xs text-destructive font-black uppercase tracking-[0.2em]">Failed to load history</p>
                         <Button variant="outline" size="sm" onClick={fetchHistory} className="h-10 px-6 text-[10px] uppercase tracking-widest font-black rounded-xl border-destructive/20 hover:bg-destructive/10 hover:text-destructive">
-                          Retry Node Link
+                          Retry
                         </Button>
                       </div>
                     )}
                     {history.length > 0 ? (
                       history.map((item, i) => (
-                        <div 
-                          key={item.id} 
+                        <div
+                          key={item.id}
                           className={cn(
-                            "group flex flex-col gap-4 p-6 rounded-[2.5rem] border transition-all duration-500 cursor-pointer animate-in fade-in slide-in-from-right-4 shadow-sm",
-                            item.id === briefing?.id 
-                              ? "bg-primary/10 border-primary/40 shadow-xl shadow-primary/5" 
+                            "group flex flex-col gap-4 p-6 rounded-[2.5rem] border transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-right-4 shadow-sm",
+                            item.id === briefing?.id
+                              ? "bg-primary/10 border-primary/40 shadow-xl shadow-primary/5"
                               : "bg-muted/10 border-border hover:bg-muted/30 hover:border-primary/20"
                           )}
-                          style={{ animationDelay: `${i * 100}ms` }}
+                          style={{ animationDelay: `${i * 80}ms` }}
                           onClick={() => handleHistoryItemClick(item)}
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-black text-lg tracking-tighter uppercase">
-                              {mounted ? new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '---'}
+                              {new Date(item.generated_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
                             </span>
-                            <Badge variant={item.id === briefing?.id ? "default" : "outline"} className={cn(
+                            <Badge variant={item.id === briefing?.id ? 'default' : 'outline'} className={cn(
                               "rounded-lg text-[9px] px-3 py-1 font-black uppercase tracking-widest",
                               item.id === briefing?.id ? "bg-primary text-primary-foreground border-none" : "border-border text-muted-foreground"
                             )}>
                               {item.id === briefing?.id ? 'Current' : 'Archive'}
                             </Badge>
                           </div>
-                          <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-2 font-bold">{item.summary || 'Strategic summary indexing...'}</p>
+                          {/* Only show summary if it's real content, otherwise nothing */}
+                          {item.summary ? (
+                            <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-2 font-bold">{item.summary}</p>
+                          ) : null}
                           <div className="flex items-center gap-5 pt-2">
                             <div className="flex items-center gap-2 text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">
-                              <Calendar className="w-3.5 h-3.5 text-primary" /> {item.calendar_items || 0} Events
+                              <Calendar className="w-3.5 h-3.5 text-primary" /> {item.calendar_items ?? 0} Events
                             </div>
                             <div className="flex items-center gap-2 text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">
-                              <Mail className="w-3.5 h-3.5 text-secondary" /> {item.email_items || 0} Messages
+                              <Mail className="w-3.5 h-3.5 text-secondary" /> {item.email_items ?? 0} Emails
                             </div>
                           </div>
                         </div>
@@ -263,27 +298,39 @@ export default function BriefingPage() {
                         <div className="p-6 bg-muted rounded-[2rem] border border-border">
                           <BookOpen className="h-12 w-12 text-muted-foreground" />
                         </div>
-                        <p className="text-xs font-black text-muted-foreground uppercase tracking-[0.3em]">Archive Vacuum Detected</p>
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-[0.3em]">No briefings yet</p>
                       </div>
                     ) : null}
                   </div>
                 </SheetContent>
               </Sheet>
 
-              <Button 
-                onClick={fetchTodayBriefing} 
-                variant="outline" 
-                size="icon" 
+              {/* Refresh button — spins during refresh, also refreshes history */}
+              <Button
+                onClick={handleRefresh}
+                variant="outline"
+                size="icon"
                 className="h-20 w-20 rounded-[2rem] border-border bg-card/50 hover:bg-muted hover:border-primary/40 group shadow-2xl transition-all active:scale-95"
-                disabled={loading || enqueuing}
-                title={enqueuing ? "Generation in progress — check back shortly" : "Refresh"}
+                disabled={refreshing || enqueuing || historyItemLoading}
+                title={enqueuing ? "Synthesis in progress…" : "Refresh"}
               >
-                <RefreshCw className={cn("w-7 h-7 text-muted-foreground group-hover:text-primary group-hover:rotate-180 transition-all duration-700", loading && "animate-spin")} />
+                <RefreshCw className={cn(
+                  "w-7 h-7 text-muted-foreground group-hover:text-primary transition-all duration-700",
+                  refreshing && "animate-spin text-primary"
+                )} />
               </Button>
             </div>
           </div>
         </div>
       </header>
+
+      {/* Loading overlay for history-item navigation — no full-page skeleton */}
+      {historyItemLoading && (
+        <div className="flex items-center justify-center gap-3 py-6 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span className="text-sm font-bold uppercase tracking-widest">Loading briefing…</span>
+        </div>
+      )}
 
       {!briefing ? (
         <Card className="p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-12 border-dashed border-border bg-card/30 rounded-[3.5rem] group overflow-hidden relative backdrop-blur-xl shadow-2xl transition-all hover:border-primary/20">
@@ -294,48 +341,53 @@ export default function BriefingPage() {
           <div className="space-y-5 relative z-10">
             <h3 className="text-4xl lg:text-6xl font-black tracking-tighter text-foreground leading-none uppercase">Synthesis Required</h3>
             <p className="text-muted-foreground text-xl max-w-lg mx-auto leading-relaxed font-bold tracking-tight">
-              Athene hasn't generated your briefing for this cycle. Trigger our agents now to process your unread data.
+              {enqueuing
+                ? "Agents are processing your data — this page will update automatically when ready."
+                : "No briefing for today yet. Trigger synthesis to process your connected sources."}
             </p>
           </div>
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             className="h-20 px-16 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-[0.3em] text-[11px] gap-5 group relative z-10 shadow-2xl shadow-primary/20 transition-all active:scale-95"
             onClick={handleGenerateNow}
             disabled={enqueuing}
           >
-            <Sparkles className="w-6 h-6 group-hover:animate-pulse" />
-            {enqueuing ? 'Synthesizing Intelligence...' : 'Trigger Neural Synthesis'}
+            {enqueuing
+              ? <><Loader2 className="w-5 h-5 animate-spin" /> Synthesizing…</>
+              : <><Sparkles className="w-6 h-6 group-hover:animate-pulse" /> Trigger Neural Synthesis</>
+            }
           </Button>
         </Card>
       ) : (
         <div className="grid gap-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-          <BriefingSection 
-            type="calendar" 
-            title="Calendar & Strategic Alignment" 
-            content={briefing.content?.calendar ?? ""} 
+          <BriefingSection
+            type="calendar"
+            title="Calendar & Strategic Alignment"
+            content={briefing.content?.calendar ?? ""}
             className="stagger-1"
           />
-          <BriefingSection 
-            type="emails" 
-            title="High-Priority Communications" 
-            content={briefing.content?.emails ?? ""} 
+          <BriefingSection
+            type="emails"
+            title="High-Priority Communications"
+            content={briefing.content?.emails ?? ""}
             className="stagger-2"
           />
-          <BriefingSection 
-            type="docs" 
-            title="Knowledge & Document Evolution" 
-            content={briefing.content?.docs ?? ""} 
+          <BriefingSection
+            type="docs"
+            title="Knowledge & Document Evolution"
+            content={briefing.content?.docs ?? ""}
             className="stagger-3"
           />
-          <BriefingSection 
-            type="knowledge" 
-            title="Knowledge Highlights" 
-            content={briefing.content?.knowledge ?? ""} 
-            className="stagger-4"
-          />
+          {briefing.content?.knowledge && (
+            <BriefingSection
+              type="knowledge"
+              title="Executive Summary"
+              content={briefing.content.knowledge}
+              className="stagger-4"
+            />
+          )}
         </div>
       )}
     </div>
-
   );
 }

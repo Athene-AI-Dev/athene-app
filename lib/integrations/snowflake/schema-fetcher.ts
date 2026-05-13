@@ -1,5 +1,14 @@
 import { snowflakeFetch } from './client'
 import { getConnection } from '@/lib/nango/client'
+import {
+  type ColumnSchema,
+  type TableStats,
+  type NumericStat,
+  type CategoricalStat,
+  type DateStat,
+  classifyColumn,
+  type SyncConfig,
+} from '../bi-chunking'
 
 export interface TableSchema {
   database: string
@@ -63,6 +72,82 @@ export async function discoverSchema(connectionId: string, orgId: string): Promi
   }
 
   return schemas
+}
+
+/** Fetch per-column statistics for a single table. */
+export async function fetchTableStats(
+  connectionId: string,
+  orgId: string,
+  tableFullName: string,
+  schema: ColumnSchema[],
+  syncConfig: SyncConfig,
+): Promise<TableStats> {
+  const numeric: NumericStat[] = []
+  const categorical: CategoricalStat[] = []
+  const dates: DateStat[] = []
+
+  // Row count
+  let rowCount = 0
+  try {
+    const countRes = await snowflakeFetch(connectionId, orgId, `SELECT COUNT(*) AS cnt FROM ${tableFullName}`)
+    const rows = parseSnowflakeRows(countRes)
+    rowCount = Number(rows[0]?.cnt ?? 0)
+  } catch (err) {
+    console.warn(`[snowflake] Could not get row count for ${tableFullName}:`, err)
+  }
+
+  for (const col of schema) {
+    const kind = classifyColumn(col.type)
+    const quotedCol = col.name  // Snowflake identifiers are case-insensitive; skip quoting for simplicity
+
+    if (kind === 'numeric') {
+      try {
+        const res = await snowflakeFetch(
+          connectionId, orgId,
+          `SELECT MIN(${quotedCol}) AS min_val, MAX(${quotedCol}) AS max_val, AVG(${quotedCol}) AS avg_val, SUM(${quotedCol}) AS sum_val FROM ${tableFullName}`
+        )
+        const row = parseSnowflakeRows(res)[0] ?? {}
+        numeric.push({
+          col: col.name,
+          min: row.min_val ?? '',
+          max: row.max_val ?? '',
+          avg: row.avg_val != null ? Number(row.avg_val).toFixed(2) : '',
+          sum: row.sum_val != null ? Number(row.sum_val).toLocaleString() : '',
+        })
+      } catch { /* non-fatal */ }
+    } else if (kind === 'categorical') {
+      try {
+        const limit = syncConfig.stats_categorical_limit
+        const distinctRes = await snowflakeFetch(
+          connectionId, orgId,
+          `SELECT COUNT(DISTINCT ${quotedCol}) AS cnt FROM ${tableFullName}`
+        )
+        const distinctCount = Number(parseSnowflakeRows(distinctRes)[0]?.cnt ?? 0)
+
+        const topRes = await snowflakeFetch(
+          connectionId, orgId,
+          `SELECT ${quotedCol} AS val, COUNT(*) AS cnt FROM ${tableFullName} GROUP BY ${quotedCol} ORDER BY cnt DESC LIMIT ${limit}`
+        )
+        const topRows = parseSnowflakeRows(topRes)
+        categorical.push({
+          col: col.name,
+          distinct: distinctCount,
+          topValues: topRows.map((r: any) => ({ value: String(r.val ?? ''), count: String(r.cnt ?? '') })),
+        })
+      } catch { /* non-fatal */ }
+    } else if (kind === 'date') {
+      try {
+        const res = await snowflakeFetch(
+          connectionId, orgId,
+          `SELECT MIN(${quotedCol}) AS min_val, MAX(${quotedCol}) AS max_val FROM ${tableFullName}`
+        )
+        const row = parseSnowflakeRows(res)[0] ?? {}
+        dates.push({ col: col.name, min: String(row.min_val ?? ''), max: String(row.max_val ?? '') })
+      } catch { /* non-fatal */ }
+    }
+  }
+
+  return { tableName: tableFullName, rowCount, schema, numeric, categorical, dates }
 }
 
 /**

@@ -1,0 +1,376 @@
+// ============================================================
+// bi-chunking.ts — Semantic chunking for BI / tabular data
+//
+// For SQL tables, raw row-dumps produce semantically empty
+// embeddings. Instead we generate three chunk types per table:
+//
+//   1. Stats chunk  — schema + column statistics (row count,
+//      min/max/avg/sum for numerics, top-N for categoricals,
+//      date ranges). Answers virtually all aggregate BI questions.
+//
+//   2. Sample chunk — representative row sample, grouped by the
+//      most cardinal categorical column for coherent context.
+//
+//   3. Aggregation chunk — pre-computed GROUP BY results for
+//      every numeric × categorical dimension pair (top 2 dims).
+//      Directly answers "revenue by region" style queries.
+//
+// These helpers are provider-agnostic; Snowflake, BigQuery, and
+// Redshift all call them with the same inputs.
+// ============================================================
+
+import type { FetchedChunk } from './base'
+import type { KGNode, KGEdge, Visibility } from '@/lib/knowledge-graph/types'
+
+// ---- SyncConfig -----------------------------------------------
+
+export interface SyncConfig {
+  max_rows_per_table: number
+  sample_rows: number
+  enable_stats: boolean
+  enable_aggregations: boolean
+  stats_categorical_limit: number
+  incremental: boolean
+}
+
+const DEFAULTS: SyncConfig = {
+  max_rows_per_table: 10_000,
+  sample_rows: 50,
+  enable_stats: true,
+  enable_aggregations: true,
+  stats_categorical_limit: 20,
+  incremental: true,
+}
+
+export function resolveSyncConfig(raw: Record<string, unknown> | null | undefined): SyncConfig {
+  if (!raw) return { ...DEFAULTS }
+  return {
+    max_rows_per_table: (raw.max_rows_per_table as number) ?? DEFAULTS.max_rows_per_table,
+    sample_rows:        (raw.sample_rows as number)        ?? DEFAULTS.sample_rows,
+    enable_stats:       (raw.enable_stats as boolean)      ?? DEFAULTS.enable_stats,
+    enable_aggregations:(raw.enable_aggregations as boolean) ?? DEFAULTS.enable_aggregations,
+    stats_categorical_limit: (raw.stats_categorical_limit as number) ?? DEFAULTS.stats_categorical_limit,
+    incremental:        (raw.incremental as boolean)       ?? DEFAULTS.incremental,
+  }
+}
+
+// ---- Column statistics types ----------------------------------
+
+export interface ColumnSchema {
+  name: string
+  type: string  // raw provider type string
+}
+
+export interface NumericStat {
+  col: string
+  min: string
+  max: string
+  avg: string
+  sum: string
+}
+
+export interface CategoricalStat {
+  col: string
+  distinct: number
+  topValues: { value: string; count: string }[]
+}
+
+export interface DateStat {
+  col: string
+  min: string
+  max: string
+}
+
+export interface TableStats {
+  tableName: string
+  rowCount: number
+  schema: ColumnSchema[]
+  numeric: NumericStat[]
+  categorical: CategoricalStat[]
+  dates: DateStat[]
+}
+
+export interface AggregationResult {
+  dimension: string
+  metric: string
+  rows: { dimValue: string; metricValue: string }[]
+}
+
+// ---- Column type classification --------------------------------
+
+const NUMERIC_TYPES = new Set([
+  'number', 'numeric', 'decimal', 'float', 'double', 'real', 'integer', 'int',
+  'bigint', 'smallint', 'tinyint', 'byteint', 'fixed', 'float4', 'float8',
+  'int2', 'int4', 'int8', 'int16', 'int32', 'int64', 'money', 'currency',
+])
+
+const DATE_TYPES = new Set([
+  'date', 'datetime', 'timestamp', 'timestamp_ntz', 'timestamp_tz',
+  'timestamp_ltz', 'timestamptz', 'time', 'timetz',
+])
+
+const TEXT_TYPES = new Set([
+  'text', 'string', 'varchar', 'char', 'character', 'nvarchar', 'nchar',
+  'bpchar', 'character varying', 'name', 'enum',
+])
+
+export function classifyColumn(type: string): 'numeric' | 'categorical' | 'date' | 'other' {
+  const t = type.toLowerCase().replace(/\(.*\)/, '').trim()
+  if (DATE_TYPES.has(t) || t.startsWith('timestamp') || t.startsWith('date')) return 'date'
+  if (NUMERIC_TYPES.has(t) || t.startsWith('number') || t.startsWith('numeric') || t.startsWith('decimal') || t.startsWith('float') || t.startsWith('double') || t.startsWith('int')) return 'numeric'
+  if (TEXT_TYPES.has(t) || t.startsWith('varchar') || t.startsWith('char') || t.startsWith('nvar')) return 'categorical'
+  return 'other'
+}
+
+// ---- Chunk builders -------------------------------------------
+
+export function buildStatsChunk(
+  tableFullName: string,
+  stats: TableStats,
+  provider: string,
+  sourceUrl: string,
+): FetchedChunk {
+  const lines: string[] = [`Table: ${tableFullName} (${stats.rowCount.toLocaleString()} rows)`]
+
+  if (stats.schema.length > 0) {
+    lines.push('Columns:')
+    for (const col of stats.schema) {
+      const kind = classifyColumn(col.type)
+      const numStat = stats.numeric.find((n) => n.col === col.name)
+      const catStat = stats.categorical.find((c) => c.col === col.name)
+      const dateStat = stats.dates.find((d) => d.col === col.name)
+
+      let detail = col.type
+      if (numStat) {
+        const parts: string[] = []
+        if (numStat.min !== '' && numStat.max !== '') parts.push(`range: ${numStat.min}–${numStat.max}`)
+        if (numStat.avg !== '') parts.push(`avg: ${numStat.avg}`)
+        if (numStat.sum !== '') parts.push(`total: ${numStat.sum}`)
+        if (parts.length) detail += ` — ${parts.join(', ')}`
+      } else if (catStat) {
+        const topStr = catStat.topValues
+          .slice(0, 5)
+          .map(({ value, count }) => `${value} (${count})`)
+          .join(', ')
+        detail += ` — ${catStat.distinct} distinct values`
+        if (topStr) detail += `: ${topStr}`
+      } else if (dateStat) {
+        detail += ` — range: ${dateStat.min} to ${dateStat.max}`
+      }
+
+      lines.push(`  ${col.name.padEnd(20)} ${detail}`)
+    }
+  }
+
+  const content = lines.join('\n')
+
+  return {
+    chunk_id: `${provider}_stats_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+    title: `${provider.toUpperCase()}: ${tableFullName} — Schema & Statistics`,
+    content,
+    source_url: sourceUrl,
+    metadata: {
+      provider,
+      resource_type: 'table_stats',
+      table: tableFullName,
+      row_count: String(stats.rowCount),
+    },
+  }
+}
+
+export function buildSampleChunk(
+  tableFullName: string,
+  schema: ColumnSchema[],
+  rows: Record<string, string>[],
+  provider: string,
+  sourceUrl: string,
+): FetchedChunk {
+  if (rows.length === 0) {
+    return {
+      chunk_id: `${provider}_sample_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+      title: `${provider.toUpperCase()}: ${tableFullName} — Sample Rows`,
+      content: `Table ${tableFullName} — no rows returned`,
+      source_url: sourceUrl,
+      metadata: { provider, resource_type: 'table_sample', table: tableFullName },
+    }
+  }
+
+  // Detect primary grouping dimension: most cardinal categorical column
+  const primaryDim = detectPrimaryDimension(schema, rows)
+
+  let content: string
+  if (primaryDim) {
+    // Group rows by primary dimension value, show a few rows per group
+    const groups = new Map<string, Record<string, string>[]>()
+    for (const row of rows) {
+      const key = row[primaryDim] ?? 'NULL'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(row)
+    }
+    const blocks: string[] = []
+    for (const [dimVal, groupRows] of Array.from(groups.entries()).slice(0, 10)) {
+      blocks.push(`--- ${primaryDim}: ${dimVal} ---`)
+      for (const row of groupRows.slice(0, 3)) {
+        blocks.push(Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(', '))
+      }
+    }
+    content = blocks.join('\n')
+  } else {
+    content = rows.slice(0, 50).map((row) =>
+      Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(', ')
+    ).join('\n')
+  }
+
+  return {
+    chunk_id: `${provider}_sample_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+    title: `${provider.toUpperCase()}: ${tableFullName} — Sample Rows`,
+    content,
+    source_url: sourceUrl,
+    metadata: { provider, resource_type: 'table_sample', table: tableFullName },
+  }
+}
+
+export function buildAggregationChunk(
+  tableFullName: string,
+  aggResults: AggregationResult[],
+  provider: string,
+  sourceUrl: string,
+): FetchedChunk {
+  if (aggResults.length === 0) {
+    return {
+      chunk_id: `${provider}_agg_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+      title: `${provider.toUpperCase()}: ${tableFullName} — Aggregations`,
+      content: `Table ${tableFullName} — no aggregations available`,
+      source_url: sourceUrl,
+      metadata: { provider, resource_type: 'table_aggregations', table: tableFullName },
+    }
+  }
+
+  const lines: string[] = [`${tableFullName} — Pre-computed Aggregations`]
+  for (const agg of aggResults) {
+    const rowsStr = agg.rows
+      .slice(0, 10)
+      .map(({ dimValue, metricValue }) => `${dimValue}: ${metricValue}`)
+      .join(', ')
+    lines.push(`${agg.metric} by ${agg.dimension}: ${rowsStr}`)
+  }
+
+  return {
+    chunk_id: `${provider}_agg_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+    title: `${provider.toUpperCase()}: ${tableFullName} — Aggregations`,
+    content: lines.join('\n'),
+    source_url: sourceUrl,
+    metadata: { provider, resource_type: 'table_aggregations', table: tableFullName },
+  }
+}
+
+// ---- KG schema entity extraction (deterministic, no LLM) ------
+
+export function extractSchemaEntities(
+  tableFullName: string,
+  stats: TableStats,
+  orgId: string,
+  departmentId: string | null,
+  visibility: Visibility,
+  documentId: string,
+): { nodes: KGNode[]; edges: KGEdge[] } {
+  const nodes: KGNode[] = []
+  const edges: KGEdge[] = []
+  const deptIds = departmentId ? [departmentId] : []
+
+  const tableNode: KGNode = {
+    org_id: orgId,
+    label: tableFullName,
+    entity_type: 'service',    // closest built-in type for a data table
+    department_ids: deptIds,
+    visibility,
+    source_documents: [documentId],
+    description: `Data table: ${tableFullName} (${stats.rowCount.toLocaleString()} rows)`,
+  }
+  nodes.push(tableNode)
+
+  for (const col of stats.schema) {
+    const kind = classifyColumn(col.type)
+    if (kind === 'numeric') {
+      const metricNode: KGNode = {
+        org_id: orgId,
+        label: `${tableFullName}.${col.name}`,
+        entity_type: 'concept',
+        department_ids: deptIds,
+        visibility,
+        source_documents: [documentId],
+        description: `Numeric metric column: ${col.name} in ${tableFullName}`,
+      }
+      nodes.push(metricNode)
+      edges.push({
+        org_id: orgId,
+        source_label: tableFullName,
+        source_entity_type: 'service',
+        target_label: metricNode.label,
+        target_entity_type: 'concept',
+        relation: 'FEEDS',
+        provenance: 'EXTRACTED',
+        confidence: 1.0,
+        source_document: documentId,
+        department_id: departmentId,
+        visibility,
+      })
+    } else if (kind === 'categorical') {
+      const dimNode: KGNode = {
+        org_id: orgId,
+        label: `${tableFullName}.${col.name}`,
+        entity_type: 'concept',
+        department_ids: deptIds,
+        visibility,
+        source_documents: [documentId],
+        description: `Categorical dimension column: ${col.name} in ${tableFullName}`,
+      }
+      nodes.push(dimNode)
+      edges.push({
+        org_id: orgId,
+        source_label: tableFullName,
+        source_entity_type: 'service',
+        target_label: dimNode.label,
+        target_entity_type: 'concept',
+        relation: 'PART_OF',
+        provenance: 'EXTRACTED',
+        confidence: 1.0,
+        source_document: documentId,
+        department_id: departmentId,
+        visibility,
+      })
+    }
+  }
+
+  return { nodes, edges }
+}
+
+// ---- Internal helper ------------------------------------------
+
+function detectPrimaryDimension(
+  schema: ColumnSchema[],
+  rows: Record<string, string>[],
+): string | null {
+  if (rows.length === 0) return null
+  const categoricals = schema.filter((c) => classifyColumn(c.type) === 'categorical')
+  if (categoricals.length === 0) return null
+
+  // Pick the categorical column with the most distinct values (but not > 80% unique, which would be an ID)
+  let best: string | null = null
+  let bestScore = 0
+
+  for (const col of categoricals) {
+    const distinct = new Set(rows.map((r) => r[col.name])).size
+    const ratio = distinct / rows.length
+    // Ideal: enough diversity to group by (>2 distinct) but not an ID (< 80% unique)
+    if (distinct > 2 && ratio < 0.8) {
+      const score = distinct
+      if (score > bestScore) {
+        bestScore = score
+        best = col.name
+      }
+    }
+  }
+
+  return best
+}

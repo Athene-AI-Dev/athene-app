@@ -159,6 +159,36 @@ async function embedWithJina(
   return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding)
 }
 
+// ---- Provider call with retry ------------------------------------------
+
+const MAX_PROVIDER_RETRIES = 2
+
+async function callProviderWithRetry(
+  texts: string[],
+  config: EmbeddingConfig
+): Promise<number[][]> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= MAX_PROVIDER_RETRIES; attempt++) {
+    try {
+      switch (config.provider) {
+        case "openai":
+          return await embedWithOpenAI(texts, config)
+        case "jina":
+          return await embedWithJina(texts, config)
+        case "together":
+        case "nomic":
+          return await embedWithOpenAICompat(texts, config)
+      }
+    } catch (err) {
+      lastErr = err
+      if (attempt < MAX_PROVIDER_RETRIES) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+      }
+    }
+  }
+  throw lastErr
+}
+
 // ---- Core embed function -----------------------------------------------
 
 async function embedTexts(
@@ -167,27 +197,71 @@ async function embedTexts(
 ): Promise<number[][]> {
   if (texts.length === 0) return []
 
-  // 1. Try per-org BYOK
-  const config = orgId
+  // 1. Try per-org BYOK first
+  const byokConfig = orgId
     ? await fetchByokEmbeddingConfig(orgId).catch(() => null)
     : null
 
-  const resolved = config ?? resolveSystemConfig()
+  // 2. Build fallback chain: BYOK → system providers in priority order
+  const systemConfig = resolveSystemConfig()
+  const candidates: EmbeddingConfig[] = []
 
-  if (!resolved) {
+  if (byokConfig) candidates.push(byokConfig)
+  if (systemConfig) candidates.push(systemConfig)
+
+  // Add remaining system providers not already in the chain
+  const systemFallbacks: Array<() => EmbeddingConfig | null> = [
+    () => process.env.JINA_API_KEY ? { provider: "jina", model: "jina-embeddings-v3", dims: EMBEDDING_DIMS, apiKey: process.env.JINA_API_KEY! } : null,
+    () => process.env.TOGETHER_API_KEY ? { provider: "together", model: "togethercomputer/m2-bert-80M-8k-base", dims: EMBEDDING_DIMS, apiKey: process.env.TOGETHER_API_KEY!, baseUrl: "https://api.together.xyz/v1" } : null,
+    () => process.env.NOMIC_API_KEY ? { provider: "nomic", model: "nomic-embed-text-v1.5", dims: EMBEDDING_DIMS, apiKey: process.env.NOMIC_API_KEY!, baseUrl: "https://api-atlas.nomic.ai/v1" } : null,
+  ]
+
+  for (const fn of systemFallbacks) {
+    const c = fn()
+    if (c && !candidates.some(x => x.provider === c.provider && x.apiKey === c.apiKey)) {
+      candidates.push(c)
+    }
+  }
+
+  if (candidates.length === 0) {
     throw new Error(
       "[EmbeddingFactory] No embedding provider configured. Set JINA_API_KEY, TOGETHER_API_KEY, or NOMIC_API_KEY in environment."
     )
   }
 
-  switch (resolved.provider) {
-    case "openai":
-      return embedWithOpenAI(texts, resolved)
-    case "jina":
-      return embedWithJina(texts, resolved)
-    case "together":
-    case "nomic":
-      return embedWithOpenAICompat(texts, resolved)
+  // 3. Try each provider in order, falling back on failure
+  let lastErr: unknown
+  for (const config of candidates) {
+    try {
+      return await callProviderWithRetry(texts, config)
+    } catch (err) {
+      lastErr = err
+      console.warn(
+        `[EmbeddingFactory] Provider '${config.provider}' failed (${err instanceof Error ? err.message : String(err)}), ` +
+        `trying next in fallback chain…`
+      )
+    }
+  }
+
+  throw new Error(
+    `[EmbeddingFactory] All embedding providers exhausted. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+  )
+}
+
+// ---- Startup assertion --------------------------------------------------
+
+let _dimLogged = false
+function assertDims(vec: number[]): void {
+  if (!_dimLogged) {
+    _dimLogged = true
+    console.log(`[EmbeddingFactory] dims=${vec.length} configured=${EMBEDDING_DIMS}`)
+    if (vec.length !== EMBEDDING_DIMS) {
+      console.error(
+        `[EmbeddingFactory] DIMENSION MISMATCH: provider returned ${vec.length}-dim vectors ` +
+        `but DB column is vector(${EMBEDDING_DIMS}). ` +
+        `Indexing jobs will fail. Check EMBEDDING_DIMS env and migration state.`
+      )
+    }
   }
 }
 
@@ -196,6 +270,7 @@ async function embedTexts(
 /** Embed a single text string. Uses org BYOK if orgId provided. */
 export async function embed(text: string, orgId?: string): Promise<number[]> {
   const results = await embedTexts([text], orgId)
+  assertDims(results[0])
   return results[0]
 }
 
@@ -204,5 +279,7 @@ export async function embedBatch(
   texts: string[],
   orgId?: string
 ): Promise<number[][]> {
-  return embedTexts(texts, orgId)
+  const results = await embedTexts(texts, orgId)
+  if (results.length > 0) assertDims(results[0])
+  return results
 }

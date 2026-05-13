@@ -73,29 +73,56 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  try {
-    // Enqueue job via QStash
-    const workerUrl = `${getServerBaseUrl()}/api/worker/morning-briefing`;
-    
-    // We send context so the worker knows who to generate for
-    const body = {
-      org_id: context.org_id,
-      user_id: context.user_id,
-      triggered_by: 'user_manual'
-    };
+  const workerUrl = `${getServerBaseUrl()}/api/worker/morning-briefing`;
+  const body = {
+    org_id: context.org_id,
+    user_id: context.user_id,
+    triggered_by: 'user_manual',
+  };
 
-    const response = await qstash.publishJSON({
-      url: workerUrl,
-      body,
+  const hasQStash = !!process.env.QSTASH_TOKEN;
+
+  if (hasQStash) {
+    // ── Production path: enqueue via QStash for async, reliable processing ──
+    try {
+      const response = await qstash.publishJSON({ url: workerUrl, body });
+      return NextResponse.json({
+        message: 'Briefing generation job enqueued',
+        messageId: response.messageId,
+      });
+    } catch (error) {
+      console.error('[briefing/post] QStash enqueue failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ error: `Failed to enqueue job: ${message}` }, { status: 500 });
+    }
+  }
+
+  // ── Dev / no-QStash path: call worker synchronously with internal bypass header ──
+  // verifyQStashSignature accepts x-dev-internal-bypass when signing keys are absent.
+  console.warn('[briefing/post] QSTASH_TOKEN not set — calling worker synchronously (dev mode)');
+  try {
+    const workerRes = await fetch(workerUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-dev-internal-bypass': '1',
+      },
+      body: JSON.stringify(body),
     });
 
-    return NextResponse.json({ 
-      message: 'Briefing generation job enqueued',
-      messageId: response.messageId 
+    if (!workerRes.ok) {
+      const text = await workerRes.text().catch(() => workerRes.statusText);
+      throw new Error(`Worker responded ${workerRes.status}: ${text}`);
+    }
+
+    const result = await workerRes.json();
+    return NextResponse.json({
+      message: 'Briefing generated (dev mode — synchronous)',
+      ...result,
     });
   } catch (error) {
-    console.error('[briefing/post]', error);
+    console.error('[briefing/post] Direct worker call failed:', error);
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: `Failed to enqueue job: ${message}` }, { status: 500 });
+    return NextResponse.json({ error: `Failed to generate briefing: ${message}` }, { status: 500 });
   }
 }

@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Activity, 
-  Cpu, 
-  Clock, 
-  Cpu as CpuIcon, 
+import { useRouter } from 'next/navigation';
+import {
+  Activity,
+  Cpu,
   Database,
   ChevronRight,
-  Plus,
-  Zap
+  Zap,
+  Link2,
+  MessageSquare,
+  Upload,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,45 +35,45 @@ interface MetricCardProps {
   label: string;
   value: string;
   status?: string;
-  accent?: "primary" | "secondary";
 }
 
-const MetricCard = ({ icon: Icon, label, value, status }: MetricCardProps) => {
-  return (
-    <GlassCard className="p-6 hover:border-primary/20 transition-all cursor-default group">
-      <div className="flex justify-between items-start mb-4">
-        <div className="p-3 rounded-xl bg-primary/10 border border-primary/10 group-hover:bg-primary/20 transition-colors">
-          <Icon size={22} className="text-primary" />
-        </div>
-        {status && (
-          <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/5 px-2 py-1 rounded-lg border border-primary/10">
-            {status}
-          </span>
-        )}
+const MetricCard = ({ icon: Icon, label, value, status }: MetricCardProps) => (
+  <GlassCard className="p-6 hover:border-primary/20 transition-all cursor-default group">
+    <div className="flex justify-between items-start mb-4">
+      <div className="p-3 rounded-xl bg-primary/10 border border-primary/10 group-hover:bg-primary/20 transition-colors">
+        <Icon size={22} className="text-primary" />
       </div>
-      <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-black mb-1 opacity-60">{label}</div>
-      <div className="text-3xl font-black text-foreground tracking-tighter">{value}</div>
-    </GlassCard>
-  );
-};
+      {status && (
+        <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/5 px-2 py-1 rounded-lg border border-primary/10">
+          {status}
+        </span>
+      )}
+    </div>
+    <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-black mb-1 opacity-60">{label}</div>
+    <div className="text-3xl font-black text-foreground tracking-tighter">{value}</div>
+  </GlassCard>
+);
 
-// --- Command Center Content ---
+// --- Dashboard Page ---
 
 export default function DashboardPage() {
-  const [latencies, setLatencies] = useState([2.4, 18.1, 42.5]);
+  const router = useRouter();
   const [stats, setStats] = useState({ documents: 0, knowledge_nodes: 0, actions: 0, integrations: 0 });
   const [orchestrations, setOrchestrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard_stats");
-      if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setStats(data.stats);
       setOrchestrations(data.recent_orchestrations);
-    } catch (error) {
-      console.error(error);
+      setFetchError(null);
+    } catch (error: any) {
+      console.error("[dashboard] fetchStats failed:", error);
+      setFetchError(error.message ?? "Failed to load stats");
     } finally {
       setLoading(false);
     }
@@ -79,40 +81,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 30000); // Refresh stats every 30s
+    const interval = setInterval(fetchStats, 30_000);
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Update Latencies
-      setLatencies(prev => prev.map(l => {
-        const delta = (Math.random() - 0.5) * 1.5;
-        return Math.max(1.0, l + delta);
-      }));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleViewAll = () => {
-    toast("Navigating to full orchestration history...");
-  };
-
-  const handlePlusClick = () => {
-    toast.info("Initializing New Sector Node", {
-      description: "Allocating neural resources for expansion.",
-    });
-  };
-
-  const handleOrchestrationClick = (label: string) => {
-    toast.success(`Accessing ${label}`, {
-      description: "Retrieving full execution trace from Data Vault.",
-    });
-  };
-
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk'] transition-colors duration-300">
+      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -124,30 +99,49 @@ export default function DashboardPage() {
             </h1>
           </div>
           <p className="text-muted-foreground text-lg max-w-2xl font-medium leading-relaxed">
-            Real-time health monitoring of the AtheneAI neural grid.
+            Real-time health monitoring of the Athene knowledge pipeline.
           </p>
         </div>
-        <div className="flex items-center gap-2 px-6 py-3 bg-muted/20 border border-border rounded-2xl cursor-help hover:bg-muted/40 transition-all shadow-sm">
+        <div className="flex items-center gap-2 px-6 py-3 bg-muted/20 border border-border rounded-2xl cursor-default hover:bg-muted/40 transition-all shadow-sm">
           <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span className="text-[11px] font-black text-foreground uppercase tracking-widest">Neural Grid Active</span>
+          <span className="text-[11px] font-black text-foreground uppercase tracking-widest">Pipeline Active</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <MetricCard icon={Database} label="Knowledge Depth" value={`${stats.documents} Docs`} status="Indexed" />
-        <MetricCard icon={Cpu} label="Neural Entities" value={`${stats.knowledge_nodes}`} status="Networked" />
-        <MetricCard icon={Activity} label="Agent Decisiveness" value={`${stats.actions} HITL`} status="Audited" />
+      {/* Error banner */}
+      {fetchError && (
+        <div className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-bold">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>Could not load stats: {fetchError}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchStats}
+            className="ml-auto text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl"
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* 4 metric cards — all from real API */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+        <MetricCard icon={Database}  label="Indexed Documents"   value={`${stats.documents}`}       status="Indexed"    />
+        <MetricCard icon={Cpu}       label="Knowledge Entities"  value={`${stats.knowledge_nodes}`} status="Networked"  />
+        <MetricCard icon={Activity}  label="HITL Decisions"      value={`${stats.actions}`}         status="Audited"    />
+        <MetricCard icon={Link2}     label="Active Connectors"   value={`${stats.integrations}`}    status="Live"       />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Orchestrations — real HITL decisions from DB */}
         <div className="lg:col-span-2">
           <GlassCard className="p-8">
             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Recent Orchestrations</h3>
-              <Button 
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Recent Agent Decisions</h3>
+              <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleViewAll}
+                onClick={() => router.push('/admin/audit-log')}
                 className="text-[10px] text-muted-foreground hover:text-primary uppercase font-black tracking-widest transition-colors rounded-xl h-8 px-4"
               >
                 View All →
@@ -160,31 +154,34 @@ export default function DashboardPage() {
                 ))
               ) : orchestrations.length === 0 ? (
                 <div className="py-12 text-center bg-muted/5 rounded-[2rem] border border-dashed border-border">
-                  <p className="text-sm text-muted-foreground font-bold">No recent orchestrations found.</p>
+                  <p className="text-sm text-muted-foreground font-bold">No agent decisions yet.</p>
+                  <p className="text-xs text-muted-foreground/60 mt-2">HITL approvals and rejections will appear here.</p>
                 </div>
               ) : (
                 orchestrations.map((item, i) => (
-                  <div 
-                    key={i} 
-                    onClick={() => handleOrchestrationClick(item.label)}
-                    className="flex items-center justify-between p-5 rounded-2xl bg-muted/10 border border-border hover:border-primary/20 hover:bg-muted/20 transition-all group cursor-pointer shadow-sm">
+                  <div
+                    key={i}
+                    onClick={() => router.push('/admin/audit-log')}
+                    className="flex items-center justify-between p-5 rounded-2xl bg-muted/10 border border-border hover:border-primary/20 hover:bg-muted/20 transition-all group cursor-pointer shadow-sm"
+                  >
                     <div className="flex items-center gap-5">
                       <div className="p-3 rounded-xl bg-background border border-border group-hover:border-primary/20 shadow-sm transition-colors">
-                        <CpuIcon size={20} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                        <Activity size={20} className="text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                       <div>
                         <div className="text-base font-black text-foreground tracking-tight">{item.label}</div>
                         <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold opacity-60">
-                          ID: {item.id} • {new Date(item.time).toLocaleTimeString()}
+                          ID: {item.id} · {new Date(item.time).toLocaleString()}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className={cn(
                         "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm",
-                        item.status === 'Success' ? 'bg-accent/10 text-accent border border-accent/20' : 
-                        item.status === 'Failed' ? 'bg-destructive/10 text-destructive border border-destructive/20' : 
-                        'bg-primary/10 text-primary border border-primary/20'
+                        item.status === 'Success' ? 'bg-accent/10 text-accent border border-accent/20' :
+                        item.status === 'Failed'  ? 'bg-destructive/10 text-destructive border border-destructive/20' :
+                        item.status === 'Edited'  ? 'bg-secondary/10 text-secondary border border-secondary/20' :
+                                                    'bg-primary/10 text-primary border border-primary/20'
                       )}>
                         {item.status}
                       </span>
@@ -197,61 +194,92 @@ export default function DashboardPage() {
           </GlassCard>
         </div>
 
+        {/* Right column — real quick-action shortcuts */}
         <div className="space-y-6">
+          {/* Quick Actions */}
           <GlassCard className="p-8">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-muted-foreground">Active Nodes</h3>
-            <div className="space-y-6">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-muted-foreground">Quick Actions</h3>
+            <div className="space-y-3">
               {[
-                { name: "North America West", latency: `${latencies[0].toFixed(1)}ms`, active: true },
-                { name: "Europe Central", latency: `${latencies[1].toFixed(1)}ms`, active: true },
-                { name: "Asia Southeast", latency: `${latencies[2].toFixed(1)}ms`, active: true },
-                { name: "South America", latency: "Offline", active: false },
-              ].map((node, i) => (
-                <div key={i} className="flex justify-between items-center group cursor-help">
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-2 h-2 rounded-full transition-all group-hover:scale-150",
-                      node.active ? 'bg-primary' : 'bg-muted-foreground/20'
-                    )} />
-                    <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">{node.name}</span>
+                {
+                  icon: MessageSquare,
+                  label: "New Chat Session",
+                  sub: "Ask Athene anything",
+                  href: "/chat",
+                },
+                {
+                  icon: Link2,
+                  label: "Manage Connectors",
+                  sub: `${stats.integrations} active`,
+                  href: "/admin/integrations",
+                },
+                {
+                  icon: Upload,
+                  label: "Upload Files",
+                  sub: `${stats.documents} docs indexed`,
+                  href: "/files",
+                },
+              ].map((action) => (
+                <button
+                  key={action.href}
+                  onClick={() => router.push(action.href)}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-muted/10 border border-border hover:border-primary/20 hover:bg-muted/20 transition-all group text-left shadow-sm"
+                >
+                  <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/10 group-hover:bg-primary/20 transition-colors shrink-0">
+                    <action.icon size={18} className="text-primary" />
                   </div>
-                  <span className={cn(
-                    "text-[11px] font-mono font-bold tracking-tight",
-                    node.active ? 'text-primary' : 'text-muted-foreground/40'
-                  )}>{node.latency}</span>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-black text-foreground uppercase tracking-tight">{action.label}</p>
+                    <p className="text-[10px] text-muted-foreground/60 font-bold mt-0.5">{action.sub}</p>
+                  </div>
+                  <ChevronRight size={14} className="text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0" />
+                </button>
               ))}
             </div>
           </GlassCard>
 
-          <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-primary to-secondary rounded-3xl blur-lg opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-            <GlassCard className="p-8 relative bg-card/80">
-                <div className="space-y-4 mb-8">
-                   <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Resource Synthesis</span>
-                      <span className="text-[11px] font-mono font-black text-primary">72%</span>
-                   </div>
-                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden shadow-inner">
-                      <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full" style={{ width: '72%' }} />
-                   </div>
+          {/* Pipeline status — derived from real stats */}
+          <GlassCard className="p-8">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-muted-foreground">Pipeline Status</h3>
+            <div className="space-y-4">
+              {[
+                {
+                  label: "Document Index",
+                  ok: stats.documents > 0,
+                  detail: stats.documents > 0 ? `${stats.documents} docs` : "No docs indexed yet",
+                },
+                {
+                  label: "Knowledge Graph",
+                  ok: stats.knowledge_nodes > 0,
+                  detail: stats.knowledge_nodes > 0 ? `${stats.knowledge_nodes} entities` : "Empty — index docs first",
+                },
+                {
+                  label: "Connectors",
+                  ok: stats.integrations > 0,
+                  detail: stats.integrations > 0 ? `${stats.integrations} connected` : "No connectors active",
+                },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-2 h-2 rounded-full shrink-0",
+                      loading ? "bg-muted-foreground/20 animate-pulse" :
+                      row.ok ? "bg-accent" : "bg-muted-foreground/30"
+                    )} />
+                    <span className="text-[11px] font-bold text-muted-foreground">{row.label}</span>
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-mono font-bold tracking-tight",
+                    row.ok ? "text-accent" : "text-muted-foreground/40"
+                  )}>
+                    {loading ? "—" : row.detail}
+                  </span>
                 </div>
-                <div className="flex items-start gap-5 text-primary">
-                   <Zap size={28} className="shrink-0 mt-1" />
-                   <p className="text-sm leading-relaxed font-medium italic text-muted-foreground/80">
-                     "System health is optimal. The neural grid is currently self-optimizing for peak efficiency across all sectors."
-                   </p>
-                </div>
-            </GlassCard>
-            <div 
-              onClick={handlePlusClick}
-              className="absolute -bottom-4 -right-4 w-14 h-14 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 cursor-pointer hover:scale-110 transition-all active:scale-95 border-4 border-background overflow-hidden z-10">
-               <img src="/logo.png" alt="A" className="w-7 h-7 object-contain" />
+              ))}
             </div>
-          </div>
+          </GlassCard>
         </div>
       </div>
     </div>
-
   );
 }

@@ -128,7 +128,22 @@ export default function IntegrationsPage() {
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
       });
-      if (!sessionRes.ok) throw new Error("Failed to secure Nango session");
+
+      if (!sessionRes.ok) {
+        // Differentiate between "not configured" (503) and generic errors
+        const errBody = await sessionRes.json().catch(() => ({}));
+        if (sessionRes.status === 503 && errBody?.error === 'not_configured') {
+          setToast({
+            msg: "Nango not configured — add NANGO_SECRET_KEY & NEXT_PUBLIC_NANGO_PUBLIC_KEY to .env.local and restart.",
+            type: "error",
+          });
+        } else {
+          setToast({ msg: `Connection setup failed (${sessionRes.status}). Check server logs.`, type: "error" });
+        }
+        setConnecting(null);
+        return;
+      }
+
       const { token } = await sessionRes.json();
       if (!token) throw new Error("Nango session token missing");
 

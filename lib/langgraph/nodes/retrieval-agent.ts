@@ -164,9 +164,12 @@ export async function retrievalAgent(
     },
   };
 
-  // Map complexity tier from supervisor to topK (ATH-21 MODEL_MATRIX)
-  const topKMap: Record<string, number> = { simple: 5, standard: 8, complex: 12 };
-  const topK = topKMap[(state as any).complexity ?? "standard"] ?? 8;
+  // Map complexity tier to topK. BI/cross-dept queries get a larger window
+  // because they need to pull stats, sample, and aggregation chunks for
+  // potentially several tables before synthesis can answer analytically.
+  const topKMap: Record<string, number> = { simple: 8, standard: 15, complex: 25 };
+  const isBiQuery = (state as any).route === "cross_dept_retrieval";
+  const topK = isBiQuery ? 30 : (topKMap[(state as any).complexity ?? "standard"] ?? 15);
 
   // ── Run both lookups in parallel ──────────────────────────
   const [vectorRaw, graphRaw] = await Promise.all([

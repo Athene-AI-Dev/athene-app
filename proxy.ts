@@ -2,14 +2,26 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { NextResponse } from "next/server";
 
-// Define routes that should NOT be protected
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)"]);
+// Define routes that should NOT be protected by Clerk.
+// Worker routes (/api/worker/*) authenticate via QStash signature instead of
+// Clerk session tokens — they must be reachable without a browser session so
+// that server-to-server calls (and QStash webhooks) can hit them directly.
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/api/worker/(.*)",
+]);
 
 /**
  * Clerk Middleware (proxy.ts — Next.js 16 convention)
  * Handles authentication and resolves RBAC context to inject as headers.
+ *
+ * clockSkewInMs: tolerate up to 60s of system clock drift so local dev
+ * works even when NTP sync is slightly off (Clerk nbf check fails otherwise).
  */
-export default clerkMiddleware(async (auth, request) => {
+export default clerkMiddleware(
+  async (auth, request) => {
   if (isPublicRoute(request)) return NextResponse.next();
 
   // 1. Enforce Authentication for non-public routes
@@ -32,7 +44,9 @@ export default clerkMiddleware(async (auth, request) => {
       headers: requestHeaders,
     },
   });
-});
+},
+{ clockSkewInMs: 60_000 } // tolerate up to 60s NTP drift in local dev
+);
 
 
 export const config = {

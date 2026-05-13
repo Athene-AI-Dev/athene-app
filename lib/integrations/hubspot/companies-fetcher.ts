@@ -15,6 +15,13 @@ interface HubSpotCompany {
     domain: string | null
     industry: string | null
     description: string | null
+    annualrevenue: string | null
+    numberofemployees: string | null
+    city: string | null
+    country: string | null
+    phone: string | null
+    lifecyclestage: string | null
+    createdate: string | null
   }
 }
 
@@ -33,7 +40,7 @@ export async function fetchHubSpotCompanies(
   while (true) {
     const qs = new URLSearchParams({
       limit: '100',
-      properties: 'name,domain,industry,description',
+      properties: 'name,domain,industry,description,annualrevenue,numberofemployees,city,country,phone,lifecyclestage,createdate',
       ...(after ? { after } : {}),
     })
 
@@ -43,14 +50,23 @@ export async function fetchHubSpotCompanies(
       const p    = record.properties
       const name = p.name ?? 'Unnamed Company'
 
+      const revenue = p.annualrevenue ? `$${Number(p.annualrevenue).toLocaleString()}` : null
+      const employees = p.numberofemployees ? `${Number(p.numberofemployees).toLocaleString()} employees` : null
+      const location = [p.city, p.country].filter(Boolean).join(', ') || null
+
       chunks.push({
         chunk_id:   `hs-company-${record.id}`,
         title:      name,
         content: [
           `Company: ${name}`,
-          p.domain      ? `Domain: ${p.domain}`           : null,
-          p.industry    ? `Industry: ${p.industry}`       : null,
-          p.description ? `Description: ${p.description}` : null,
+          p.domain         ? `Domain: ${p.domain}`                 : null,
+          p.industry       ? `Industry: ${p.industry}`             : null,
+          revenue          ? `Annual Revenue: ${revenue}`          : null,
+          employees        ? `Employees: ${employees}`             : null,
+          location         ? `Location: ${location}`               : null,
+          p.phone          ? `Phone: ${p.phone}`                   : null,
+          p.lifecyclestage ? `Lifecycle Stage: ${p.lifecyclestage}` : null,
+          p.description    ? `Description: ${p.description}`       : null,
         ].filter(Boolean).join('\n'),
         source_url: `https://app.hubspot.com/contacts/company/${record.id}`,
         metadata: {
@@ -59,6 +75,7 @@ export async function fetchHubSpotCompanies(
           id:          record.id,
           domain:      p.domain ?? null,
           industry:    p.industry ?? null,
+          lifecycle:   p.lifecyclestage ?? null,
         },
       })
     }

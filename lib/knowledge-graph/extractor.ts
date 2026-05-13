@@ -1,6 +1,9 @@
 // ============================================================
 // extractor.ts — Entity & relationship extraction adapter (ATH-58)
 //
+// Also re-exports extractSchemaEntities from bi-chunking.ts so
+// callers can import everything KG-related from this module.
+//
 // Runs a cheap LLM call (Haiku) over each chunk and returns
 // typed KGNode[] / KGEdge[]. The caller owns persistence.
 //
@@ -9,6 +12,7 @@
 // ============================================================
 
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+export { extractSchemaEntities } from "@/lib/integrations/bi-chunking";
 import { resolveModelClient } from "@/lib/langgraph/llm-factory";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {

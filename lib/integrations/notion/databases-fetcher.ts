@@ -20,19 +20,36 @@ export async function fetchAllDatabases(connectionId: string, orgId: string): Pr
       if (db.object !== 'database') continue
 
       const title = getDatabaseTitle(db)
-      const content = await fetchDatabaseContent(connectionId, orgId, db.id)
 
+      // Schema header chunk — describes the database columns/properties
+      const schemaHeader = buildSchemaHeader(title, db.properties ?? {})
       chunks.push({
-        chunk_id: `notion_db_${db.id}`,
-        title: `Database: ${title}`,
-        content,
+        chunk_id: `notion_db_schema_${db.id}`,
+        title: `Database Schema: ${title}`,
+        content: schemaHeader,
         source_url: db.url,
         metadata: {
           provider: 'notion',
-          resource_type: 'database',
-          last_modified: db.last_edited_time
-        }
+          resource_type: 'database_schema',
+          last_modified: db.last_edited_time,
+        },
       })
+
+      // Row-data chunk — all pages/records in the database
+      const content = await fetchDatabaseContent(connectionId, orgId, db.id)
+      if (content.trim()) {
+        chunks.push({
+          chunk_id: `notion_db_${db.id}`,
+          title: `Database: ${title}`,
+          content,
+          source_url: db.url,
+          metadata: {
+            provider: 'notion',
+            resource_type: 'database',
+            last_modified: db.last_edited_time,
+          },
+        })
+      }
     }
 
     hasMore = searchResults.has_more
@@ -113,4 +130,42 @@ function getDatabaseTitle(db: any): string {
     return db.title.map((t: any) => t.plain_text).join('')
   }
   return 'Untitled Database'
+}
+
+/**
+ * Builds a plain-text schema description from a Notion database's properties map.
+ * Gives the embedding model enough context to match queries like "what fields does
+ * the CRM database have?" without needing to scan all row content.
+ */
+function buildSchemaHeader(dbTitle: string, properties: Record<string, any>): string {
+  const lines: string[] = [`Notion Database: ${dbTitle}`, 'Columns:']
+
+  for (const [propName, propDef] of Object.entries(properties)) {
+    const type: string = propDef?.type ?? 'unknown'
+    let detail = type
+
+    // For select/multi_select, list the available options
+    if ((type === 'select' || type === 'multi_select') && propDef[type]?.options) {
+      const options: string[] = (propDef[type].options as any[])
+        .slice(0, 10)
+        .map((o: any) => o.name)
+      if (options.length > 0) {
+        detail += ` (options: ${options.join(', ')})`
+      }
+    }
+
+    // For relation, show target database ID
+    if (type === 'relation' && propDef.relation?.database_id) {
+      detail += ` → ${propDef.relation.database_id}`
+    }
+
+    // For formula, show expression
+    if (type === 'formula' && propDef.formula?.expression) {
+      detail += ` (formula: ${String(propDef.formula.expression).slice(0, 60)})`
+    }
+
+    lines.push(`  ${propName}: ${detail}`)
+  }
+
+  return lines.join('\n')
 }

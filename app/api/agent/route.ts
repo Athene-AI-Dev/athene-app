@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
         logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
         return NextResponse.json({ error: "Failed to sync user membership" }, { status: 500 });
       }
-      memberRow = newMember;
+      memberRow = newMember ? { ...newMember, timezone: null } : null;
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
@@ -213,11 +213,12 @@ export async function POST(req: NextRequest) {
         await writer.close();
       } catch (err: any) {
         console.error("[agent] Stream error:", err);
+        const isQuota = err.message.includes("quota") || err.message.includes("rate_limit") || err.message.includes("429");
         const errorData = JSON.stringify({
           error: true,
-          content: err.message.includes("quota") 
-            ? "Synthesis Halted: OpenAI Quota Exhausted. Please check your billing or provide a BYOK key in Admin settings." 
-            : `System Error: ${err.message}`,
+          content: isQuota
+            ? "Synthesis halted: LLM quota exceeded. Check your API key billing or add a BYOK key in Admin → Keys."
+            : `Synthesis error: ${err.message}`,
         });
         await writer.write(encoder.encode(`data: ${errorData}\n\n`));
         await writer.close();

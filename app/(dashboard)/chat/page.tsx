@@ -1,9 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  BrainCircuit,
+  ChevronRight,
+  Clock,
+  Database,
+  ExternalLink,
+  History,
+  Layout,
+  Loader2,
+  Mic,
+  Paperclip,
+  Plus,
+  RefreshCcw,
+  Search,
+  Send,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HitlModal } from "@/components/chat/hitl-modal";
 import { toast } from "sonner";
@@ -19,26 +45,66 @@ interface Message {
   awaiting_approval?: boolean;
 }
 
+interface ThreadSummary {
+  id: string;
+  title: string | null;
+  last_message_at: string | null;
+  message_count: number;
+  created_at: string;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "initial-assistant",
       role: "assistant",
       content: "Welcome to the Athene Synthesis Environment. I've initialized your organizational knowledge graph. How can I assist your objectives today?",
-      timestamp: "10:24 AM",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyticalMode, setIsAnalyticalMode] = useState(false);
   const [threadId, setThreadId] = useState<string>("");
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [isHitlModalOpen, setIsHitlModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ tool: string; payload: any } | null>(null);
+  const [sseReconnecting, setSseReconnecting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setThreadId(crypto.randomUUID());
+    // Load existing threads for the history sidebar
+    fetch('/api/threads')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => setThreads(data.threads ?? []))
+      .catch((err) => {
+        console.warn('[chat] Failed to load thread history:', err.message);
+        // Non-fatal — user can still chat; show nothing rather than crash
+      });
   }, []);
+
+  /** Switch to an existing thread and reset the message history */
+  function selectThread(id: string) {
+    setThreadId(id);
+    setMessages([{
+      id: "initial-assistant",
+      role: "assistant",
+      content: "Resuming session — I have context from our previous conversation. How can I help?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+  }
+
+  /** Create a brand new thread */
+  function newThread() {
+    setThreadId(crypto.randomUUID());
+    setMessages([{
+      id: "initial-assistant",
+      role: "assistant",
+      content: "Welcome to the Athene Synthesis Environment. I've initialized your organizational knowledge graph. How can I assist your objectives today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+  }
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -72,62 +138,121 @@ export default function ChatPage() {
     };
     setMessages((prev) => [...prev, assistantEntry]);
 
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          message: userMessage, 
-          threadId,
-          task_type: isAnalyticalMode ? "analytical" : "general"
-        }),
-      });
+    // SSE with exponential backoff reconnect (max 3 attempts)
+    const MAX_RETRIES = 3;
+    let attempt = 0;
+    let success = false;
 
-      if (!res.ok || !res.body) throw new Error(`Server error: ${res.status}`);
+    while (attempt <= MAX_RETRIES && !success) {
+      if (attempt > 0) {
+        const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 8000);
+        setSseReconnecting(true);
+        await new Promise(r => setTimeout(r, backoffMs));
+        setSseReconnecting(false);
+      }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      try {
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userMessage,
+            threadId,
+            task_type: isAnalyticalMode ? "analytical" : "general"
+          }),
+        });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        if (res.status === 429) {
+          const retryAfter = res.headers.get('Retry-After') ?? '60';
+          toast.error(`Rate limit reached. Try again in ${retryAfter}s.`);
+          break;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        if (!res.ok || !res.body) throw new Error(`Server error: ${res.status}`);
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const payload = JSON.parse(line.slice(6));
-            if (payload.content) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { 
-                        ...m, 
-                        content: payload.content,
-                        cited_sources: payload.cited_sources || m.cited_sources,
-                        awaiting_approval: payload.awaiting_approval
-                      }
-                    : m
-                )
-              );
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-              if (payload.awaiting_approval && payload.pending_write_action) {
-                setPendingAction(payload.pending_write_action);
-                setIsHitlModalOpen(true);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const payload = JSON.parse(line.slice(6));
+
+              if (payload.error) {
+                // Server-side error frame — show in bubble with distinct styling
+                const errMsg = payload.content || "An error occurred. Please try again.";
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: `⚠ ${errMsg}` }
+                      : m
+                  )
+                );
+              } else if (payload.token) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: m.content + payload.token }
+                      : m
+                  )
+                );
+              } else if (payload.content) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          content: payload.content,
+                          cited_sources: payload.cited_sources || m.cited_sources,
+                          awaiting_approval: payload.awaiting_approval
+                        }
+                      : m
+                  )
+                );
+
+                if (payload.awaiting_approval && payload.pending_write_action) {
+                  setPendingAction(payload.pending_write_action);
+                  setIsHitlModalOpen(true);
+                }
               }
-            }
-          } catch { }
+            } catch { /* malformed SSE frame — skip */ }
+          }
+        }
+        success = true;
+        // Refresh thread list after successful response
+        fetch('/api/threads')
+          .then(r => r.ok ? r.json() : { threads: [] })
+          .then(data => setThreads(data.threads ?? []))
+          .catch(() => {});
+      } catch (err) {
+        attempt++;
+        if (attempt > MAX_RETRIES) {
+          console.error("[chat] SSE failed after max retries:", err);
+          toast.error("Connection lost. Please try again.");
+          // Replace the empty assistant bubble with an explicit error so the
+          // spinner doesn't spin forever.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && m.content === ""
+                ? { ...m, content: "⚠ Connection lost. Please try again." }
+                : m
+            )
+          );
         }
       }
-    } catch (err) {
-      console.error("Failed to fetch threads:", err);
-    } finally {
-      setIsLoading(false);
     }
+
+    setIsLoading(false);
+    setSseReconnecting(false);
   }
 
   async function handleHitlDecision(action: 'approve' | 'reject' | 'edit', edits?: any) {
@@ -144,18 +269,24 @@ export default function ChatPage() {
       }
 
       toast.success(`Action ${action}ed successfully`);
-      
-      // After approval, we might want to trigger the next step of the graph
-      // The backend /approve endpoint already resumes the graph in the background.
-      // We should probably start a new stream to listen for the results.
-      
-      // For now, let's just clear the pending action
       setPendingAction(null);
-      
-      // Optionally, send a follow-up message or just wait for the background process to complete
-      // In a real app, we might poll or use WebSockets/SSE to see the resumed output.
-      // Since the backend resumes background execution, we might need a way to reconnect to the stream.
-      
+      setIsHitlModalOpen(false);
+
+      // Backend resumes the graph in the background after approval.
+      // Surface a status message so the user knows something happened.
+      const statusContent =
+        action === "approve"
+          ? "✓ Action approved — executing in the background."
+          : "✗ Action rejected.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `hitl-status-${Date.now()}`,
+          role: "assistant",
+          content: statusContent,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
     } catch (error: any) {
       toast.error(error.message);
       throw error;
@@ -204,9 +335,22 @@ export default function ChatPage() {
                     </TabsList>
                 </Tabs>
                <div className="flex items-center gap-2 pr-2">
-                  <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/10 transition-all">
-                     <RefreshCcw className="w-4.5 h-4.5" />
-                  </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={newThread}
+                          className="h-11 w-11 rounded-xl hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/10 transition-all"
+                          aria-label="New conversation"
+                        >
+                          <RefreshCcw className="w-4.5 h-4.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>New conversation</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                </div>
             </div>
           </div>
@@ -308,9 +452,22 @@ export default function ChatPage() {
           {/* Input Bar */}
           <div className="bg-card/50 p-5 rounded-[3.5rem] border border-border flex flex-col gap-3 shadow-2xl shadow-black/40 relative z-10 mx-10 mb-6 group focus-within:border-primary/50 focus-within:shadow-primary/5 transition-all backdrop-blur-2xl">
             <div className="flex items-center gap-5">
-                <Button variant="ghost" size="icon" className="h-14 w-14 rounded-full hover:bg-muted/80 text-muted-foreground transition-all group/btn">
-                   <Paperclip className="w-6 h-6 group-hover/btn:text-primary transition-colors" />
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled
+                        className="h-14 w-14 rounded-full text-muted-foreground/30 cursor-not-allowed"
+                        aria-label="File attachment — coming soon"
+                      >
+                        <Paperclip className="w-6 h-6" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>File attachments — coming soon</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 
                 <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-5">
                     <input
@@ -322,9 +479,22 @@ export default function ChatPage() {
                     />
                     
                     <div className="flex items-center gap-4 pr-3">
-                        <Button variant="ghost" size="icon" className="h-14 w-14 rounded-full hover:bg-muted/80 text-muted-foreground transition-all group/btn">
-                            <Mic className="w-6 h-6 group-hover/btn:text-primary transition-colors" />
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled
+                                className="h-14 w-14 rounded-full text-muted-foreground/30 cursor-not-allowed"
+                                aria-label="Voice input — coming soon"
+                              >
+                                <Mic className="w-6 h-6" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Voice input — coming soon</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         <Button 
                             type="submit"
                             disabled={isLoading || !input.trim()}
@@ -340,50 +510,139 @@ export default function ChatPage() {
 
         {/* Intelligence Sidebar */}
         <aside className="hidden xl:flex w-80 flex-col gap-8 pr-4 pb-10 overflow-y-auto custom-scrollbar">
+           {/* Thread History */}
+           <Card className="bg-card/50 backdrop-blur-xl border border-border p-8 space-y-6 rounded-[2.5rem] shadow-2xl transition-colors duration-300">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground flex items-center gap-2">
+                  <History className="w-4 h-4" /> Sessions
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={newThread}
+                  className="h-8 w-8 rounded-xl hover:bg-primary/10 hover:text-primary transition-all"
+                  title="New thread"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                {threads.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground/40 font-black uppercase tracking-widest py-4 text-center">No prior sessions</p>
+                ) : threads.map((t) => {
+                  const ts = t.last_message_at ?? t.created_at
+                  const date = new Date(ts)
+                  const label = t.title || date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  const isActive = t.id === threadId
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => selectThread(t.id)}
+                      className={cn(
+                        "w-full flex items-start gap-3 p-4 rounded-2xl text-left border transition-all",
+                        isActive
+                          ? "bg-primary/10 border-primary/30 text-primary"
+                          : "border-transparent hover:bg-muted/30 hover:border-border text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Clock className="w-3.5 h-3.5 mt-0.5 shrink-0 opacity-60" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-black uppercase tracking-tight truncate">{label}</p>
+                        <p className="text-[9px] opacity-50 mt-0.5">{time} · {t.message_count} msg{t.message_count !== 1 ? 's' : ''}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              {sseReconnecting && (
+                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-center animate-pulse">Reconnecting…</p>
+              )}
+           </Card>
+
            <Card className="bg-card/50 backdrop-blur-xl border border-border p-10 space-y-8 rounded-[2.5rem] shadow-2xl transition-colors duration-300">
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground">Session Context</h3>
-              <div className="space-y-6">
-                 <div className="p-8 rounded-[2rem] bg-muted/20 border border-border/50 space-y-6 group hover:border-primary/40 transition-all shadow-sm">
-                    <div className="flex items-center justify-between">
-                       <Layout className="w-6 h-6 text-primary" />
-                       <Badge className="bg-primary/10 text-primary border-primary/20 text-[9px] font-black uppercase tracking-widest">3 SOURCES</Badge>
+              {(() => {
+                const userMsgs = messages.filter(m => m.role === 'user').length;
+                const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.content && !m.content.startsWith('⚠') && !m.content.startsWith('✓') && !m.content.startsWith('✗'));
+                const sourceCount = lastAssistant?.cited_sources?.length ?? 0;
+                return (
+                  <div className="space-y-4">
+                    <div className="p-5 rounded-2xl bg-muted/20 border border-border/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Layout className="w-5 h-5 text-primary" />
+                        <Badge className="bg-primary/10 text-primary border-primary/20 text-[9px] font-black uppercase tracking-widest">
+                          {isAnalyticalMode ? 'BI Mode' : 'Standard'}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Thread</p>
+                      <p className="text-[11px] font-black text-foreground font-mono truncate">{threadId.slice(0, 8)}…</p>
                     </div>
-                    <p className="text-base font-black text-foreground leading-tight tracking-tight uppercase">Knowledge Graph Synthesis Init</p>
-                    <div className="space-y-3">
-                       <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest opacity-60">
-                          <span>Progress</span>
-                          <span className="text-primary">100%</span>
-                       </div>
-                       <div className="h-2 w-full bg-muted rounded-full overflow-hidden shadow-inner">
-                          <div className="h-full bg-gradient-to-r from-primary to-secondary" style={{ width: '100%' }} />
-                       </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 text-center">
+                        <p className="text-xl font-black text-primary">{userMsgs}</p>
+                        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mt-1">Messages</p>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 text-center">
+                        <p className="text-xl font-black text-accent">{sourceCount}</p>
+                        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mt-1">Sources</p>
+                      </div>
                     </div>
-                 </div>
-              </div>
+                  </div>
+                );
+              })()}
            </Card>
 
            <Card className="bg-card/50 backdrop-blur-xl border border-border flex-1 p-10 space-y-10 overflow-hidden rounded-[2.5rem] shadow-2xl transition-colors duration-300">
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground">Active Reasoning</h3>
-              <div className="space-y-6">
-                 {[
-                   { name: "Retrieval Scout", status: "Active", icon: Search, color: "text-primary", bg: "bg-primary/10" },
-                   { name: "Logic Engine", status: "Ready", icon: BrainCircuit, color: "text-primary", bg: "bg-primary/10" },
-                   { name: "Audit Sentry", status: "Watching", icon: ShieldCheck, color: "text-accent", bg: "bg-accent/10" },
-                 ].map((agent, i) => (
-                    <div key={i} className="flex items-center justify-between p-6 rounded-2xl bg-muted/10 border border-border group hover:border-primary/20 hover:bg-muted/20 transition-all cursor-help shadow-sm">
-                       <div className="flex items-center gap-5">
-                          <div className={cn("p-4 rounded-xl shadow-lg border border-border group-hover:border-primary/20 transition-colors", agent.bg)}>
-                             <agent.icon className={cn("w-5 h-5", agent.color)} />
+              {(() => {
+                const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant' && m.content);
+                const hasSources = (lastAssistant?.cited_sources?.length ?? 0) > 0;
+                const agents = [
+                  {
+                    name: "Retrieval Scout",
+                    status: isLoading ? "Searching…" : hasSources ? "Complete" : "Standby",
+                    icon: Search,
+                    color: isLoading ? "text-primary" : hasSources ? "text-accent" : "text-muted-foreground/40",
+                    bg: isLoading ? "bg-primary/10" : hasSources ? "bg-accent/10" : "bg-muted/10",
+                    pulse: isLoading,
+                  },
+                  {
+                    name: "Logic Engine",
+                    status: isLoading ? "Processing…" : "Standby",
+                    icon: BrainCircuit,
+                    color: isLoading ? "text-primary" : "text-muted-foreground/40",
+                    bg: isLoading ? "bg-primary/10" : "bg-muted/10",
+                    pulse: isLoading,
+                  },
+                  {
+                    name: "Audit Sentry",
+                    status: "Watching",
+                    icon: ShieldCheck,
+                    color: "text-accent",
+                    bg: "bg-accent/10",
+                    pulse: false,
+                  },
+                ];
+                return (
+                  <div className="space-y-4">
+                    {agents.map((agent, i) => (
+                      <div key={i} className="flex items-center justify-between p-5 rounded-2xl bg-muted/10 border border-border transition-all shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className={cn("p-3 rounded-xl border border-border transition-colors", agent.bg)}>
+                            <agent.icon className={cn("w-4 h-4 transition-colors", agent.color, agent.pulse && "animate-pulse")} />
                           </div>
                           <div className="flex flex-col">
-                             <span className="text-sm font-black text-foreground uppercase tracking-tight">{agent.name}</span>
-                             <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em] mt-1">{agent.status}</span>
+                            <span className="text-[11px] font-black text-foreground uppercase tracking-tight">{agent.name}</span>
+                            <span className={cn("text-[9px] font-black uppercase tracking-[0.2em] mt-0.5", agent.pulse ? "text-primary" : "text-muted-foreground/50")}>{agent.status}</span>
                           </div>
-                       </div>
-                       <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-1 transition-all" />
-                    </div>
-                 ))}
-              </div>
+                        </div>
+                        {agent.pulse && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
            </Card>
         </aside>
       </div>

@@ -59,7 +59,7 @@ export async function reportAgent(
     messages && messages.length > 0 ? messages[messages.length - 1] : null;
   const query: string = lastMessage
     ? extractText(
-      lastMessage.content as string | MessageContentComplex[]
+      lastMessage.content as MessageContent
     )
     : "Generate a report";
 
@@ -153,7 +153,7 @@ INSTRUCTIONS:
         ]);
 
         let sectionContent = extractText(
-          synthesizeResponse.content as string | MessageContentComplex[]
+          synthesizeResponse.content as MessageContent
         );
 
         // Validate citations

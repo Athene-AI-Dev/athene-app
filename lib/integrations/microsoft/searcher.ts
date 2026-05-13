@@ -28,7 +28,8 @@ export async function microsoftSearch(connectionId: string, orgId: string, query
 
     // 2. Search Calendar Events
     const escapedQuery = query.replace(/'/g, "''")
-    const eventData = await graphFetch(connectionId, orgId, `/me/events?$filter=contains(subject, '${escapedQuery}')&$top=10&$select=subject,start,end,location,bodyPreview,webLink`)    if (eventData.value) {
+    const eventData = await graphFetch(connectionId, orgId, `/me/events?$filter=contains(subject, '${escapedQuery}')&$top=10&$select=subject,start,end,location,bodyPreview,webLink`)
+    if (eventData.value) {
       for (const event of eventData.value) {
         chunks.push({
           chunk_id: `ms_event_${event.id}`,

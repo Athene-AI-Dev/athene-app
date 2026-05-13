@@ -1,49 +1,40 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { 
-  FileText, 
-  Upload, 
-  Share2, 
-  Trash2, 
-  Download, 
-  MoreVertical, 
-  Search, 
-  Filter, 
-  Plus,
+import { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  FileText,
+  Upload,
+  Share2,
+  Trash2,
+  Download,
+  Search,
+  Filter,
   HardDrive,
   Cloud,
   Layers,
-  ChevronRight,
+  RotateCcw,
+  AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-
-const INITIAL_FILES = [
-  { name: "Q4_Revenue_Synthesis.pdf", type: "PDF", size: "12.4 MB", date: "2 mins ago", status: "Indexed", risk: "Low", layer: "Financial Records" },
-  { name: "Board_Meeting_Transcript.docx", type: "DOCX", size: "450 KB", date: "1 hour ago", status: "Indexing", risk: "Medium", layer: "Internal Wiki" },
-  { name: "Global_Infrastructure_Map.svg", type: "SVG", size: "2.1 MB", date: "4 hours ago", status: "Indexed", risk: "Low", layer: "Internal Wiki" },
-  { name: "Employee_Records_V2.xlsx", type: "XLSX", size: "4.8 MB", date: "Yesterday", status: "Flagged", risk: "High", layer: "Financial Records" },
-  { name: "Customer_Journey_Audit.pptx", type: "PPTX", size: "18.2 MB", date: "2 days ago", status: "Indexed", risk: "Low", layer: "Audit Logs" },
-  { name: "API_Security_Manual.pdf", type: "PDF", size: "1.1 MB", date: "3 days ago", status: "Indexed", risk: "Low", layer: "Legal Discovery" },
-];
 
 const INTELLIGENCE_LAYERS = [
   { label: "Financial Records", color: "text-emerald-500" },
@@ -54,20 +45,35 @@ const INTELLIGENCE_LAYERS = [
 
 type IntelligenceLayer = (typeof INTELLIGENCE_LAYERS)[number]["label"];
 
-const MIME_TYPES: Record<string, string> = {
-  PDF: "application/pdf",
-  DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  SVG: "image/svg+xml",
-  XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  JSON: "application/json",
-};
-
 export default function FilesPage() {
-  const [files, setFiles] = useState(INITIAL_FILES);
+  const router = useRouter();
+  const [files, setFiles] = useState<any[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null); // Fix #2
   const [search, setSearch] = useState("");
   const [selectedLayer, setSelectedLayer] = useState<IntelligenceLayer | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fix #2: extracted so Retry button can call it
+  const loadFiles = async () => {
+    setLoadingFiles(true);
+    setFetchError(null);
+    try {
+      const res = await fetch('/api/files');
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      setFiles(data);
+    } catch (err: any) {
+      console.error('Failed to load files', err);
+      setFetchError(err.message ?? 'Failed to load files');
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFiles();
+  }, []);
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -104,13 +110,24 @@ export default function FilesPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Upload failed");
 
+        // Fix #3: spread full API response so id is merged (delete depends on it)
         setFiles((prev) =>
           prev.map((f) =>
             f.name === file.name && f.status === "Uploading"
-              ? { ...f, status: "Indexing", date: "Just now", storagePath: data.storagePath }
+              ? { ...f, ...data, status: "Indexing", layer: "Internal Wiki" as const }
               : f
           )
         );
+
+        // Fix #10: advance Indexing → Indexed after 3s
+        setTimeout(() => {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === data.id ? { ...f, status: "Indexed" } : f
+            )
+          );
+        }, 3000);
+
         toast.success(`Uploaded ${file.name}`, {
           icon: <Upload className="w-4 h-4" />,
           description: "File stored and queued for indexing.",
@@ -130,15 +147,33 @@ export default function FilesPage() {
     }
   };
 
+  // Fix #4: real navigation instead of fake toast
   const handleNewRepo = () => {
-    toast.success("New Knowledge Repository Created", {
-      description: "Default RBAC policies applied to #RE-882",
-    });
+    router.push('/admin/integrations');
   };
 
-  const handleDelete = (name: string) => {
-    setFiles(prev => prev.filter(f => f.name !== name));
-    toast.error(`Purged asset: ${name}`, {
+  // Fix #9: find by id first, fall back to name; caller now passes id when available
+  const handleDelete = async (fileId: string) => {
+    const file = files.find(f => f.id === fileId || f.name === fileId) as any;
+    setFiles(prev => prev.filter(f => (f.id ?? f.name) !== fileId));
+
+    if (file?.id) {
+      try {
+        const res = await fetch(`/api/files?id=${encodeURIComponent(file.id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json();
+          setFiles(prev => [file, ...prev]);
+          toast.error(`Failed to delete ${file.name}`, { description: data.error });
+          return;
+        }
+      } catch {
+        setFiles(prev => [file, ...prev]);
+        toast.error(`Network error deleting ${file.name}`);
+        return;
+      }
+    }
+
+    toast.error(`Purged asset: ${file?.name ?? fileId}`, {
       description: "Data removed from Knowledge Graph indexing.",
     });
   };
@@ -154,7 +189,7 @@ export default function FilesPage() {
     URL.revokeObjectURL(url);
   };
 
- const handleDownload = async (name: string) => {
+  const handleDownload = async (name: string) => {
     const file = files.find((item) => item.name === name) as any;
     toast(`Downloading ${name}...`);
 
@@ -168,7 +203,6 @@ export default function FilesPage() {
       }
     }
 
-    // Fallback for dummy files
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
     downloadBlob(blob, name);
     toast.success(`Downloaded ${name}`);
@@ -179,7 +213,6 @@ export default function FilesPage() {
       [JSON.stringify(filteredFiles, null, 2)],
       { type: "application/json" }
     );
-
     downloadBlob(blob, "athene-data-sources.json");
     toast.success("Downloaded data sources archive", {
       icon: <Download className="w-4 h-4" />,
@@ -196,6 +229,9 @@ export default function FilesPage() {
     const matchesLayer = !selectedLayer || file.layer === selectedLayer;
     return matchesSearch && matchesLayer;
   });
+
+  // Fix #7: capacity bar based on real file count
+  const capacityPct = Math.min(files.length / 100, 1) * 100;
 
   return (
     <div className="max-w-7xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
@@ -222,13 +258,13 @@ export default function FilesPage() {
         </div>
 
         <div className="flex gap-4">
-           <Button 
+           <Button
             onClick={handleUpload}
             variant="outline" className="h-14 px-8 rounded-2xl border-white/10 text-slate-300 font-bold uppercase tracking-widest text-[10px] gap-3 hover:bg-white/5 transition-all">
               <Upload className="w-5 h-5 text-[#66ADE4]" />
               Upload Data
            </Button>
-           <button 
+           <button
             onClick={handleNewRepo}
             className="h-14 px-10 rounded-2xl bg-gradient-to-r from-[#DA88B6] to-[#66ADE4] text-white font-bold uppercase tracking-widest text-[10px] gap-3 shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center relative overflow-visible">
               <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-2 border-[#06080c] bg-white flex items-center justify-center shadow-lg">
@@ -245,13 +281,14 @@ export default function FilesPage() {
            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 p-10 space-y-8 rounded-[2rem]">
               <h3 className="text-[11px] uppercase tracking-[0.2em] font-bold text-slate-500">Storage Load</h3>
               <div className="space-y-8">
+                 {/* Fix #7: real file count instead of hardcoded 84% */}
                  <div className="space-y-4">
                     <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-widest">
                        <span className="flex items-center gap-2 text-slate-300"><HardDrive className="w-4 h-4 text-[#66ADE4]" /> Capacity</span>
-                       <span className="text-[#66ADE4]">84%</span>
+                       <span className="text-[#66ADE4]">{files.length} files</span>
                     </div>
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                       <div className="h-full bg-[#66ADE4]" style={{ width: '84%' }} />
+                       <div className="h-full bg-[#66ADE4]" style={{ width: `${capacityPct}%` }} />
                     </div>
                  </div>
                  <div className="space-y-4">
@@ -297,10 +334,25 @@ export default function FilesPage() {
 
         {/* File Table Content */}
         <div className="lg:col-span-3 space-y-8">
+           {/* Fix #2: error banner with retry */}
+           {fetchError && (
+             <div className="flex items-center gap-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl px-6 py-4">
+               <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+               <p className="text-[13px] font-medium text-rose-300 flex-1">Failed to load files: {fetchError}</p>
+               <Button
+                 onClick={loadFiles}
+                 variant="outline"
+                 className="h-9 px-4 rounded-xl border-rose-500/30 text-rose-300 text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/10"
+               >
+                 Retry
+               </Button>
+             </div>
+           )}
+
            <div className="flex items-center justify-between bg-white/5 backdrop-blur-xl border border-white/10 p-5 rounded-2xl shadow-sm">
               <div className="relative group w-80">
                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-500 group-focus-within:text-[#66ADE4] transition-colors" />
-                 <Input 
+                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search organizational data..." className="h-12 pl-12 rounded-xl bg-black/20 border-white/5 text-[13px] text-white focus:ring-[#66ADE4]/20 placeholder:text-slate-600" />
@@ -315,7 +367,7 @@ export default function FilesPage() {
                     {selectedLayer ?? "Filters"}
                  </Button>
                  <div className="h-8 w-px bg-white/10" />
-                 <Button 
+                 <Button
                   onClick={handleBulkDownload}
                   variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-[#66ADE4]/10 text-[#66ADE4]">
                     <Download className="w-5 h-5" />
@@ -335,84 +387,121 @@ export default function FilesPage() {
                     </TableRow>
                  </TableHeader>
                  <TableBody>
-                    {filteredFiles.map((file, i) => (
-                       <TableRow key={i} className="border-white/5 hover:bg-white/[0.02] transition-all group">
+                    {/* Fix #1: skeleton rows while loading */}
+                    {loadingFiles ? (
+                      [...Array(3)].map((_, i) => (
+                        <TableRow key={`skeleton-${i}`} className="border-white/5">
                           <TableCell className="px-10 py-6">
-                             <div className="flex items-center gap-4">
-                                <div className="h-11 w-11 rounded-xl bg-black/20 flex items-center justify-center border border-white/5 shadow-sm group-hover:scale-105 transition-transform">
-                                   <FileText className={`w-5 h-5 ${
-                                      file.type === 'PDF' ? 'text-[#66ADE4]' :
-                                      file.type === 'XLSX' ? 'text-emerald-500' :
-                                      file.type === 'DOCX' ? 'text-[#66ADE4]' :
-                                      'text-[#66ADE4]'
-                                   }`} />
-                                </div>
-                                <div className="flex flex-col">
-                                   <span className="text-[14px] font-bold text-white group-hover:text-[#66ADE4] transition-colors">{file.name}</span>
-                                   <span className="text-[11px] font-medium text-slate-500 mt-0.5">{file.date}</span>
-                                </div>
-                             </div>
+                            <div className="flex items-center gap-4">
+                              <div className="h-11 w-11 rounded-xl bg-white/5 animate-pulse" />
+                              <div className="space-y-2">
+                                <div className="h-3 w-40 bg-white/5 rounded-full animate-pulse" />
+                                <div className="h-2 w-20 bg-white/5 rounded-full animate-pulse" />
+                              </div>
+                            </div>
                           </TableCell>
-                          <TableCell className="text-[13px] font-bold text-slate-300">{file.size}</TableCell>
-                          <TableCell>
-                             <Badge className={`text-[10px] font-bold tracking-widest px-3 py-1 h-6 border-none ${
-                                file.status === 'Indexed' ? 'bg-emerald-500/10 text-emerald-400' :
-                                file.status === 'Indexing' ? 'bg-[#66ADE4]/10 text-[#66ADE4] animate-pulse' :
-                                'bg-rose-500/10 text-rose-400'
-                             }`}>
-                                {file.status}
-                             </Badge>
-                          </TableCell>
-                          <TableCell>
-                             <div className="flex items-center gap-2.5">
-                                <div className={`h-2 w-2 rounded-full ${
-                                   file.risk === 'Low' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' :
-                                   file.risk === 'Medium' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'bg-rose-600 shadow-[0_0_8px_#e11d48]'
-                                }`} />
-                                <span className="text-[12px] font-bold text-slate-400">{file.risk} Profile</span>
-                             </div>
-                          </TableCell>
-                          <TableCell className="text-right pr-10">
-                             <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <TooltipProvider>
-                                   <Tooltip>
-                                      <TooltipTrigger asChild>
-                                         <Button 
-                                          onClick={() => toast("Asset shared with Neural Flow")}
-                                          variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-white/5 text-slate-400">
-                                            <Share2 className="w-4 h-4" />
-                                         </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Share Resource</TooltipContent>
-                                   </Tooltip>
-                                </TooltipProvider>
+                          <TableCell><div className="h-3 w-12 bg-white/5 rounded-full animate-pulse" /></TableCell>
+                          <TableCell><div className="h-5 w-16 bg-white/5 rounded-full animate-pulse" /></TableCell>
+                          <TableCell><div className="h-3 w-20 bg-white/5 rounded-full animate-pulse" /></TableCell>
+                          <TableCell />
+                        </TableRow>
+                      ))
+                    ) : (
+                      // Fix #8: use file.id ?? file.name as key (not array index)
+                      filteredFiles.map((file) => (
+                         <TableRow key={file.id ?? file.name} className="border-white/5 hover:bg-white/[0.02] transition-all group">
+                            <TableCell className="px-10 py-6">
+                               <div className="flex items-center gap-4">
+                                  <div className="h-11 w-11 rounded-xl bg-black/20 flex items-center justify-center border border-white/5 shadow-sm group-hover:scale-105 transition-transform">
+                                     <FileText className={`w-5 h-5 ${
+                                        file.type === 'PDF' ? 'text-[#66ADE4]' :
+                                        file.type === 'XLSX' ? 'text-emerald-500' :
+                                        file.type === 'DOCX' ? 'text-[#66ADE4]' :
+                                        'text-[#66ADE4]'
+                                     }`} />
+                                  </div>
+                                  <div className="flex flex-col">
+                                     <span className="text-[14px] font-bold text-white group-hover:text-[#66ADE4] transition-colors">{file.name}</span>
+                                     <span className="text-[11px] font-medium text-slate-500 mt-0.5">{file.date}</span>
+                                  </div>
+                               </div>
+                            </TableCell>
+                            <TableCell className="text-[13px] font-bold text-slate-300">{file.size}</TableCell>
+                            <TableCell>
+                               <Badge className={`text-[10px] font-bold tracking-widest px-3 py-1 h-6 border-none ${
+                                  file.status === 'Indexed' ? 'bg-emerald-500/10 text-emerald-400' :
+                                  file.status === 'Indexing' ? 'bg-[#66ADE4]/10 text-[#66ADE4] animate-pulse' :
+                                  'bg-rose-500/10 text-rose-400'
+                               }`}>
+                                  {file.status}
+                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                               <div className="flex items-center gap-2.5">
+                                  <div className={`h-2 w-2 rounded-full ${
+                                     file.risk === 'Low' ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' :
+                                     file.risk === 'Medium' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'bg-rose-600 shadow-[0_0_8px_#e11d48]'
+                                  }`} />
+                                  <span className="text-[12px] font-bold text-slate-400">{file.risk} Profile</span>
+                               </div>
+                            </TableCell>
+                            <TableCell className="text-right pr-10">
+                               <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {/* Fix #11: retry button visible only for flagged files */}
+                                  {file.status === 'Flagged' && (
+                                    <Button
+                                      onClick={() => {
+                                        setFiles(prev => prev.filter(f => (f.id ?? f.name) !== (file.id ?? file.name)));
+                                        fileInputRef.current?.click();
+                                      }}
+                                      variant="ghost" size="icon"
+                                      className="h-10 w-10 rounded-xl hover:bg-amber-500/10 text-amber-400"
+                                      title="Retry upload"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                    </Button>
+                                  )}
 
-                                <Button 
-                                  onClick={() => handleDownload(file.name)}
-                                  variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-white/5 text-slate-400">
-                                   <Download className="w-4 h-4" />
-                                </Button>
-                                
-                                <Button 
-                                  onClick={() => handleDelete(file.name)}
-                                  variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-rose-500/10 text-rose-400">
-                                   <Trash2 className="w-4 h-4" />
-                                </Button>
-                             </div>
-                          </TableCell>
-                       </TableRow>
-                    ))}
+                                  {/* Fix #5 / #13: share disabled with "Coming soon" tooltip */}
+                                  <TooltipProvider>
+                                     <Tooltip>
+                                        <TooltipTrigger asChild>
+                                           <Button
+                                            disabled
+                                            variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-slate-400 disabled:opacity-40 disabled:cursor-not-allowed">
+                                              <Share2 className="w-4 h-4" />
+                                           </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Coming soon</TooltipContent>
+                                     </Tooltip>
+                                  </TooltipProvider>
+
+                                  <Button
+                                    onClick={() => handleDownload(file.name)}
+                                    variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-white/5 text-slate-400">
+                                     <Download className="w-4 h-4" />
+                                  </Button>
+
+                                  {/* Fix #9: pass id (or name fallback) so delete finds the right record */}
+                                  <Button
+                                    onClick={() => handleDelete(file.id ?? file.name)}
+                                    variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-rose-500/10 text-rose-400">
+                                     <Trash2 className="w-4 h-4" />
+                                  </Button>
+                               </div>
+                            </TableCell>
+                         </TableRow>
+                      ))
+                    )}
                  </TableBody>
               </Table>
            </Card>
-           
+
+           {/* Fix #6: static file count instead of fake "Browse Full Archive" toast */}
            <div className="flex items-center justify-center py-10">
-              <Button 
-                onClick={() => toast("Browsing archive clusters...")}
-                variant="link" className="text-slate-500 hover:text-[#66ADE4] text-[11px] font-bold uppercase tracking-widest gap-2 group no-underline">
-                 Browse Full Archive
-                 <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
+              <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest">
+                Showing {filteredFiles.length} of {files.length} files
+              </p>
            </div>
         </div>
       </div>

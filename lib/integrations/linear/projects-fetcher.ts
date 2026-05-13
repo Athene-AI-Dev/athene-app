@@ -13,16 +13,30 @@ const PROJECTS_QUERY = `
         name
         description
         url
+        state
+        startDate
+        targetDate
+        completedAt
         createdAt
-        projectUpdates(first: 10) {
+        updatedAt
+        lead {
+          name
+        }
+        members {
+          nodes {
+            name
+          }
+        }
+        projectUpdates(first: 5) {
           nodes {
             body
+            createdAt
           }
         }
       }
     }
   }
-`;
+`
 
 // Note: Milestones usually reside either globally or within project structure depending on schema version.
 // Here we fetch project with recent updates as part of projects sync. You can incorporate milestones separately.
@@ -39,22 +53,36 @@ export async function linearProjectsFetcher(connectionId: string, orgId: string)
     if (!projectsResult) break;
 
     for (const project of projectsResult.nodes) {
-      const updates = project.projectUpdates?.nodes?.map((u: any) => u.body).join('\n---\n') || '';
-      const fullContent = `Linear Project: ${project.name}\n\n${project.description || ''}\n\nUpdates:\n${updates}`;
-      
-      const chunk: FetchedChunk = {
+      const lead    = project.lead?.name
+      const members = (project.members?.nodes ?? []).map((m: any) => m.name).filter(Boolean)
+      const updates = (project.projectUpdates?.nodes ?? [])
+        .map((u: any) => u.body)
+        .filter(Boolean)
+        .join('\n---\n')
+
+      const lines: string[] = [`Project: ${project.name}`]
+      if (project.state) lines.push(`State: ${project.state}`)
+      if (lead)          lines.push(`Lead: ${lead}`)
+      if (members.length) lines.push(`Members: ${members.join(', ')}`)
+      if (project.startDate) lines.push(`Start: ${project.startDate}`)
+      if (project.targetDate) lines.push(`Target: ${project.targetDate}`)
+      if (project.description) lines.push('', project.description)
+      if (updates) lines.push('', 'Updates:', updates)
+
+      chunks.push({
         chunk_id: project.id,
         title: project.name,
-        content: fullContent,
+        content: lines.join('\n'),
         source_url: project.url,
         metadata: {
-          provider: 'linear',
+          provider:      'linear',
           resource_type: 'project',
-          created_at: project.createdAt,
-        }
-      };
-      
-      chunks.push(chunk);
+          created_at:    project.createdAt,
+          last_modified: project.updatedAt,
+          state:         project.state ?? null,
+          lead:          lead ?? null,
+        },
+      })
     }
 
     hasNextPage = projectsResult.pageInfo.hasNextPage;

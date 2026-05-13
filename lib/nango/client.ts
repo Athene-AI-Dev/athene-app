@@ -128,7 +128,6 @@ export async function getConnection(
   // Verify ownership in Supabase first
   const { data: mapping, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
-
     .select('id')
     .eq('org_id', orgId)
     .eq('connection_id', connectionId)

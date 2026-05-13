@@ -193,7 +193,7 @@ export async function baseFetch<T = unknown>(
     }
 
     // Handle empty responses (e.g. 204 No Content from DELETE)
-    const contentType = res.headers.get('content-type') || ''
+    const contentType = res.headers?.get('content-type') ?? 'application/json'
     if (
       res.status === 204 ||
       !contentType.includes('application/json')

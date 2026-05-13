@@ -81,6 +81,7 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
 
   // 4. SharePoint Documents
   try {
+<<<<<<< Updated upstream
     const sitesData = await graphFetch(connectionId, orgId, '/sites?search=*')
     if (sitesData.value) {
       for (const site of sitesData.value) {
@@ -90,6 +91,17 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
           for (const doc of siteDocs) {
             const driveId = doc.parentReference?.driveId
             if (!driveId) continue
+=======
+    // Discover followed sites
+    const sitesData = await graphFetch(connectionId, orgId, '/sites?search=*')
+    if (sitesData.value) {
+      for (const site of sitesData.value) {
+        const siteDocs = await listSharePointDocs(connectionId, orgId, site.id)
+        for (const doc of siteDocs) {
+          // SharePoint files are in a drive
+          const driveId = doc.parentReference?.driveId
+          if (driveId) {
+>>>>>>> Stashed changes
             const content = await fetchSharePointDocContent(connectionId, orgId, driveId, doc.id)
             chunks.push({
               chunk_id: `ms_sharepoint_${doc.id}`,
@@ -99,12 +111,20 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
               metadata: { 
                 provider: 'microsoft',
                 resource_type: 'sharepoint_doc',
+<<<<<<< Updated upstream
                 id: doc.id 
               }
             })
           }
         } catch (siteError) {
           console.error(`Error fetching docs for site ${site.id}:`, siteError)
+=======
+                id: doc.id,
+                site_id: site.id
+              }
+            })
+          }
+>>>>>>> Stashed changes
         }
       }
     }

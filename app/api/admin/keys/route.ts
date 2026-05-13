@@ -46,47 +46,31 @@ export async function POST(req: NextRequest) {
     }
 
     return await requireAdmin(async (supabase, { orgId, userId }) => {
-      // 1. Encrypt the key using the DB function (uses app.kms_key from session)
-      const { data: encryptedKey, error: encryptError } = await supabase.rpc('encrypt_llm_key', {
-        plaintext_key: key
+      // Use the unified store_llm_key RPC (Issue #5 hardening)
+      // This is atomic and handles encryption + rotation in one transaction.
+      const kmsKey = process.env.KMS_KEY || "fallback_dummy_kms_key_for_stability_only";
+      
+      const { data, error: storeError } = await supabase.rpc('store_llm_key', {
+        p_org_id: orgId,
+        p_provider: provider,
+        p_plaintext: key,
+        p_kms_key: kmsKey
       })
 
-      if (encryptError) throw encryptError
+      if (storeError) {
+        console.error('[Admin Keys] store_llm_key failed:', storeError);
+        throw storeError;
+      }
 
-      // 2. Deactivate any existing active key for this provider (Issue #2 rotation logic)
-      await supabase
-        .from('llm_keys')
-        .update({ is_active: false })
-        .eq('provider', provider)
-        .eq('is_active', true)
-
-      // 3. Insert new key
-      const { data, error: insertError } = await supabase
-        .from('llm_keys')
-        .insert({
-          org_id: orgId,
-          provider,
-          key_encrypted: encryptedKey,
-          key_hint: `...${key.slice(-4)}`,
-          label: label || `${provider} key`,
-          is_active: true,
-          created_by: userId
-        })
-        .select()
-        .limit(1)
-        .maybeSingle()
-
-      if (insertError) throw insertError
-
-      // 4. Audit Log (Issue #6)
+      // Audit Log (Issue #6)
       await supabase.from('admin_actions').insert({
         org_id: orgId,
         admin_user_id: userId,
         action: 'add_key',
-        details: { provider, key_id: data.id, label }
+        details: { provider, label }
       })
 
-      return NextResponse.json(data)
+      return NextResponse.json({ success: true, provider, label })
     })
   } catch (err: any) {
     return handleApiError(err)

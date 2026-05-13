@@ -18,10 +18,14 @@ import { HumanMessage } from "@langchain/core/messages";
 // ---- Hoist mocks BEFORE any imports that use them ----------
 
 const mockInvoke = vi.hoisted(() => vi.fn());
+const mockStream = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/langgraph/llm-factory", () => ({
-  model: { invoke: mockInvoke },
+  model: { 
+    invoke: mockInvoke,
+    stream: mockStream,
+  },
 }));
 
 // ---- Import after mocks ------------------------------------
@@ -30,6 +34,17 @@ import { synthesisAgentNode } from "../synthesis-agent";
 import type { AtheneState } from "../../langgraph/state";
 
 // ---- Helpers -----------------------------------------------
+
+/**
+ * Creates a mock async iterator that yields a single chunk with the given content.
+ */
+function mockAsyncIterator(content: any) {
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      yield { content };
+    },
+  };
+}
 
 const PROMPT_TEMPLATE = "Mode: {{MODE}}\nContext: {{CONTEXT}}";
 
@@ -76,7 +91,7 @@ describe("synthesisAgentNode", () => {
   // ── Standard mode ────────────────────────────────────────
 
   it("standard mode: returns cited answer and clears retrieved_chunks", async () => {
-    mockInvoke.mockResolvedValue({ content: "Revenue is $1M [doc_123]." });
+    mockStream.mockResolvedValue(mockAsyncIterator("Revenue is $1M [doc_123]."));
 
     const result = await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_A] }),
@@ -92,11 +107,12 @@ describe("synthesisAgentNode", () => {
   });
 
   it("standard mode: system prompt contains STANDARD MODE and chunk context", async () => {
-    mockInvoke.mockResolvedValue({ content: "Answer [doc_123]." });
+    mockStream.mockResolvedValue(mockAsyncIterator("Answer [doc_123]."));
 
     await synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] }));
 
-    const [systemMsg] = mockInvoke.mock.calls[0][0];
+    const messages = mockStream.mock.calls[0][0];
+    const systemMsg = messages[0];
     expect(systemMsg.content).toContain("STANDARD MODE");
     expect(systemMsg.content).toContain("doc_123");
     expect(systemMsg.content).toContain("Revenue hit $1M this quarter.");
@@ -105,33 +121,36 @@ describe("synthesisAgentNode", () => {
   // ── BI mode ──────────────────────────────────────────────
 
   it("BI mode: activated when task_type='analytical'", async () => {
-    mockInvoke.mockResolvedValue({ content: "BI answer [doc_456]." });
+    mockStream.mockResolvedValue(mockAsyncIterator("BI answer [doc_456]."));
 
     await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_B], task_type: "analytical" }),
     );
 
-    const [systemMsg] = mockInvoke.mock.calls[0][0];
+    const messages = mockStream.mock.calls[0][0];
+    const systemMsg = messages[0];
     expect(systemMsg.content).toContain("BI (BUSINESS INTELLIGENCE) MODE");
   });
 
   it("BI mode: activated when is_cross_dept_query=true", async () => {
-    mockInvoke.mockResolvedValue({ content: "Cross-dept answer [doc_123]." });
+    mockStream.mockResolvedValue(mockAsyncIterator("Cross-dept answer [doc_123]."));
 
     await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_A], is_cross_dept_query: true }),
     );
 
-    const [systemMsg] = mockInvoke.mock.calls[0][0];
+    const messages = mockStream.mock.calls[0][0];
+    const systemMsg = messages[0];
     expect(systemMsg.content).toContain("BI (BUSINESS INTELLIGENCE) MODE");
   });
 
   it("standard mode: task_type='retrieval' + cross_dept=false stays STANDARD", async () => {
-    mockInvoke.mockResolvedValue({ content: "Standard answer [doc_123]." });
+    mockStream.mockResolvedValue(mockAsyncIterator("Standard answer [doc_123]."));
 
     await synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] }));
 
-    const [systemMsg] = mockInvoke.mock.calls[0][0];
+    const messages = mockStream.mock.calls[0][0];
+    const systemMsg = messages[0];
     expect(systemMsg.content).toContain("STANDARD MODE");
     expect(systemMsg.content).not.toContain("BUSINESS INTELLIGENCE");
   });
@@ -146,7 +165,7 @@ describe("synthesisAgentNode", () => {
     );
     expect(result.cited_sources).toHaveLength(0);
     expect(result.retrieved_chunks).toHaveLength(0);
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
   });
 
   it("null retrieved_chunks: treated as empty, no LLM call", async () => {
@@ -157,15 +176,13 @@ describe("synthesisAgentNode", () => {
     expect(result.final_answer).toBe(
       "I don't have enough information in your connected sources to answer that.",
     );
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
   });
 
   // ── Hallucination prevention — unknown doc IDs ────────────
 
   it("hallucinated doc ID: unknown reference dropped from citations, text preserved", async () => {
-    mockInvoke.mockResolvedValue({
-      content: "Invented fact [doc_999].",
-    });
+    mockStream.mockResolvedValue(mockAsyncIterator("Invented fact [doc_999]."));
 
     const result = await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_A] }),
@@ -178,9 +195,7 @@ describe("synthesisAgentNode", () => {
   // ── Multiple citations ────────────────────────────────────
 
   it("multiple citations: resolves both docs and deduplicates repeated references", async () => {
-    mockInvoke.mockResolvedValue({
-      content: "Revenue [doc_123] plus costs [doc_456] and again [doc_123].",
-    });
+    mockStream.mockResolvedValue(mockAsyncIterator("Revenue [doc_123] plus costs [doc_456] and again [doc_123]."));
 
     const result = await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_A, DOC_B] }),
@@ -197,7 +212,7 @@ describe("synthesisAgentNode", () => {
   // ── LLM error ────────────────────────────────────────────
 
   it("LLM error: propagates the thrown error to the caller", async () => {
-    mockInvoke.mockRejectedValue(new Error("Rate limit exceeded"));
+    mockStream.mockRejectedValue(new Error("Rate limit exceeded"));
 
     await expect(
       synthesisAgentNode(makeState({ retrieved_chunks: [DOC_A] })),
@@ -208,9 +223,7 @@ describe("synthesisAgentNode", () => {
   // ── Complex (multimodal) content array from LLM ───────────
 
   it("complex content array: joins text parts into final_answer", async () => {
-    mockInvoke.mockResolvedValue({
-      content: [{ type: "text", text: "Revenue is $1M [doc_123]." }],
-    });
+    mockStream.mockResolvedValue(mockAsyncIterator([{ type: "text", text: "Revenue is $1M [doc_123]." }]));
 
     const result = await synthesisAgentNode(
       makeState({ retrieved_chunks: [DOC_A] }),

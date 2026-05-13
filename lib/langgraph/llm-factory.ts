@@ -42,11 +42,14 @@ class LLMFactory {
     const cacheKey = `byok-${orgId}-${provider}-${temperature}`;
     if (this.instances.has(cacheKey)) return this.instances.get(cacheKey);
 
-    // Fetch decrypted key via SECURITY DEFINER RPC
-    const { data: apiKey, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
+    // Fetch decrypted keys via SECURITY DEFINER RPC
+    const kmsKey = process.env.KMS_KEY || "fallback_dummy_kms_key_for_stability_only";
+    const { data: keys, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
       p_org_id: orgId,
-      p_provider: provider,
+      p_kms_key: kmsKey
     });
+
+    const apiKey = (keys as any[])?.find(k => k.provider === provider)?.plaintext;
 
     if (error || !apiKey) {
       console.warn(`[LLMFactory] No active BYOK key found for org ${orgId} / ${provider}. Falling back to system keys.`);

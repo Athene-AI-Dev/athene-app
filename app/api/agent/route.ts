@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       async () => {
         const { data } = await supabaseAdmin
           .from("org_members")
-          .select("id")
+          .select("id, timezone")
           .eq("clerk_user_id", userId)
           .eq("org_id", orgRow!.id)
           .single();
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
       user: {
         id: userId,
         internalId: memberRow.id,
-        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
+        timezone: (memberRow as any)?.timezone ?? "UTC",
       },
       task_type: task_type || "general",
       is_cross_dept_query: !!is_cross_dept_query,

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { listConnections, deleteConnection, saveConnectionMapping } from '@/lib/nango/client'
 import { PROVIDER_REGISTRY } from '@/lib/integrations/providers'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * 🛡️ ADMIN ROLE ENFORCEMENT
@@ -27,18 +28,32 @@ export async function GET(_req: NextRequest) {
     const { orgId } = await ensureAdmin()
     const connections = await listConnections(orgId)
 
+    // Batch-count documents per nango connection for the whole org in one query.
+    // Schema: nango_connection_id (text) → connections.id (uuid) → documents.connection_id
+    const { data: docCounts } = await supabaseAdmin
+      .from('connections')
+      .select('nango_connection_id, documents(count)')
+      .eq('org_id', orgId)
+
+    const countByNangoId: Record<string, number> = {}
+    for (const row of docCounts ?? []) {
+      const count = Array.isArray(row.documents) ? (row.documents[0] as any)?.count ?? 0 : 0
+      countByNangoId[row.nango_connection_id] = Number(count)
+    }
+
     const integrations = (connections as any[]).map((conn) => {
       const providerKey = (conn.provider_config_key ?? conn.provider) as string
+      const nangoConnId = conn.connection_id ?? conn.id
       const config = PROVIDER_REGISTRY[providerKey as keyof typeof PROVIDER_REGISTRY]
       return {
-        connectionId: conn.connection_id ?? conn.id,
+        connectionId: nangoConnId,
         provider: providerKey,
         displayName: config?.displayName ?? providerKey,
         category: config?.category ?? 'other',
         resources: config?.resources ?? [],
         status: conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
         lastSyncedAt: conn.last_synced_at ?? null,
-        totalDocs: 0, // TODO: Count from documents table
+        totalDocs: countByNangoId[nangoConnId] ?? 0,
         createdAt: conn.created_at ?? null,
       }
     })

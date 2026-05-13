@@ -14,9 +14,9 @@
 
 import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { baseFetch } from './base'
 import type { FetchedChunk } from './base'
 import { logger } from '@/lib/logger'
+import { embedBatch } from '@/lib/ai/embedding-factory'
 
 // ---- Constants --------------------------------------------------
 
@@ -25,12 +25,6 @@ const CHUNK_SIZE_CHARS = 2000
 
 /** Overlap between chunks to preserve context at boundaries */
 const CHUNK_OVERLAP_CHARS = 200
-
-/** OpenAI embedding model */
-const EMBEDDING_MODEL = 'text-embedding-3-small'
-
-/** Embedding dimensions (text-embedding-3-small default) */
-const EMBEDDING_DIMENSIONS = 1536
 
 // ---- Content Chunking -------------------------------------------
 
@@ -82,33 +76,11 @@ function chunkContent(content: string): string[] {
 // ---- Embedding Generation ---------------------------------------
 
 /**
- * Generates embeddings for the given texts using OpenAI.
- * Uses the API key from environment — never stored, never logged.
+ * Generates embeddings for the given texts via the EmbeddingFactory.
+ * Provider resolved from: org BYOK → system env (Jina / Together / Nomic).
  */
-async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error('Missing OPENAI_API_KEY environment variable')
-  }
-
-  const data = await baseFetch<{
-    data: Array<{ embedding: number[]; index: number }>
-  }>('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: {
-      model: EMBEDDING_MODEL,
-      input: texts,
-      dimensions: EMBEDDING_DIMENSIONS,
-    },
-  })
-
-  // Sort by index to maintain order
-  return data.data
-    .sort((a, b) => a.index - b.index)
-    .map((d) => d.embedding)
+async function generateEmbeddings(texts: string[], orgId?: string): Promise<number[][]> {
+  return embedBatch(texts, orgId)
 }
 
 // ---- Main Indexing Function -------------------------------------
@@ -190,8 +162,8 @@ export async function indexDocument(
 
   if (contentChunks.length === 0) return documentId
 
-  // 2. Generate embeddings for all chunks in a single batch
-  const embeddings = await generateEmbeddings(contentChunks)
+  // 2. Generate embeddings for all chunks in a single batch (org-BYOK aware)
+  const embeddings = await generateEmbeddings(contentChunks, orgId)
 
   // 3. Build the records to upsert — must match document_embeddings schema exactly
   const records = contentChunks.map((text, index) => ({
@@ -203,9 +175,10 @@ export async function indexDocument(
     visibility,
     chunk_index: index,
     embedding: embeddings[index],
-    // SHA-256 hash of the content — used to skip re-embedding unchanged chunks
+    // SHA-256 hash — used to skip re-embedding unchanged chunks
     content_hash: createHash('sha256').update(text).digest('hex'),
-    metadata: chunk.metadata,
+    // Zero-copy: store chunk text here so LLM retrieval never re-hits the source
+    metadata: { ...chunk.metadata, chunk_text: text },
   }))
 
   // 4. Upsert into Supabase via service-role (bypasses RLS)
@@ -283,16 +256,17 @@ export async function indexDocuments(
       visibility,
       chunk_index: index,
       content_hash: createHash('sha256').update(text).digest('hex'),
-      metadata: item.chunk.metadata,
+      // Zero-copy: chunk text stored here for LLM context — source never re-fetched at query time
+      metadata: { ...item.chunk.metadata, chunk_text: text },
     }))
   )
 
-  // ---- Phase 3: generate embeddings in batches --------------------
+  // ---- Phase 3: generate embeddings in batches (org-BYOK aware) ---
   const allEmbeddings: number[][] = []
   for (let i = 0; i < allTexts.length; i += EMBED_BATCH_SIZE) {
     const batchTexts = allTexts.slice(i, i + EMBED_BATCH_SIZE)
     try {
-      const batchEmbeddings = await generateEmbeddings(batchTexts)
+      const batchEmbeddings = await generateEmbeddings(batchTexts, orgId)
       allEmbeddings.push(...batchEmbeddings)
     } catch (err) {
       console.error(

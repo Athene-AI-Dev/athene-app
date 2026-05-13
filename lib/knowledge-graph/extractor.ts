@@ -8,7 +8,8 @@
 // This file never touches Supabase.
 // ============================================================
 
-import Anthropic from "@anthropic-ai/sdk";
+import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { resolveModelClient } from "@/lib/langgraph/llm-factory";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   EntityType,
@@ -25,9 +26,6 @@ import {
   maxVisibility,
   nodeKey as makeNodeKey,
 } from "./utils";
-
-const MODEL = "claude-haiku-4-5-20251001";
-const MAX_TOKENS = 2048;
 
 const EXTRACTION_PROMPT = `# Entity & Relationship Extraction Prompt
 
@@ -70,6 +68,27 @@ For every relationship, set \`provenance\` to one of:
 
 Err toward \`AMBIGUOUS\` when in doubt. A flagged edge is recoverable; a wrong \`EXTRACTED\` edge is not.
 
+## Semantic similarity
+
+If two entities in the passage solve the same problem or represent the same idea without any
+direct structural link, add a \`RELATED_TO\` edge with provenance \`INFERRED\` and confidence
+between 0.6 and 0.8. Only do this when the similarity is genuinely non-obvious.
+
+## Rationale edges
+
+If the passage explains WHY a decision was made, extract a node for the reasoning and add a
+\`RELATED_TO\` edge from that reasoning node to the concept it justifies. Use provenance
+\`EXTRACTED\` when the rationale is stated directly, \`INFERRED\` when it is implied.
+
+## Confidence scoring rules
+
+Never use 0.5 as a default score. Apply these precisely:
+- \`EXTRACTED\` edges: confidence MUST be 1.0 (it is stated verbatim in the text)
+- \`INFERRED\` with direct structural evidence: 0.8–0.9
+- \`INFERRED\` with reasonable but uncertain inference: 0.6–0.7
+- \`INFERRED\` when speculative: 0.4–0.5
+- \`AMBIGUOUS\` edges: 0.1–0.3
+
 ## Output format
 
 Return a single JSON object with exactly two keys: \`entities\` and \`relationships\`. No prose, no code fences.
@@ -82,22 +101,6 @@ Return a single JSON object with exactly two keys: \`entities\` and \`relationsh
 4. If the passage contains no meaningful entities, return \`{"entities":[],"relationships":[]}\`.
 5. Do not include quotes from the source text. Descriptions are your own concise summaries (≤ 140 chars).
 6. Do not include PII you would not want logged. Anonymize email addresses and phone numbers.`;
-
-async function getClient(orgId: string, supabase: SupabaseClient): Promise<Anthropic> {
-  // 🔑 Resolve BYOK key via SECURITY DEFINER RPC
-  const { data: apiKey, error } = await supabase.rpc("get_decrypted_llm_key", {
-    p_org_id: orgId,
-    p_provider: "anthropic",
-  });
-
-  const finalKey = (apiKey && !error) ? (apiKey as string) : process.env.ANTHROPIC_API_KEY;
-
-  if (!finalKey) {
-    throw new Error(`No Anthropic API key available for org ${orgId} (checked BYOK and system env)`);
-  }
-
-  return new Anthropic({ apiKey: finalKey });
-}
 
 function loadPrompt(): string {
   return EXTRACTION_PROMPT;
@@ -200,25 +203,25 @@ function normConfidence(x: unknown, provenance: KGProvenance): number {
 
 async function extractFromChunk(
   chunk: ExtractorChunk,
-  client: Anthropic
+  orgId: string
 ): Promise<ExtractionResult> {
   const systemPrompt = loadPrompt();
 
   let raw: string;
   try {
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: `Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${chunk.text}\n---`,
-        },
-      ],
-    });
-    const first = res.content[0];
-    raw = first && first.type === "text" ? first.text : "";
+    const llm = await resolveModelClient("medium", orgId);
+    const res = await llm.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(
+        `Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${chunk.text}\n---`
+      ),
+    ]);
+    const content = res.content;
+    raw = typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((c: any) => c.text ?? "").join("")
+        : "";
   } catch (err) {
     console.error(
       "[kg/extractor] LLM call failed:",
@@ -320,14 +323,13 @@ async function extractFromChunk(
  */
 export async function extractEntitiesAndRelations(
   chunks: ExtractorChunk[],
-  supabase: SupabaseClient
+  _supabase: SupabaseClient
 ): Promise<ExtractionResult> {
   if (!Array.isArray(chunks) || chunks.length === 0) {
     return { nodes: [], edges: [] };
   }
 
   const orgId = chunks[0].org_id;
-  const client = await getClient(orgId, supabase);
 
   // Running chunk LLM calls in parallel up to a small cap
   const CONCURRENCY = 5;
@@ -335,7 +337,7 @@ export async function extractEntitiesAndRelations(
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
     const settled = await Promise.all(
-      batch.map((chunk) => extractFromChunk(chunk, client))
+      batch.map((chunk) => extractFromChunk(chunk, orgId))
     );
     chunkResults.push(...settled);
   }

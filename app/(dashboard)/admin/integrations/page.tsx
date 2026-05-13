@@ -118,13 +118,18 @@ export default function IntegrationsPage() {
   const handleConnect = useCallback(async (provider: ProviderConfig) => {
     setConnecting(provider.key);
     try {
-      const sessionRes = await fetch("/api/nango/session", { method: "POST" });
+      const sessionRes = await fetch("/api/nango/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
       if (!sessionRes.ok) throw new Error("Failed to secure Nango session");
       const { token } = await sessionRes.json();
+      if (!token) throw new Error("Nango session token missing");
 
       const nango = new Nango({ connectSessionToken: token });
 
-      await nango.openConnectUI({
+      nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "close") {
             setConnecting(null);

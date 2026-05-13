@@ -37,13 +37,22 @@ import {
 import { toast } from "sonner";
 
 const INITIAL_FILES = [
-  { name: "Q4_Revenue_Synthesis.pdf", type: "PDF", size: "12.4 MB", date: "2 mins ago", status: "Indexed", risk: "Low" },
-  { name: "Board_Meeting_Transcript.docx", type: "DOCX", size: "450 KB", date: "1 hour ago", status: "Indexing", risk: "Medium" },
-  { name: "Global_Infrastructure_Map.svg", type: "SVG", size: "2.1 MB", date: "4 hours ago", status: "Indexed", risk: "Low" },
-  { name: "Employee_Records_V2.xlsx", type: "XLSX", size: "4.8 MB", date: "Yesterday", status: "Flagged", risk: "High" },
-  { name: "Customer_Journey_Audit.pptx", type: "PPTX", size: "18.2 MB", date: "2 days ago", status: "Indexed", risk: "Low" },
-  { name: "API_Security_Manual.pdf", type: "PDF", size: "1.1 MB", date: "3 days ago", status: "Indexed", risk: "Low" },
+  { name: "Q4_Revenue_Synthesis.pdf", type: "PDF", size: "12.4 MB", date: "2 mins ago", status: "Indexed", risk: "Low", layer: "Financial Records" },
+  { name: "Board_Meeting_Transcript.docx", type: "DOCX", size: "450 KB", date: "1 hour ago", status: "Indexing", risk: "Medium", layer: "Internal Wiki" },
+  { name: "Global_Infrastructure_Map.svg", type: "SVG", size: "2.1 MB", date: "4 hours ago", status: "Indexed", risk: "Low", layer: "Internal Wiki" },
+  { name: "Employee_Records_V2.xlsx", type: "XLSX", size: "4.8 MB", date: "Yesterday", status: "Flagged", risk: "High", layer: "Financial Records" },
+  { name: "Customer_Journey_Audit.pptx", type: "PPTX", size: "18.2 MB", date: "2 days ago", status: "Indexed", risk: "Low", layer: "Audit Logs" },
+  { name: "API_Security_Manual.pdf", type: "PDF", size: "1.1 MB", date: "3 days ago", status: "Indexed", risk: "Low", layer: "Legal Discovery" },
 ];
+
+const INTELLIGENCE_LAYERS = [
+  { label: "Financial Records", color: "text-emerald-500" },
+  { label: "Legal Discovery", color: "text-amber-500" },
+  { label: "Internal Wiki", color: "text-[#66ADE4]" },
+  { label: "Audit Logs", color: "text-[#66ADE4]" },
+] as const;
+
+type IntelligenceLayer = (typeof INTELLIGENCE_LAYERS)[number]["label"];
 
 const MIME_TYPES: Record<string, string> = {
   PDF: "application/pdf",
@@ -57,6 +66,7 @@ const MIME_TYPES: Record<string, string> = {
 export default function FilesPage() {
   const [files, setFiles] = useState(INITIAL_FILES);
   const [search, setSearch] = useState("");
+  const [selectedLayer, setSelectedLayer] = useState<IntelligenceLayer | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = () => {
@@ -82,6 +92,7 @@ export default function FilesPage() {
         date: "Just now",
         status: "Uploading" as string,
         risk: "Low" as string,
+        layer: "Internal Wiki" as IntelligenceLayer,
       };
       setFiles((prev) => [placeholder, ...prev]);
 
@@ -175,7 +186,16 @@ export default function FilesPage() {
     });
   };
 
-  const filteredFiles = files.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
+  const layerCounts = INTELLIGENCE_LAYERS.reduce<Record<IntelligenceLayer, number>>((counts, layer) => {
+    counts[layer.label] = files.filter((file) => file.layer === layer.label).length;
+    return counts;
+  }, {} as Record<IntelligenceLayer, number>);
+
+  const filteredFiles = files.filter((file) => {
+    const matchesSearch = file.name.toLowerCase().includes(search.toLowerCase());
+    const matchesLayer = !selectedLayer || file.layer === selectedLayer;
+    return matchesSearch && matchesLayer;
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
@@ -249,20 +269,28 @@ export default function FilesPage() {
            <div className="space-y-4 px-2">
               <h3 className="text-[11px] uppercase tracking-[0.2em] font-bold text-slate-500">Intelligence Layers</h3>
               <div className="space-y-2">
-                 {[
-                    { label: "Financial Records", count: 42, color: "text-emerald-500" },
-                    { label: "Legal Discovery", count: 18, color: "text-amber-500" },
-                    { label: "Internal Wiki", count: 124, color: "text-[#66ADE4]" },
-                    { label: "Audit Logs", count: 56, color: "text-[#66ADE4]" },
-                 ].map((cat, i) => (
-                    <button key={i} className="w-full flex items-center justify-between p-3.5 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group text-left">
-                       <span className="text-[13px] font-bold text-slate-400 group-hover:text-white flex items-center gap-3">
+                 {INTELLIGENCE_LAYERS.map((cat) => {
+                    const isSelected = selectedLayer === cat.label;
+                    return (
+                    <button
+                      key={cat.label}
+                      onClick={() => setSelectedLayer(isSelected ? null : cat.label)}
+                      className={`w-full flex items-center justify-between p-3.5 rounded-xl border transition-all group text-left ${
+                        isSelected
+                          ? "bg-white/10 border-[#66ADE4]/30"
+                          : "border-transparent hover:bg-white/5 hover:border-white/10"
+                      }`}
+                    >
+                       <span className={`text-[13px] font-bold flex items-center gap-3 ${
+                        isSelected ? "text-white" : "text-slate-400 group-hover:text-white"
+                       }`}>
                           <Layers className={`w-4 h-4 ${cat.color}`} />
                           {cat.label}
                        </span>
-                       <Badge className="bg-white/5 text-slate-500 border-none text-[10px] font-bold group-hover:text-[#66ADE4] transition-colors">{cat.count}</Badge>
+                       <Badge className="bg-white/5 text-slate-500 border-none text-[10px] font-bold group-hover:text-[#66ADE4] transition-colors">{layerCounts[cat.label]}</Badge>
                     </button>
-                 ))}
+                    );
+                 })}
               </div>
            </div>
         </div>
@@ -278,9 +306,13 @@ export default function FilesPage() {
                   placeholder="Search organizational data..." className="h-12 pl-12 rounded-xl bg-black/20 border-white/5 text-[13px] text-white focus:ring-[#66ADE4]/20 placeholder:text-slate-600" />
               </div>
               <div className="flex items-center gap-4">
-                 <Button variant="ghost" className="h-12 px-6 rounded-xl text-slate-400 font-bold uppercase tracking-widest text-[10px] gap-2 hover:bg-white/5 hover:text-white">
+                 <Button
+                  variant="ghost"
+                  onClick={() => setSelectedLayer(null)}
+                  className="h-12 px-6 rounded-xl text-slate-400 font-bold uppercase tracking-widest text-[10px] gap-2 hover:bg-white/5 hover:text-white"
+                 >
                     <Filter className="w-4 h-4" />
-                    Filters
+                    {selectedLayer ?? "Filters"}
                  </Button>
                  <div className="h-8 w-px bg-white/10" />
                  <Button 

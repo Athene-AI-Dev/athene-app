@@ -56,16 +56,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── pnpm setup ─────────────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       # ── Node setup ──────────────────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
 
       # ── Install dependencies ─────────────────────────────────────────────
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # ── Playwright browsers ──────────────────────────────────────────────
       - name: Cache Playwright browsers
@@ -73,22 +79,22 @@ jobs:
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       # FIX: system deps (libglib, libnss, etc.) are OS-level packages NOT included
       # in the Playwright browser cache. When the cache hits, binaries are restored
       # but system deps are missing, causing 'missing shared library' launch errors.
       # Remove the condition so install-deps always runs regardless of cache state.
       - name: Install Playwright system deps
-        run: npx playwright install-deps chromium
+        run: pnpm exec playwright install-deps chromium
 
       # ── Run E2E tests ────────────────────────────────────────────────────
       - name: Run Playwright E2E tests
-        run: npx playwright test --config=tests/e2e/playwright.config.ts
+        run: pnpm exec playwright test --config=tests/e2e/playwright.config.ts
         env:
           CI: true
 

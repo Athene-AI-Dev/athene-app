@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { cachedAuth } from "@/lib/auth/cached-clerk";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
-import { rateLimit } from "@/lib/redis/client";
+import { rateLimit, cached } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { withSSEFrameSpan } from "@/lib/telemetry/spans";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, orgId, orgRole } = await auth();
+    const authResult = await cachedAuth(req);
+    const { userId, orgId, orgRole } = authResult;
 
     if (!userId || !orgId) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
     }
 
-    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
+    // 2. Validate Thread ID
     if (!threadId) {
       return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
     }
@@ -37,13 +39,19 @@ export async function POST(req: NextRequest) {
 
     const effectiveThreadId = threadId;
 
-    // Resolve internal org and user for thread persistence
-    let { data: orgRow } = await supabaseAdmin
-      .from("organizations")
-      .select("id")
-      .eq("clerk_org_id", orgId)
-      .limit(1)
-      .maybeSingle();
+    // Resolve internal org and user for thread persistence (cached)
+    let orgRow = await cached(
+      `org:clerk:${orgId}`,
+      300,
+      async () => {
+        const { data } = await supabaseAdmin
+          .from("organizations")
+          .select("id")
+          .eq("clerk_org_id", orgId)
+          .single();
+        return data;
+      }
+    );
 
     // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
@@ -65,13 +73,19 @@ export async function POST(req: NextRequest) {
       orgRow = newOrg;
     }
 
-    let { data: memberRow } = await supabaseAdmin
-      .from("org_members")
-      .select("id")
-      .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow!.id)
-      .limit(1)
-      .maybeSingle();
+    let memberRow = await cached(
+      `member:clerk:${userId}:${orgRow!.id}`,
+      300,
+      async () => {
+        const { data } = await supabaseAdmin
+          .from("org_members")
+          .select("id")
+          .eq("clerk_user_id", userId)
+          .eq("org_id", orgRow!.id)
+          .single();
+        return data;
+      }
+    );
 
     // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
@@ -96,12 +110,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
+    // orgRow and memberRow are guaranteed non-null by the sync blocks above.
+    if (!orgRow || !memberRow) {
+      return NextResponse.json({ error: "Failed to resolve organization or user." }, { status: 500 });
+    }
+
     const { error: threadError } = await supabaseAdmin
       .from("threads")
       .upsert({
         id: effectiveThreadId,
-        org_id: orgRow!.id,
-        user_id: memberRow!.id,
+        org_id: orgRow.id,
+        user_id: memberRow.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 
@@ -112,7 +131,7 @@ export async function POST(req: NextRequest) {
     }
 
     const graph = await getAgentGraph();
-    
+
     // ATH-43: Prevent concurrent messages if the thread is awaiting approval
     const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
     if (currentState?.values?.awaiting_approval) {
@@ -126,12 +145,12 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId: orgRow!.id,
-      userId: memberRow!.id,
+      orgId: orgRow.id,
+      userId: memberRow.id,
       role,
       user: {
-        id: userId, // Keep Clerk ID for display/identity if needed
-        internalId: memberRow!.id,
+        id: userId,
+        internalId: memberRow.id,
         timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
       },
       task_type: task_type || "general",
@@ -142,27 +161,53 @@ export async function POST(req: NextRequest) {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
 
+    let firstTokenSent = false;
+    const firstTokenTime = Date.now();
+
     (async () => {
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {
             thread_id: effectiveThreadId,
           },
-          streamMode: "values",
+          streamMode: ["values", "messages"],
         });
 
-        for await (const chunk of eventStream as AsyncIterable<any>) {
-          const lastMessage = chunk.messages?.[chunk.messages.length - 1];
-          if (lastMessage) {
-            const data = JSON.stringify({
-              content: lastMessage.content,
-              final_answer: chunk.final_answer ?? null,
-              cited_sources: chunk.cited_sources ?? [],
-              awaiting_approval: chunk.awaiting_approval ?? false,
-              pending_write_action: chunk.pending_write_action ?? null,
-              active_agent: chunk.next_node ?? null,
-            });
-            await writer.write(encoder.encode(`data: ${data}\n\n`));
+        for await (const [mode, chunk] of eventStream as AsyncIterable<[string, any]>) {
+          if (mode === "messages") {
+            const messageChunk = (chunk as any[])?.[0];
+            if (messageChunk?.content) {
+              const token = typeof messageChunk.content === "string"
+                ? messageChunk.content
+                : Array.isArray(messageChunk.content)
+                  ? messageChunk.content.map((c: any) => c.text || "").join("")
+                  : "";
+              if (token && !firstTokenSent) {
+                firstTokenSent = true;
+                console.log(`[agent] First token latency: ${Date.now() - firstTokenTime}ms`);
+              }
+              if (token) {
+                const data = JSON.stringify({ token });
+                await withSSEFrameSpan("llm_token", async () => {
+                  await writer.write(encoder.encode(`data: ${data}\n\n`));
+                });
+              }
+            }
+          } else if (mode === "values") {
+            const messages = chunk.messages as any[] | undefined;
+            const lastMessage = messages?.[messages.length - 1];
+            if (lastMessage) {
+              const data = JSON.stringify({
+                content: lastMessage.content,
+                final_answer: chunk.final_answer ?? null,
+                cited_sources: chunk.cited_sources ?? [],
+                awaiting_approval: chunk.awaiting_approval ?? false,
+                active_agent: chunk.next ?? null,
+              });
+              await withSSEFrameSpan("agent_chunk", async () => {
+                await writer.write(encoder.encode(`data: ${data}\n\n`));
+              });
+            }
           }
         }
         await writer.close();
@@ -182,8 +227,8 @@ export async function POST(req: NextRequest) {
     return new Response(stream.readable, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error: unknown) {

@@ -154,7 +154,7 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk']">
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk'] transition-colors duration-300">
       
       <InviteModal 
         isOpen={isInviteOpen} 
@@ -166,14 +166,14 @@ export default function UsersPage() {
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-[#66ADE4]/10 to-[#DA88B6]/10 border border-white/5">
-              <Users className="w-7 h-7 text-[#66ADE4]" />
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border border-border shadow-lg">
+              <Users className="w-7 h-7 text-primary" />
             </div>
-            <h1 className="text-4xl font-black tracking-tighter text-white">
-              Identity <span className="text-[#DA88B6]">Governance</span>
+            <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase">
+              Identity <span className="text-primary">Governance</span>
             </h1>
           </div>
-          <p className="text-slate-400 text-lg max-w-2xl font-medium leading-relaxed">
+          <p className="text-muted-foreground text-lg max-w-2xl font-medium leading-relaxed">
             Manage organization membership, roles, and departmental access. 
             Audit all administrative actions in real-time.
           </p>
@@ -181,15 +181,15 @@ export default function UsersPage() {
         
         <div className="flex items-center gap-4">
            <div className="flex flex-col items-end mr-4 hidden sm:flex">
-              <span className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-1">Population</span>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="h-2 w-2 rounded-full bg-[#66ADE4] animate-pulse" />
-                <span className="text-xs font-bold text-white">{total} Members</span>
+              <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40 mb-1">Population</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/20 border border-border">
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span className="text-xs font-bold text-foreground tracking-tight">{total} Members</span>
               </div>
            </div>
            <Button 
             onClick={() => setIsInviteOpen(true)}
-            className="h-14 px-8 rounded-2xl bg-[#66ADE4] hover:bg-[#599bc9] text-black font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-blue-500/10 group"
+            className="h-14 px-8 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-primary/10 group"
            >
              <UserPlus className="w-4 h-4" />
              Invite User
@@ -198,9 +198,9 @@ export default function UsersPage() {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center p-2 rounded-2xl bg-white/5 border border-white/5">
+      <div className="flex flex-col sm:flex-row gap-4 items-center p-2 rounded-2xl bg-muted/10 border border-border">
          <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 transition-colors group-focus-within:text-[#66ADE4]" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
             <input 
               value={search}
               onChange={(e) => {
@@ -208,122 +208,122 @@ export default function UsersPage() {
                 setPage(1); // Reset to page 1 on search
               }}
               placeholder="Search by name or email..." 
-              className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-medium text-white placeholder:text-slate-600"
+              className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-bold text-foreground placeholder:text-muted-foreground/40"
             />
          </div>
       </div>
 
 
       {/* Users Table */}
-      <div className="rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden backdrop-blur-sm">
+      <div className="rounded-[2.5rem] bg-card/50 border border-border overflow-hidden backdrop-blur-xl shadow-2xl transition-colors duration-300">
         <Table>
-          <TableHeader className="bg-white/5 border-b border-white/5">
+          <TableHeader className="bg-muted/30 border-b border-border">
             <TableRow className="hover:bg-transparent border-none">
-              <TableHead className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-slate-500">Member</TableHead>
-              <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500">Role</TableHead>
-              <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500">Department</TableHead>
-              <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500">Status</TableHead>
-              <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-500">Last Active</TableHead>
+              <TableHead className="py-6 px-8 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Member</TableHead>
+              <TableHead className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Role</TableHead>
+              <TableHead className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Department</TableHead>
+              <TableHead className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Status</TableHead>
+              <TableHead className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Last Active</TableHead>
               <TableHead className="text-right py-6 px-8"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               [...Array(5)].map((_, i) => (
-                <TableRow key={i} className="border-white/5">
-                  <TableCell colSpan={6} className="py-8 px-8"><Loader2 className="w-6 h-6 animate-spin text-slate-700 mx-auto" /></TableCell>
+                <TableRow key={i} className="border-border">
+                  <TableCell colSpan={6} className="py-8 px-8"><Loader2 className="w-6 h-6 animate-spin text-muted/30 mx-auto" /></TableCell>
                 </TableRow>
               ))
             ) : filteredUsers.length === 0 ? (
-              <TableRow className="border-white/5">
+              <TableRow className="border-border">
                 <TableCell colSpan={6} className="py-20 text-center">
-                  <p className="text-slate-500 font-bold">No members found matching your search.</p>
+                  <p className="text-muted-foreground font-bold">No members found matching your search.</p>
                 </TableCell>
               </TableRow>
             ) : (
               filteredUsers.map((user) => (
-                <TableRow key={user.id} className="hover:bg-white/[0.02] border-white/5 group transition-colors">
+                <TableRow key={user.id} className="hover:bg-muted/20 border-border group transition-colors">
                   <TableCell className="py-6 px-8">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#66ADE4]/20 to-[#DA88B6]/20 flex items-center justify-center text-xs font-black text-white border border-white/5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center text-xs font-black text-foreground border border-border shadow-sm">
                         {user.display_name?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-black text-sm text-white tracking-tight">{user.display_name}</span>
-                        <span className="text-xs text-slate-500 font-medium">{user.email}</span>
+                        <span className="font-black text-sm text-foreground tracking-tight">{user.display_name}</span>
+                        <span className="text-xs text-muted-foreground font-medium">{user.email}</span>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>{getRoleBadge(user.role)}</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground/60">
                       <Building2 className="w-3.5 h-3.5 opacity-50" />
                       {user.departments?.name || "Unassigned"}
                     </div>
                   </TableCell>
                   <TableCell>
                     {user.active ? (
-                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#7AADCF]">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent">
                         <Circle className="w-2 h-2 fill-current animate-pulse" />
                         Active
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-600">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
                         <Circle className="w-2 h-2 fill-current" />
                         Deactivated
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-xs font-bold text-slate-500">
+                  <TableCell className="text-xs font-bold text-muted-foreground/60">
                     {user.last_active_at && mounted ? new Date(user.last_active_at).toLocaleDateString() : "Never"}
                   </TableCell>
 
                   <TableCell className="text-right py-6 px-8">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white/10">
-                          <MoreVertical className="w-4 h-4 text-slate-500" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-muted/50">
+                          <MoreVertical className="w-4 h-4 text-muted-foreground" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56 bg-[#0c1015] border-white/10 text-white rounded-xl">
-                        <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-slate-500">Management Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator className="bg-white/5" />
+                      <DropdownMenuContent align="end" className="w-56 bg-popover border-border text-popover-foreground rounded-xl shadow-2xl backdrop-blur-xl">
+                        <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Management Actions</DropdownMenuLabel>
+                        <DropdownMenuSeparator className="bg-border" />
                         
-                        <DropdownMenuLabel className="text-[9px] font-bold text-slate-600 mt-2">Modify Role</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "admin" })} className="gap-2 cursor-pointer">
-                          <ShieldAlert className="w-4 h-4 text-[#DA88B6]" /> Admin
+                        <DropdownMenuLabel className="text-[9px] font-bold text-muted-foreground/40 mt-2 uppercase tracking-wider">Modify Role</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "admin" })} className="gap-2 cursor-pointer font-bold text-xs rounded-lg">
+                          <ShieldAlert className="w-4 h-4 text-primary" /> Admin
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "super_user" })} className="gap-2 cursor-pointer">
-                          <ShieldCheck className="w-4 h-4 text-[#66ADE4]" /> BI Analyst
+                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "super_user" })} className="gap-2 cursor-pointer font-bold text-xs rounded-lg">
+                          <ShieldCheck className="w-4 h-4 text-secondary" /> BI Analyst
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "member" })} className="gap-2 cursor-pointer">
-                          <Shield className="w-4 h-4 text-slate-400" /> Member
+                        <DropdownMenuItem onClick={() => handleUpdateUser(user.id, { role: "member" })} className="gap-2 cursor-pointer font-bold text-xs rounded-lg">
+                          <Shield className="w-4 h-4 text-muted-foreground" /> Member
                         </DropdownMenuItem>
                         
-                        <DropdownMenuSeparator className="bg-white/5" />
-                        <DropdownMenuLabel className="text-[9px] font-bold text-slate-600 mt-2">Department</DropdownMenuLabel>
+                        <DropdownMenuSeparator className="bg-border" />
+                        <DropdownMenuLabel className="text-[9px] font-bold text-muted-foreground/40 mt-2 uppercase tracking-wider">Department</DropdownMenuLabel>
                         {departments.map(dept => (
                           <DropdownMenuItem 
                             key={dept.id} 
                             onClick={() => handleUpdateUser(user.id, { departmentId: dept.id })}
-                            className={cn("gap-2 cursor-pointer", user.department_id === dept.id && "bg-[#66ADE4]/10 text-[#66ADE4]")}
+                            className={cn("gap-2 cursor-pointer font-bold text-xs rounded-lg", user.department_id === dept.id && "bg-primary/10 text-primary")}
                           >
                             <Building2 className="w-4 h-4" /> {dept.name}
                           </DropdownMenuItem>
                         ))}
                         
-                        <DropdownMenuSeparator className="bg-white/5" />
+                        <DropdownMenuSeparator className="bg-border" />
                         {user.active ? (
                           <DropdownMenuItem 
                             onClick={() => handleUpdateUser(user.id, { active: false })}
-                            className="gap-2 text-red-400 focus:text-red-400 cursor-pointer"
+                            className="gap-2 text-destructive focus:text-destructive cursor-pointer font-bold text-xs rounded-lg"
                           >
                             <Trash2 className="w-4 h-4" /> Deactivate Account
                           </DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem 
                             onClick={() => handleUpdateUser(user.id, { active: true })}
-                            className="gap-2 text-[#7AADCF] focus:text-[#7AADCF] cursor-pointer"
+                            className="gap-2 text-accent focus:text-accent cursor-pointer font-bold text-xs rounded-lg"
                           >
                             <UserCheck className="w-4 h-4" /> Reactivate Account
                           </DropdownMenuItem>
@@ -338,8 +338,8 @@ export default function UsersPage() {
         </Table>
         
         {/* Pagination */}
-        <div className="bg-white/[0.03] border-t border-white/5 px-8 py-4 flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-600">
+        <div className="bg-muted/10 border-t border-border px-8 py-4 flex items-center justify-between">
+          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
             {search ? `Found ${total} matches` : `Showing ${users.length} of ${total} members`}
           </span>
 
@@ -349,7 +349,7 @@ export default function UsersPage() {
               size="sm" 
               disabled={page === 1}
               onClick={() => setPage(p => p - 1)}
-              className="h-8 w-8 p-0 rounded-lg border-white/10 hover:bg-white/10"
+              className="h-8 w-8 p-0 rounded-lg border-border hover:bg-muted"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
@@ -358,7 +358,7 @@ export default function UsersPage() {
               size="sm" 
               disabled={page * limit >= total}
               onClick={() => setPage(p => p + 1)}
-              className="h-8 w-8 p-0 rounded-lg border-white/10 hover:bg-white/10"
+              className="h-8 w-8 p-0 rounded-lg border-border hover:bg-muted"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -366,5 +366,6 @@ export default function UsersPage() {
         </div>
       </div>
     </div>
+
   );
 }

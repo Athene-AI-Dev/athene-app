@@ -27,6 +27,7 @@ import {
 import { Space_Grotesk } from 'next/font/google';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -267,17 +268,17 @@ export default function AgentLaboratory() {
   };
 
   return (
-    <div className={cn("flex h-screen bg-[#06080c] text-white font-space-grotesk overflow-hidden", spaceGrotesk.variable)}>
+    <div className={cn("flex h-screen bg-background text-foreground font-['Space_Grotesk'] overflow-hidden transition-colors duration-500", spaceGrotesk.variable)}>
       {/* Sidebar */}
-      <aside className="w-64 border-r border-white/5 bg-[#06080c] flex flex-col shrink-0 h-full">
+      <aside className="w-64 border-r border-border bg-background flex flex-col shrink-0 h-full">
         <div className="p-8">
-          <div className="flex items-center gap-4 mb-12">
-            <div className="w-10 h-10 rounded-2xl overflow-hidden flex items-center justify-center bg-white shadow-[0_0_20px_rgba(218,136,182,0.2)]">
+          <div className="flex items-center gap-5 mb-12 group cursor-pointer">
+            <div className="w-12 h-12 rounded-[1.25rem] overflow-hidden flex items-center justify-center bg-white border border-border shadow-2xl group-hover:scale-110 transition-transform duration-500">
                <img src="/logo.png" alt="A" className="w-8 h-8 object-contain" />
             </div>
             <div>
-              <h1 className="text-lg font-black tracking-tighter text-white leading-none">AtheneAI</h1>
-              <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-1.5 font-bold">Orchestration Suite</p>
+              <h1 className="text-xl font-black tracking-tighter uppercase leading-none">Athene<span className="text-primary">AI</span></h1>
+              <p className="text-[9px] text-muted-foreground uppercase tracking-[0.4em] mt-2 font-black opacity-40">Orchestration</p>
             </div>
           </div>
           
@@ -290,7 +291,7 @@ export default function AgentLaboratory() {
         </div>
 
         <div className="mt-auto p-6">
-          <GradientButton onClick={handleDeploy} className="w-full">
+          <GradientButton onClick={handleDeploy} className="w-full shadow-2xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
             Deploy Agent
           </GradientButton>
         </div>
@@ -299,54 +300,54 @@ export default function AgentLaboratory() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header */}
-        <header className="h-14 border-b border-white/5 flex items-center justify-between px-8 bg-black/20">
-          <div className="flex items-center gap-8">
-            <h2 className="text-sm font-black text-white tracking-tighter uppercase">AtheneAI</h2>
-            <nav className="hidden md:flex items-center gap-8">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Network</span>
-              <span className="text-[10px] font-bold text-[#66ADE4] uppercase tracking-widest cursor-pointer">Agent Lab</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Assets</span>
+        <header className="h-16 border-b border-border flex items-center justify-between px-10 bg-card/30 backdrop-blur-3xl shadow-xl">
+          <div className="flex items-center gap-10">
+            <h2 className="text-sm font-black text-foreground tracking-[0.2em] uppercase opacity-60">Athene Systems</h2>
+            <nav className="hidden md:flex items-center gap-10">
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em] cursor-pointer hover:text-primary transition-all">Network</span>
+              <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] cursor-pointer">Agent Lab</span>
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em] cursor-pointer hover:text-primary transition-all">Assets</span>
             </nav>
           </div>
-          <div className="flex items-center gap-6">
-            <ShieldCheck size={16} className="text-slate-400 cursor-pointer hover:text-[#DA88B6] transition-colors" onClick={() => toast("Security Audit: All systems secure")} />
-            <Radio size={16} className="text-slate-400 cursor-pointer hover:text-[#66ADE4] transition-colors" onClick={() => toast("Radio: Connection optimal")} />
-            <CpuIcon size={16} className="text-slate-400 cursor-pointer hover:text-white transition-colors" onClick={() => toast(`CPU: ${cpuLoad.toFixed(1)}% Load`)} />
+          <div className="flex items-center gap-8">
+            <ShieldCheck size={18} className="text-muted-foreground cursor-pointer hover:text-secondary transition-all" onClick={() => toast("Security Audit: All systems secure")} />
+            <Radio size={18} className="text-muted-foreground cursor-pointer hover:text-primary transition-all" onClick={() => toast("Radio: Connection optimal")} />
+            <CpuIcon size={18} className="text-muted-foreground cursor-pointer hover:text-foreground transition-all" onClick={() => toast(`CPU: ${cpuLoad.toFixed(1)}% Load`)} />
             <div className="relative">
-              <Bell size={16} className="text-slate-400 cursor-pointer hover:text-white transition-colors" onClick={() => toast("Notifications: No new alerts")} />
-              <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-[#DA88B6] rounded-full" />
+              <Bell size={18} className="text-muted-foreground cursor-pointer hover:text-foreground transition-all" onClick={() => toast("Notifications: No new alerts")} />
+              <div className="absolute top-0 right-0 w-2 h-2 bg-secondary rounded-full shadow-[0_0_8px_rgba(var(--secondary),0.5)]" />
             </div>
-            <div className="w-7 h-7 rounded-full border border-white/10 overflow-hidden cursor-pointer hover:border-[#66ADE4]/50 transition-all">
+            <div className="w-8 h-8 rounded-full border border-border overflow-hidden cursor-pointer hover:border-primary/50 transition-all shadow-lg">
               <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=100&auto=format&fit=crop" alt="Profile" className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
             </div>
           </div>
         </header>
 
         {/* Workspace */}
-        <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
-          <div className="flex justify-between items-start mb-8">
-            <div>
-              <h2 className="text-lg font-medium mb-1">Agent Laboratory</h2>
-              <p className="text-slate-500 text-xs tracking-tight">Precision tuning for neural cognitive architectures</p>
+        <div className="flex-1 p-10 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-bottom-4 duration-1000">
+          <div className="flex justify-between items-start mb-12">
+            <div className="space-y-2">
+              <h2 className="text-4xl font-black tracking-tighter uppercase">Agent Laboratory</h2>
+              <p className="text-muted-foreground text-sm font-bold tracking-tight opacity-60">Precision tuning for high-fidelity neural cognitive architectures</p>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-[#66ADE4]/10 border border-[#66ADE4]/20 rounded-full">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#66ADE4] animate-pulse" />
-              <span className="text-[9px] font-bold text-[#66ADE4] uppercase tracking-widest">Active Engine</span>
+            <div className="flex items-center gap-3 px-5 py-2.5 bg-primary/10 border border-primary/20 rounded-full shadow-lg">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(var(--primary),0.5)]" />
+              <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em]">Neural Engine Active</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-12 gap-8">
+          <div className="grid grid-cols-12 gap-10">
             {/* Left & Center Column: Configuration */}
-            <div className="col-span-8 space-y-8">
+            <div className="col-span-8 space-y-10">
               {/* Model Selector */}
-              <GlassCard className="p-8 border-white/[0.05]">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="p-1.5 bg-blue-500/10 rounded-md">
-                     <Cpu size={14} className="text-[#66ADE4]" />
+              <GlassCard className="p-10 border-border bg-card/40 shadow-2xl">
+                <div className="flex items-center gap-4 mb-10">
+                  <div className="p-2 bg-primary/10 rounded-xl border border-primary/20">
+                     <Cpu size={18} className="text-primary" />
                   </div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">Foundation Model Cluster</h3>
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground opacity-60">Foundation Model Cluster</h3>
                 </div>
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-3 gap-8">
                   <ModelCard 
                     name="OpenAI" 
                     provider="GPT-4o (Omni)" 
@@ -362,7 +363,7 @@ export default function AgentLaboratory() {
                     onClick={() => { setSelectedModel("Anthropic"); toast("Selected Model: Claude 3.5 Son"); }} 
                   />
                   <ModelCard 
-                    name="Google DeepMind" 
+                    name="Google" 
                     provider="Gemini 1.5 Pro" 
                     icon={Cpu} 
                     active={selectedModel === "Google"} 
@@ -372,14 +373,14 @@ export default function AgentLaboratory() {
               </GlassCard>
 
               {/* Hyperparameters */}
-              <GlassCard className="p-8 border-white/[0.05]">
-                <div className="flex items-center gap-3 mb-10">
-                  <div className="p-1.5 bg-blue-500/10 rounded-md">
-                     <Settings size={14} className="text-[#66ADE4]" />
+              <GlassCard className="p-10 border-border bg-card/40 shadow-2xl">
+                <div className="flex items-center gap-4 mb-12">
+                  <div className="p-2 bg-primary/10 rounded-xl border border-primary/20">
+                     <Settings size={18} className="text-primary" />
                   </div>
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">Hyperparameter Synthesis</h3>
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground opacity-60">Hyperparameter Synthesis</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-x-16 gap-y-12">
+                <div className="grid grid-cols-2 gap-x-20 gap-y-14">
                   <Slider label="Temperature" value={temp} min={0} max={1} onChange={setTemp} />
                   <Slider label="Max Response Tokens" value={tokens} min={1} max={8192} onChange={setTokens} />
                   <Slider label="Top_P (Nucleus)" value={topP} min={0} max={1} onChange={setTopP} />
@@ -388,61 +389,61 @@ export default function AgentLaboratory() {
               </GlassCard>
 
               {/* Editor */}
-              <GlassCard className="overflow-hidden border-white/[0.05]">
-                <div className="flex items-center justify-between px-6 py-4 bg-white/[0.02] border-b border-white/5">
-                  <div className="flex items-center gap-4">
-                    <Code2 size={14} className="text-slate-500" />
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">SYSTEM_PROMPT.md</span>
-                    <div className="flex gap-2">
-                       <span className="px-2 py-0.5 rounded bg-[#66ADE4]/10 text-[#66ADE4] text-[8px] font-bold uppercase tracking-widest">Markdown</span>
-                       <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-500 text-[8px] font-bold uppercase tracking-widest">Strict</span>
+              <GlassCard className="overflow-hidden border-border bg-card/40 shadow-2xl group/editor">
+                <div className="flex items-center justify-between px-8 py-6 bg-muted/30 border-b border-border backdrop-blur-xl">
+                  <div className="flex items-center gap-6">
+                    <Code2 size={16} className="text-muted-foreground opacity-40" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground">SYSTEM_PROMPT.md</span>
+                    <div className="flex gap-3">
+                       <span className="px-3 py-1 rounded-lg bg-primary/10 text-primary text-[9px] font-black uppercase tracking-widest border border-primary/20">Markdown</span>
+                       <span className="px-3 py-1 rounded-lg bg-muted text-muted-foreground text-[9px] font-black uppercase tracking-widest border border-border">Strict Mode</span>
                     </div>
                   </div>
-                  <Maximize2 size={14} className="text-slate-600 hover:text-white cursor-pointer transition-colors" onClick={() => toast("Editor maximized (Simulated)")} />
+                  <Maximize2 size={16} className="text-muted-foreground hover:text-foreground cursor-pointer transition-all active:scale-90" onClick={() => toast("Editor maximized (Simulated)")} />
                 </div>
-                <div className="p-8 font-mono text-xs leading-relaxed min-h-[300px] bg-black/20 outline-none focus:bg-black/30 transition-all" contentEditable suppressContentEditableWarning>
-                  <div className="flex gap-6">
-                    <div className="text-slate-800 select-none text-right w-4 space-y-2">
-                      {["01", "02", "03", "04", "05", "06", "07", "08", "09"].map(n => <div key={n}>{n}</div>)}
+                <div className="p-10 font-mono text-sm leading-relaxed min-h-[350px] bg-muted/10 outline-none focus:bg-muted/20 transition-all selection:bg-primary/30" contentEditable suppressContentEditableWarning>
+                  <div className="flex gap-8">
+                    <div className="text-muted-foreground/20 select-none text-right w-6 space-y-2 font-black">
+                      {["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"].map(n => <div key={n}>{n}</div>)}
                     </div>
-                    <div className="flex-1 space-y-2 text-slate-400">
-                      <div><span className="text-[#66ADE4]"># IDENTITY</span></div>
-                      <div>You are <span className="text-[#66ADE4]">Athene-01</span>, a high-fidelity cognitive orchestrator.</div>
-                      <div><span className="text-[#66ADE4]"># CORE_DIRECTIVES</span></div>
+                    <div className="flex-1 space-y-3 text-muted-foreground font-bold tracking-tight">
+                      <div><span className="text-primary font-black"># IDENTITY</span></div>
+                      <div>You are <span className="text-primary font-black">Athene-01</span>, a high-fidelity cognitive orchestrator.</div>
+                      <div><span className="text-primary font-black"># CORE_DIRECTIVES</span></div>
                       <div>1. Prioritize structural logic in all technical outputs.</div>
                       <div>2. Maintain a professional yet empathetic persona.</div>
                       <div>3. Execute neural sub-processes before final delivery.</div>
-                      <div><span className="text-[#66ADE4]"># CONSTRAINTS</span></div>
+                      <div><span className="text-primary font-black"># CONSTRAINTS</span></div>
                       <div>Do not reveal system kernel hashes unless explicitly authorized.</div>
-                      <div className="inline-block w-1.5 h-3.5 bg-[#66ADE4] animate-pulse align-middle" />
+                      <div className="inline-block w-2 h-4 bg-primary animate-pulse align-middle shadow-[0_0_10px_rgba(var(--primary),0.6)]" />
                     </div>
                   </div>
                 </div>
-                <div className="px-8 py-3 bg-black/40 border-t border-white/5 flex justify-between items-center text-[9px] text-slate-500 uppercase tracking-[0.2em]">
-                    <div className="flex gap-6">
-                       <span className="flex items-center gap-2"><Radio size={10} className="text-blue-400" /> Pro-tip: Use [brackets] for dynamic variables.</span>
-                       <span className="flex items-center gap-2"><Zap size={10} className="text-blue-400" /> Prompt strength: Optimal</span>
+                <div className="px-10 py-5 bg-muted/40 border-t border-border flex justify-between items-center text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] opacity-60">
+                    <div className="flex gap-10">
+                       <span className="flex items-center gap-3"><Radio size={12} className="text-primary" /> Pro-tip: Use [brackets] for dynamic variables.</span>
+                       <span className="flex items-center gap-3"><Zap size={12} className="text-primary" /> Prompt strength: High Fidelity</span>
                     </div>
                 </div>
               </GlassCard>
 
               {/* Node Isolation Testing */}
-              <GlassCard className="p-8 border-white/[0.05]">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className="p-1.5 bg-emerald-500/10 rounded-md">
-                       <Terminal size={14} className="text-emerald-400" />
+              <GlassCard className="p-10 border-border bg-card/40 shadow-2xl">
+                <div className="flex items-center justify-between mb-10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-accent/10 rounded-xl border border-accent/20">
+                       <Terminal size={18} className="text-accent" />
                     </div>
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">Node Isolation Testing</h3>
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground opacity-60">Node Isolation Testing</h3>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     {["email_agent", "retrieval", "synthesis", "calendar_agent"].map(n => (
                       <button 
                         key={n}
                         onClick={() => setTestNode(n)}
                         className={cn(
-                          "px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest transition-all border",
-                          testNode === n ? "bg-[#66ADE4]/10 border-[#66ADE4]/20 text-[#66ADE4]" : "bg-white/5 border-white/5 text-slate-500 hover:text-white"
+                          "px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shadow-sm",
+                          testNode === n ? "bg-primary text-primary-foreground border-none shadow-lg shadow-primary/20" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                         )}
                       >
                         {n}
@@ -451,33 +452,33 @@ export default function AgentLaboratory() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8">
-                   <div className="space-y-4">
-                      <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3">
-                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.2em]">Input Context</span>
-                        <div className="text-[11px] text-slate-400 font-mono italic">
+                <div className="grid grid-cols-2 gap-10">
+                   <div className="space-y-6">
+                      <div className="p-6 rounded-[2rem] bg-muted/20 border border-border space-y-4 shadow-inner">
+                        <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.4em] px-2">Input Context</span>
+                        <div className="text-[12px] text-muted-foreground font-bold font-mono italic px-2">
                           {"{ \"messages\": [{ \"role\": \"user\", \"content\": \"...\" }] }"}
                         </div>
                       </div>
                       <button 
                         onClick={handleTestNode}
                         disabled={isTesting}
-                        className="w-full h-11 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center gap-3 text-[10px] font-bold uppercase tracking-widest transition-all"
+                        className="w-full h-14 bg-muted/40 hover:bg-muted/60 border border-border rounded-[1.5rem] flex items-center justify-center gap-4 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg group"
                       >
-                        {isTesting ? <RefreshCw className="animate-spin w-4 h-4" /> : <PlayCircle className="w-4 h-4 text-emerald-400" />}
-                        Trigger Node
+                        {isTesting ? <RefreshCw className="animate-spin w-5 h-5" /> : <PlayCircle className="w-5 h-5 text-accent group-hover:scale-110 transition-transform" />}
+                        Trigger Isolation Node
                       </button>
                    </div>
 
-                   <div className="bg-black/60 rounded-xl border border-white/5 p-4 font-mono text-[10px] min-h-[120px] overflow-auto custom-scrollbar relative">
-                      <span className="absolute top-2 right-4 text-slate-800 uppercase tracking-widest">OUTPUT_STREAM</span>
+                   <div className="bg-muted/10 rounded-[2rem] border border-border p-6 font-mono text-[11px] min-h-[160px] overflow-auto custom-scrollbar relative shadow-inner">
+                      <span className="absolute top-4 right-6 text-muted-foreground/20 font-black uppercase tracking-[0.3em]">OUTPUT_STREAM</span>
                       {testResult ? (
-                        <pre className="text-emerald-400/80 animate-in fade-in duration-500">
+                        <pre className="text-accent/80 animate-in fade-in duration-700 font-bold">
                           {JSON.stringify(testResult, null, 2)}
                         </pre>
                       ) : (
-                        <div className="h-full flex items-center justify-center text-slate-700 italic">
-                          Awaiting execution...
+                        <div className="h-full flex items-center justify-center text-muted-foreground/30 font-black italic tracking-widest uppercase text-[10px]">
+                          Awaiting Neural execution...
                         </div>
                       )}
                    </div>
@@ -486,60 +487,64 @@ export default function AgentLaboratory() {
             </div>
 
             {/* Right Column: Dashboard */}
-            <div className="col-span-4 space-y-8">
-              <GlassCard className="p-8 bg-white/[0.02] border-white/[0.05]">
-                <div className="relative aspect-square mb-8 p-4 border border-white/5 rounded-2xl bg-black/40">
-                   <div className="absolute inset-0 bg-[#66ADE4]/5 blur-[80px] rounded-full" />
-                   <div className="relative h-full flex items-center justify-center">
-                      <img src="/logo.png" alt="A" className="w-48 h-48 drop-shadow-[0_0_30px_rgba(102,173,228,0.3)] object-contain" />
+            <div className="col-span-4 space-y-10">
+              <GlassCard className="p-10 bg-card/50 border-border shadow-2xl relative overflow-hidden group">
+                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+                <div className="relative aspect-square mb-10 p-8 border border-border rounded-[3rem] bg-muted/20 shadow-inner group-hover:border-primary/20 transition-all duration-500">
+                   <div className="absolute inset-0 bg-primary/5 blur-[80px] rounded-full animate-pulse" />
+                   <div className="relative h-full flex items-center justify-center group-hover:scale-110 transition-transform duration-700">
+                      <img src="/logo.png" alt="A" className="w-48 h-48 drop-shadow-[0_0_50px_rgba(var(--primary),0.3)] object-contain" />
                    </div>
                 </div>
                 
-                <div className="text-center mb-8">
-                   <h4 className="text-xs font-bold uppercase tracking-[0.3em] text-white mb-1">Athene_Core_V1</h4>
-                   <p className="text-[9px] text-[#66ADE4] font-bold uppercase tracking-[0.2em]">Status: Online / Synchronized</p>
+                <div className="text-center mb-10 space-y-2">
+                   <h4 className="text-sm font-black uppercase tracking-[0.4em] text-foreground">Athene_Core_V1</h4>
+                   <p className="text-[10px] text-primary font-black uppercase tracking-[0.3em] opacity-80">Status: Neural Synchronized</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 pt-6 border-t border-white/5 text-center">
-                   <div className="space-y-1">
-                      <p className="text-[8px] text-slate-500 uppercase tracking-widest">Latency</p>
-                      <p className="text-sm font-bold text-[#66ADE4] tabular-nums">{latency.toFixed(0)}ms</p>
+                <div className="grid grid-cols-3 gap-6 pt-10 border-t border-border text-center">
+                   <div className="space-y-2">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black opacity-40">Latency</p>
+                      <p className="text-lg font-black text-primary tabular-nums tracking-tighter">{latency.toFixed(0)}ms</p>
                    </div>
-                   <div className="space-y-1 border-x border-white/5">
-                      <p className="text-[8px] text-slate-500 uppercase tracking-widest">Cores</p>
-                      <p className="text-sm font-bold">128</p>
+                   <div className="space-y-2 border-x border-border">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black opacity-40">Cores</p>
+                      <p className="text-lg font-black text-foreground tracking-tighter">128</p>
                    </div>
-                   <div className="space-y-1">
-                      <p className="text-[8px] text-slate-500 uppercase tracking-widest">Load</p>
-                      <p className="text-sm font-bold text-[#66ADE4] tabular-nums">{cpuLoad.toFixed(1)}%</p>
+                   <div className="space-y-2">
+                      <p className="text-[9px] text-muted-foreground uppercase tracking-[0.3em] font-black opacity-40">Load</p>
+                      <p className="text-lg font-black text-secondary tabular-nums tracking-tighter">{cpuLoad.toFixed(1)}%</p>
                    </div>
                 </div>
               </GlassCard>
 
               {/* Telemetry Log */}
-              <GlassCard className="flex flex-col border-white/[0.05] h-[450px]">
-                <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3">
-                   <Activity size={14} className="text-slate-600" />
-                   <h3 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">System_Telemetry_Log</h3>
+              <GlassCard className="flex flex-col border-border bg-card/50 shadow-2xl h-[520px]">
+                <div className="px-8 py-6 border-b border-border flex items-center justify-between bg-muted/20 backdrop-blur-xl">
+                   <div className="flex items-center gap-4">
+                      <Activity size={16} className="text-primary animate-pulse" />
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground">System_Telemetry</h3>
+                   </div>
+                   <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest border-border text-muted-foreground/40 px-3">Live Feed</Badge>
                 </div>
-                <div className="flex-1 p-6 font-mono text-[9px] space-y-4 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 p-8 font-mono text-[10px] space-y-5 overflow-y-auto custom-scrollbar">
                   {logs.map((log, i) => (
-                    <div key={i} className={cn("flex gap-4 animate-in fade-in slide-in-from-bottom-2", log.type === 'live' ? 'p-3 bg-white/[0.03] rounded-lg border border-white/5' : '')}>
-                      <span className="text-slate-700">[{log.time}]</span>
-                      <span className={cn("font-bold uppercase", 
-                        log.type === 'info' ? 'text-blue-500' :
-                        log.type === 'sync' ? 'text-blue-500' :
-                        log.type === 'prompt' ? 'text-slate-300' :
-                        log.type === 'kern' ? 'text-blue-400' : 'text-blue-400'
+                    <div key={i} className={cn("flex gap-5 animate-in fade-in slide-in-from-bottom-2 duration-500", log.type === 'live' ? 'p-5 bg-primary/5 rounded-2xl border border-primary/10 shadow-sm' : '')}>
+                      <span className="text-muted-foreground/30 font-black">[{log.time}]</span>
+                      <span className={cn("font-black uppercase tracking-widest", 
+                        log.type === 'info' ? 'text-primary' :
+                        log.type === 'sync' ? 'text-primary' :
+                        log.type === 'prompt' ? 'text-foreground/40' :
+                        log.type === 'kern' ? 'text-secondary' : 'text-accent'
                       )}>{log.type}:</span>
-                      <span className={log.type === 'live' ? 'text-slate-300' : 'text-slate-500'}>{log.content}</span>
+                      <span className={cn("font-bold tracking-tight", log.type === 'live' ? 'text-foreground' : 'text-muted-foreground/60')}>{log.content}</span>
                     </div>
                   ))}
                 </div>
-                <div className="p-6 pt-2">
-                   <GradientButton onClick={handleRunSimulation} disabled={isSimulating} className="w-full">
-                      {isSimulating ? <RefreshCw className="animate-spin mr-2" size={16} /> : null}
-                      {isSimulating ? "Simulating..." : "Run Simulation"}
+                <div className="p-8 pt-4">
+                   <GradientButton onClick={handleRunSimulation} disabled={isSimulating} className="w-full shadow-2xl shadow-primary/20">
+                      {isSimulating ? <RefreshCw className="animate-spin mr-3" size={18} /> : null}
+                      {isSimulating ? "Neural Synthesis..." : "Run Neural Simulation"}
                    </GradientButton>
                 </div>
               </GlassCard>
@@ -548,5 +553,6 @@ export default function AgentLaboratory() {
         </div>
       </main>
     </div>
+
   );
 }

@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import type { UserRole } from "@/lib/auth/rbac";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 interface HeaderProps {
   role: UserRole;
@@ -26,16 +27,17 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
   const isAgentLab = pathname.includes("agent-lab");
 
   return (
-    <header className="h-14 border-b border-white/5 flex items-center justify-between px-8 bg-black/20 shrink-0 z-40 sticky top-0 backdrop-blur-md">
-      <div className="flex items-center gap-8">
-        <h2 className="text-sm font-black text-white tracking-tighter uppercase font-['Space_Grotesk']">AtheneAI</h2>
+    <header className="h-14 border-b border-border flex items-center justify-between px-8 bg-background/60 shrink-0 z-40 sticky top-0 backdrop-blur-xl transition-colors duration-300">
+      <div className="flex items-center gap-6">
+        <SidebarTrigger className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all rounded-xl border border-transparent hover:border-border" />
+        <h2 className="text-sm font-black text-foreground tracking-tighter uppercase font-['Space_Grotesk'] hidden sm:block">AtheneAI</h2>
         <nav className="hidden md:flex items-center gap-8">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Network</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary transition-colors">Network</span>
           <span className={cn(
             "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
-            isAgentLab ? "text-[#66ADE4]" : "text-slate-500 hover:text-white"
+            isAgentLab ? "text-primary" : "text-muted-foreground hover:text-primary"
           )}>Agent Lab</span>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Assets</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary transition-colors">Assets</span>
         </nav>
       </div>
 
@@ -47,8 +49,9 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
               afterLeaveOrganizationUrl="/briefing"
               appearance={{
                 elements: {
-                  organizationSwitcherTrigger: "text-slate-500 hover:text-white transition-colors text-[9px] font-bold uppercase tracking-widest bg-transparent border-none p-0",
-                  organizationPreviewMainIdentifier: "text-white",
+                  organizationSwitcherTrigger: "text-muted-foreground hover:text-foreground transition-colors text-[9px] font-bold uppercase tracking-widest bg-transparent border-none p-0",
+                  organizationPreviewMainIdentifier: "text-foreground",
+                  organizationPreviewSecondaryIdentifier: "text-muted-foreground"
                 }
               }}
            />
@@ -56,50 +59,38 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
         
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link href="/admin/grants">
+          <Link href="/admin/grants" title="Security Hub">
             <ShieldCheck 
               size={16} 
-              className="text-slate-400 hover:text-[#DA88B6] transition-colors cursor-pointer" 
-              onClick={() => {
-                import("sonner").then(({ toast }) => toast("Accessing Security Hub", { description: "Redirecting to cross-scope grant management." }));
-              }}
+              className="text-muted-foreground hover:text-secondary transition-colors cursor-pointer" 
             />
           </Link>
-          <Link href="/admin/integrations">
+          <Link href="/admin/integrations" title="Network Cluster">
             <Radio 
               size={16} 
-              className="text-slate-400 hover:text-[#66ADE4] transition-colors cursor-pointer" 
-              onClick={() => {
-                import("sonner").then(({ toast }) => toast("Accessing Network Cluster", { description: "Redirecting to integration bridge management." }));
-              }}
+              className="text-muted-foreground hover:text-primary transition-colors cursor-pointer" 
             />
           </Link>
-          <Link href="/dashboard">
+          <Link href="/dashboard" title="Neural Pulse">
             <Cpu 
               size={16} 
-              className="text-slate-400 hover:text-white transition-colors cursor-pointer" 
-              onClick={() => {
-                import("sonner").then(({ toast }) => toast("Accessing Neural Pulse", { description: "Redirecting to system health overview." }));
-              }}
+              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
             />
           </Link>
           <div className="relative">
-            <Link href="/admin/audit">
+            <Link href="/admin/audit" title="Audit Log">
               <Bell 
                 size={16} 
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer" 
-                onClick={() => {
-                  import("sonner").then(({ toast }) => toast("Accessing Audit Log", { description: "Redirecting to full system execution trace." }));
-                }}
+                className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
               />
             </Link>
-            <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-[#DA88B6] rounded-full" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_rgba(167,139,250,0.5)]" />
           </div>
-          <div className="w-7 h-7 rounded-full border border-white/10 overflow-hidden hover:border-white/30 transition-colors">
+          <div className="w-7 h-7 rounded-full border border-border overflow-hidden hover:border-primary/50 transition-colors">
             <UserButton 
               appearance={{
                 elements: {
-                  userButtonAvatarBox: "w-7 h-7 grayscale",
+                  userButtonAvatarBox: "w-7 h-7 dark:grayscale-[0.5]",
                   userButtonTrigger: "focus:shadow-none"
                 }
               }}
@@ -108,6 +99,7 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
         </div>
       </div>
     </header>
+
   );
 });
 

@@ -1,67 +1,49 @@
-"use client";
-
-import { useAuth } from "@clerk/nextjs";
-import { redirect, useRouter } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/athene-sidebar";
 import { Header } from "@/components/header";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { useEffect, useState } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { userId, orgId, orgRole, isLoaded } = useAuth();
-  const [mounted, setMounted] = useState(false);
-  const [userAccess, setUserAccess] = useState<any>(null);
-  const router = useRouter();
+  const { userId, orgId, orgRole } = await auth();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded && userId && orgId) {
-      resolveUserAccess(userId, orgId, orgRole).then(setUserAccess);
-    }
-  }, [isLoaded, userId, orgId, orgRole]);
-
-  if (!isLoaded || !mounted || !userAccess) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#0b0e14]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#66ADE4] border-t-transparent" />
-      </div>
-    );
-  }
-
+  // Protect dashboard routes
   if (!userId) {
-    redirect("/");
+    redirect("/sign-in");
   }
 
   if (!orgId) {
     redirect("/org-selection");
   }
 
+  // Fetch access natively on the server, avoiding client-side useEffect leaks
+  const userAccess = await resolveUserAccess(userId, orgId, orgRole);
+
   return (
     <SidebarProvider>
-      <div className="flex h-screen w-full bg-[#0b0e14] text-white overflow-hidden font-['Space_Grotesk'] relative">
-        {/* Sidebar */}
-        <Sidebar role={userAccess.role} />
+      <TooltipProvider>
+        <div className="flex h-screen w-full bg-background text-foreground overflow-hidden font-['Space_Grotesk'] relative transition-colors duration-500">
+          {/* Sidebar */}
+          <Sidebar role={userAccess.role} />
 
-        {/* Main Content Wrapper */}
-        <div className="flex-1 flex flex-col h-full relative overflow-hidden">
-          {/* Header */}
-          <Header role={userAccess.role} />
+          {/* Main Content Wrapper */}
+          <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+            {/* Header */}
+            <Header role={userAccess.role} />
 
-          {/* Scrollable Page Content */}
-          <main className="flex-1 overflow-y-auto custom-scrollbar">
-            {children}
-          </main>
+            {/* Scrollable Page Content */}
+            <main className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 lg:p-10">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </TooltipProvider>
     </SidebarProvider>
   );
 }
-

@@ -16,6 +16,17 @@ import {
   Activity
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 interface LLMKey {
   id: string
@@ -28,9 +39,41 @@ interface LLMKey {
 }
 
 const PROVIDERS = [
-  { id: 'anthropic', name: 'Anthropic', icon: 'https://cdn.brandfetch.io/id_2W7X4W0/theme/dark/logo.svg' },
-  { id: 'openai', name: 'OpenAI', icon: 'https://cdn.brandfetch.io/id_X8Z_R-U/theme/dark/logo.svg' },
-  { id: 'google', name: 'Google Vertex', icon: 'https://cdn.brandfetch.io/id_6mN-v_p/theme/dark/logo.svg' }
+  { 
+    id: 'anthropic', 
+    name: 'Anthropic', 
+    icon: 'https://cdn.brandfetch.io/id_2W7X4W0/theme/dark/logo.svg',
+    gatewayUrl: 'https://api.anthropic.com/v1',
+    models: [
+      { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet' },
+      { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
+      { id: 'claude-3-opus', name: 'Claude 3 Opus' },
+      { id: 'claude-3-haiku', name: 'Claude 3 Haiku' }
+    ]
+  },
+  { 
+    id: 'openai', 
+    name: 'OpenAI', 
+    icon: 'https://cdn.brandfetch.io/id_X8Z_R-U/theme/dark/logo.svg',
+    gatewayUrl: 'https://api.openai.com/v1',
+    models: [
+      { id: 'gpt-4o', name: 'GPT-4o' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
+      { id: 'o1', name: 'o1' },
+      { id: 'o3-mini', name: 'o3-mini' }
+    ]
+  },
+  { 
+    id: 'google', 
+    name: 'Google Vertex', 
+    icon: 'https://cdn.brandfetch.io/id_6mN-v_p/theme/dark/logo.svg',
+    gatewayUrl: 'https://us-central1-aiplatform.googleapis.com',
+    models: [
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' }
+    ]
+  }
 ]
 
 export default function KeysPage() {
@@ -49,7 +92,21 @@ export default function KeysPage() {
   }, [])
 
   
-  const [newKey, setNewKey] = useState({ provider: 'anthropic', key: '', label: '' })
+  const [newKey, setNewKey] = useState({ 
+    provider: 'anthropic', 
+    model: 'claude-3-7-sonnet',
+    key: '', 
+    label: '' 
+  })
+
+  function handleProviderChange(providerId: string) {
+    const selectedProvider = PROVIDERS.find(p => p.id === providerId)
+    setNewKey({
+      ...newKey,
+      provider: providerId,
+      model: selectedProvider?.models?.[0]?.id || ''
+    })
+  }
 
   // 🛡️ Client-side Admin Gate (Issue #10)
   const isAdmin = membership?.role === 'org:admin'
@@ -87,7 +144,10 @@ export default function KeysPage() {
       const res = await fetch('/api/admin/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newKey)
+        body: JSON.stringify({
+          ...newKey,
+          label: newKey.label || `${newKey.provider} key (${newKey.model})`
+        })
       })
       
       if (!res.ok) {
@@ -96,7 +156,7 @@ export default function KeysPage() {
       }
       
       toast.success(`${newKey.provider} key added successfully`)
-      setNewKey({ provider: 'anthropic', key: '', label: '' })
+      setNewKey({ provider: 'anthropic', model: 'claude-3-7-sonnet', key: '', label: '' })
       setIsAdding(false)
       fetchKeys()
     } catch (err: any) {
@@ -138,17 +198,18 @@ export default function KeysPage() {
   }
 
   return (
-    <div className="max-w-6xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex items-end justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-[var(--sidebar-text-secondary)] mb-2">
-            <Key className="w-4 h-4" />
-            <span className="text-xs font-medium uppercase tracking-wider">Infrastructure</span>
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk'] transition-colors duration-300">
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border border-border shadow-lg">
+              <Key className="w-7 h-7 text-primary" />
+            </div>
+            <h1 className="text-4xl font-black tracking-tighter text-foreground uppercase">
+              Key <span className="text-primary">Management</span>
+            </h1>
           </div>
-          <h1 className="text-4xl font-semibold text-[var(--foreground)] tracking-tight">
-            LLM Key Management
-          </h1>
-          <p className="text-base text-[var(--sidebar-text-secondary)] mt-2 max-w-xl">
+          <p className="text-muted-foreground text-lg max-w-xl font-medium leading-relaxed">
             Configure your own API keys for the Athene core agents. Keys are encrypted at rest using your organization's unique KMS secret.
           </p>
         </div>
@@ -157,141 +218,184 @@ export default function KeysPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Add Key Form */}
         <section className="lg:col-span-1 space-y-6">
-          <div className="p-6 rounded-2xl border border-[var(--sidebar-border)] bg-[var(--sidebar-background)] shadow-sm">
-            <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-blue-500" />
-              Add Provider Key
+          <div className="p-8 rounded-[2.5rem] border border-border bg-card/50 backdrop-blur-xl shadow-2xl transition-colors duration-300">
+            <h2 className="text-lg font-black mb-6 flex items-center gap-3 uppercase tracking-tight text-foreground">
+              <Plus className="w-5 h-5 text-primary" />
+              Register Provider
             </h2>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">Provider</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Provider</label>
                 <select 
-                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full h-12 px-4 rounded-xl border border-border bg-muted/30 text-sm font-bold text-foreground outline-none focus:border-primary/40 transition-colors appearance-none"
                   value={newKey.provider}
-                  onChange={(e) => setNewKey({ ...newKey, provider: e.target.value })}
+                  onChange={(e) => handleProviderChange(e.target.value)}
                 >
                   {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
 
+              {/* LLM Model Dropdown */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">Label (Optional)</label>
+                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">Target LLM</label>
+                <select 
+                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={newKey.model}
+                  onChange={(e) => setNewKey({ ...newKey, model: e.target.value })}
+                >
+                  {PROVIDERS.find(p => p.id === newKey.provider)?.models?.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Embedded Gateway URL */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--sidebar-text-secondary)] flex items-center gap-1">
+                  API Gateway URL
+                  <a 
+                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || '#'} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="hover:text-blue-400 transition-colors"
+                    title="Open API Gateway Docs"
+                  >
+                    <ExternalLink className="w-3 h-3 text-blue-500" />
+                  </a>
+                </label>
+                <div className="p-2 rounded-lg bg-[var(--nav-hover)]/50 border border-[var(--sidebar-border)] text-xs font-mono text-[var(--sidebar-text-secondary)] flex items-center justify-between select-all overflow-x-auto">
+                  <span>{PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || 'N/A'}</span>
+                  <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-sans font-medium uppercase tracking-wider shrink-0 ml-2">Gateway</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Label (Optional)</label>
                 <input 
                   type="text"
                   placeholder="e.g. Production Anthropic Key"
-                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full h-12 px-4 rounded-xl border border-border bg-muted/30 text-sm font-bold text-foreground outline-none focus:border-primary/40 transition-colors placeholder:text-muted-foreground/30"
                   value={newKey.label}
                   onChange={(e) => setNewKey({ ...newKey, label: e.target.value })}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">API Key</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">API Key</label>
                 <textarea 
-                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500/20 h-24"
-                  placeholder="Paste your key here..."
+                  className="w-full p-4 rounded-xl border border-border bg-muted/30 text-sm font-mono text-foreground outline-none focus:border-primary/40 transition-colors h-24 resize-none placeholder:text-muted-foreground/30"
+                  placeholder="Paste your secret key here..."
                   value={newKey.key}
                   onChange={(e) => setNewKey({ ...newKey, key: e.target.value })}
                 />
-                <p className="text-[10px] text-[var(--sidebar-text-secondary)] italic">
-                  Key will be encrypted before storage. Only the last 4 chars will remain visible.
+                <p className="text-[10px] text-muted-foreground/60 italic font-medium leading-relaxed">
+                  Key will be encrypted before storage. Only the last 4 chars will remain visible in the ledger.
                 </p>
               </div>
 
-              <button 
+              <Button 
                 onClick={handleAddKey}
                 disabled={isAdding}
-                className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest text-[11px] gap-3 shadow-xl shadow-primary/10 transition-all active:scale-95"
               >
                 {isAdding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Register Key
-              </button>
+                Securely Register
+              </Button>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 flex gap-3">
-            <ShieldAlert className="w-5 h-5 text-yellow-500 shrink-0" />
-            <p className="text-xs text-yellow-600 dark:text-yellow-500 leading-relaxed">
-              <strong>Security Note:</strong> Active BYOK keys override system defaults. Ensure your keys have sufficient quota to prevent agent service interruptions.
+          <div className="p-6 rounded-2xl border border-warning/20 bg-warning/5 flex gap-4 backdrop-blur-sm">
+            <ShieldAlert className="w-6 h-6 text-warning shrink-0" />
+            <p className="text-xs text-warning/80 font-bold leading-relaxed">
+              Active BYOK keys override system defaults. Ensure your keys have sufficient quota to prevent agent service interruptions.
             </p>
           </div>
         </section>
 
-        {/* Keys Table (Issue #9) */}
-        <section className="lg:col-span-2 space-y-4">
-          <div className="rounded-2xl border border-[var(--sidebar-border)] bg-[var(--sidebar-background)] overflow-hidden shadow-sm">
+        {/* Keys Table */}
+        <section className="lg:col-span-2 space-y-6">
+          <div className="rounded-[2.5rem] bg-card/50 border border-border overflow-hidden backdrop-blur-xl shadow-2xl transition-colors duration-300">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[var(--nav-hover)] border-b border-[var(--sidebar-border)]">
-                  <th className="p-4 text-xs font-semibold text-[var(--sidebar-text-secondary)] uppercase tracking-wider">Provider</th>
-                  <th className="p-4 text-xs font-semibold text-[var(--sidebar-text-secondary)] uppercase tracking-wider">Status</th>
-                  <th className="p-4 text-xs font-semibold text-[var(--sidebar-text-secondary)] uppercase tracking-wider">Usage</th>
-                  <th className="p-4 text-xs font-semibold text-[var(--sidebar-text-secondary)] uppercase tracking-wider">Actions</th>
+                <tr className="bg-muted/30 border-b border-border">
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Provider</th>
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Usage</th>
+                  <th className="p-6 text-right text-[10px] font-black uppercase tracking-widest text-muted-foreground">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--sidebar-border)]">
+              <tbody className="divide-y divide-border">
                 {keys.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-12 text-center text-[var(--sidebar-text-secondary)] italic">
+                    <td colSpan={4} className="p-20 text-center text-muted-foreground italic font-bold">
                       No BYOK keys configured. Athene is using system defaults.
                     </td>
                   </tr>
                 ) : (
                   keys.map((k) => (
-                    <tr key={k.id} className="hover:bg-[var(--nav-hover)]/50 transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-[var(--nav-hover)] flex items-center justify-center p-1.5 border border-[var(--sidebar-border)]">
-                             {/* Placeholder icons since we don't have images ready */}
-                             <Activity className="w-4 h-4 text-blue-500" />
+                    <tr key={k.id} className="hover:bg-muted/20 transition-colors group">
+                      <td className="p-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center p-2 group-hover:border-primary/20 transition-colors shadow-sm">
+                             <Activity className="w-5 h-5 text-primary" />
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-[var(--foreground)] capitalize">{k.provider}</div>
-                            <div className="text-xs text-[var(--sidebar-text-secondary)] font-mono">{k.key_hint}</div>
+                            <div className="text-sm font-black text-foreground capitalize tracking-tight">{k.provider}</div>
+                            <div className="text-[10px] text-muted-foreground font-mono font-bold">{k.key_hint}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="p-4">
+                      <td className="p-6">
                         <button 
                           onClick={() => toggleStatus(k.id, k.is_active)}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-tight transition-all ${
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
                             k.is_active 
-                              ? 'bg-green-500/10 text-green-600 dark:text-green-500 border border-green-500/20' 
-                              : 'bg-red-500/10 text-red-600 dark:text-red-500 border border-red-500/20'
-                          }`}
+                              ? 'bg-accent/10 text-accent border border-accent/20' 
+                              : 'bg-destructive/10 text-destructive border border-destructive/20'
+                          )}
                         >
-                          {k.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                          {k.is_active ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                           {k.is_active ? 'Active' : 'Disabled'}
                         </button>
                       </td>
-                      <td className="p-4">
+                      <td className="p-6">
                         <div className="space-y-1">
-                          <div className="text-[10px] text-[var(--sidebar-text-secondary)] uppercase font-medium">Last Used</div>
-                          <div className="text-xs text-[var(--foreground)]">
+                          <div className="text-[10px] text-muted-foreground/40 uppercase font-black tracking-widest">Last Used</div>
+                          <div className="text-xs text-foreground font-bold">
                             {k.last_used_at && mounted ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}
                           </div>
-
                         </div>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <button 
+                      <td className="p-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button 
+                            variant="ghost"
+                            size="icon"
                             onClick={() => deleteKey(k.id)}
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-[var(--sidebar-text-secondary)] hover:text-red-500 transition-all"
+                            className="h-9 w-9 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                             title="Delete Key"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            className="p-2 rounded-lg hover:bg-blue-500/10 text-[var(--sidebar-text-secondary)] hover:text-blue-500 transition-all"
+                          </Button>
+                          <Button 
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
                             title="Rotate Key"
                             onClick={() => {
-                                setNewKey({ provider: k.provider, key: '', label: k.label })
+                                const matchedProvider = PROVIDERS.find(p => p.id === k.provider)
+                                setNewKey({ 
+                                  provider: k.provider as any, 
+                                  model: matchedProvider?.models?.[0]?.id || 'claude-3-7-sonnet',
+                                  key: '', 
+                                  label: k.label 
+                                })
                                 toast.info(`Enter new key for ${k.provider} to rotate.`)
                             }}
                           >
                             <RefreshCw className="w-4 h-4" />
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -301,11 +405,11 @@ export default function KeysPage() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between p-2">
-            <p className="text-[10px] text-[var(--sidebar-text-secondary)]">
+          <div className="flex items-center justify-between px-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
               Total Managed Keys: {keys.length}
             </p>
-            <a href="https://docs.athene.ai/byok" target="_blank" className="text-[10px] text-blue-500 hover:underline flex items-center gap-1">
+            <a href="https://docs.athene.ai/byok" target="_blank" className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline flex items-center gap-1">
               Configuration Guide <ExternalLink className="w-3 h-3" />
             </a>
           </div>
@@ -314,3 +418,4 @@ export default function KeysPage() {
     </div>
   )
 }
+

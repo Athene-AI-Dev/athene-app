@@ -1,8 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { reportAgent } from "@/lib/langgraph/nodes/report-agent";
-import { getNeighbors } from "@/lib/knowledge-graph/query";
+import { reportAgent } from "../langgraph/nodes/report-agent";
+import { getNeighbors } from "../knowledge-graph/query";
 import { HumanMessage } from "@langchain/core/messages";
-import type { AtheneStateType } from "@/lib/langgraph/state";
+import type { AtheneStateType } from "../langgraph/state";
 
 
 
@@ -64,10 +64,12 @@ export async function generateMorningBriefing(
 ) {
   try {
     // 1. Fetch the real role first to ensure correct data scoping
+    // userId here is automations.user_id — a UUID FK to org_members.id (internal UUID).
+    // org_members has no "user_id" column; Clerk IDs live in "clerk_user_id".
     const { data: member, error: roleErr } = await supabaseAdmin
       .from("org_members")
       .select("role")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .eq("org_id", orgId)
       .maybeSingle();
 

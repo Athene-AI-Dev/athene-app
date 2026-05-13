@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { 
   FileText, 
   Upload, 
@@ -45,14 +45,78 @@ const INITIAL_FILES = [
   { name: "API_Security_Manual.pdf", type: "PDF", size: "1.1 MB", date: "3 days ago", status: "Indexed", risk: "Low" },
 ];
 
+const MIME_TYPES: Record<string, string> = {
+  PDF: "application/pdf",
+  DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  SVG: "image/svg+xml",
+  XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  JSON: "application/json",
+};
+
 export default function FilesPage() {
   const [files, setFiles] = useState(INITIAL_FILES);
   const [search, setSearch] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = () => {
-    toast.info("Initializing Secure Upload Pipeline", {
-      description: "Encrypted stream established. Awaiting selection.",
-    });
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files;
+    if (!selected || selected.length === 0) return;
+
+    const fileList = Array.from(selected);
+    e.target.value = "";
+
+    for (const file of fileList) {
+      const ext = file.name.split(".").pop()?.toUpperCase() || "FILE";
+      const sizeMB = file.size / (1024 * 1024);
+      const sizeStr = sizeMB >= 1 ? `${sizeMB.toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
+
+      const placeholder = {
+        name: file.name,
+        type: ext,
+        size: sizeStr,
+        date: "Just now",
+        status: "Uploading" as string,
+        risk: "Low" as string,
+      };
+      setFiles((prev) => [placeholder, ...prev]);
+
+      try {
+        const body = new FormData();
+        body.append("file", file);
+
+        const res = await fetch("/api/files/upload", { method: "POST", body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name && f.status === "Uploading"
+              ? { ...f, status: "Indexing", date: "Just now", storagePath: data.storagePath }
+              : f
+          )
+        );
+        toast.success(`Uploaded ${file.name}`, {
+          icon: <Upload className="w-4 h-4" />,
+          description: "File stored and queued for indexing.",
+        });
+      } catch (err: any) {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name && f.status === "Uploading"
+              ? { ...f, status: "Flagged" }
+              : f
+          )
+        );
+        toast.error(`Failed to upload ${file.name}`, {
+          description: err.message,
+        });
+      }
+    }
   };
 
   const handleNewRepo = () => {
@@ -68,8 +132,45 @@ export default function FilesPage() {
     });
   };
 
-  const handleDownload = (name: string) => {
-    toast(`Downloading ${name}`, {
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+ const handleDownload = async (name: string) => {
+    const file = files.find((item) => item.name === name) as any;
+    toast(`Downloading ${name}...`);
+
+    if (file?.storagePath) {
+      const res = await fetch(`/api/files/download?path=${encodeURIComponent(file.storagePath)}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        downloadBlob(blob, name);
+        toast.success(`Downloaded ${name}`);
+        return;
+      }
+    }
+
+    // Fallback for dummy files
+    const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
+    downloadBlob(blob, name);
+    toast.success(`Downloaded ${name}`);
+  };
+
+  const handleBulkDownload = () => {
+    const blob = new Blob(
+      [JSON.stringify(filteredFiles, null, 2)],
+      { type: "application/json" }
+    );
+
+    downloadBlob(blob, "athene-data-sources.json");
+    toast.success("Downloaded data sources archive", {
       icon: <Download className="w-4 h-4" />,
     });
   };
@@ -78,6 +179,14 @@ export default function FilesPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.csv,.json,.svg,.txt"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
       {/* Page Header */}
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-white/5 pb-10">
         <div className="space-y-4">
@@ -175,7 +284,7 @@ export default function FilesPage() {
                  </Button>
                  <div className="h-8 w-px bg-white/10" />
                  <Button 
-                  onClick={() => toast("Bulk download initialization...")}
+                  onClick={handleBulkDownload}
                   variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-[#66ADE4]/10 text-[#66ADE4]">
                     <Download className="w-5 h-5" />
                  </Button>

@@ -2,6 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { supabaseAdmin } from "../supabase/server";
+import { logger } from "@/lib/logger";
 
 /** LLM tier used by the agent registry to select model complexity */
 export type ModelTier = "simple" | "medium" | "complex";
@@ -45,7 +46,11 @@ export async function fetchByokPlaintext(
   provider: "openai" | "anthropic" | "google" | "deepseek"
 ): Promise<string | null> {
   const kmsKey = process.env.KMS_KEY;
-  if (!kmsKey || !orgId) return null;
+  if (!orgId) return null;
+  if (!kmsKey) {
+    logger.error({ orgId }, "[LLMFactory] KMS_KEY is not set — cannot decrypt BYOK key; falling back to system provider. Set KMS_KEY in environment.");
+    return null;
+  }
 
   const { data, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
     p_org_id: orgId,
@@ -53,7 +58,7 @@ export async function fetchByokPlaintext(
   });
 
   if (error) {
-    console.warn(`[LLMFactory] get_decrypted_llm_key failed:`, error.message);
+    logger.warn({ orgId, err: error.message }, "[LLMFactory] get_decrypted_llm_key RPC failed — falling back to system provider");
     return null;
   }
 
@@ -114,9 +119,7 @@ class LLMFactory {
     );
 
     if (!apiKey) {
-      console.warn(
-        `[LLMFactory] No BYOK key for org ${orgId} / ${provider}. Using system default.`
-      );
+      logger.warn({ orgId, provider }, "[LLMFactory] No BYOK key found for org — using system default provider");
       return this.getModel("medium", temperature);
     }
 

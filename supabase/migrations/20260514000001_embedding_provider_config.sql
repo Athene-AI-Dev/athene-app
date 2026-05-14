@@ -13,9 +13,10 @@
 -- ============================================================
 
 -- ---- 1. Update embedding column dimension --------------------------------
+-- IF EXISTS guards make this safe to re-apply on staging resets
 
-ALTER TABLE document_embeddings DROP COLUMN embedding;
-ALTER TABLE document_embeddings ADD COLUMN embedding vector(768) NOT NULL;
+ALTER TABLE document_embeddings DROP COLUMN IF EXISTS embedding;
+ALTER TABLE document_embeddings ADD COLUMN IF NOT EXISTS embedding vector(768) NOT NULL DEFAULT array_fill(0, ARRAY[768])::vector(768);
 
 -- ---- 2. Recreate HNSW index ----------------------------------------------
 

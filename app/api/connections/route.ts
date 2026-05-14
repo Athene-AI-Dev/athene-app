@@ -57,8 +57,8 @@ export async function POST(request: Request) {
     .insert({
       org_id: internalOrgId,
       nango_connection_id: nangoConnectionId,
-      provider,
-      source_type: sourceType,
+      provider: provider.toLowerCase(),
+      source_type: sourceType.toLowerCase(),
       scope: scope ?? "org",
       department_id: departmentId ?? null,
       sync_config: syncConfig ?? {},

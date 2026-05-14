@@ -278,7 +278,11 @@ async function extractFromChunk(
   orgId: string
 ): Promise<ExtractionResult> {
   const systemPrompt = await loadPrompt(orgId);
-  const runDecision = DECISION_SOURCE_TYPES.has(chunk.metadata?.source_type as string ?? "");
+  // Check both source_type and provider keys (indexing.ts stores under 'provider'; some paths use 'source_type')
+  const sourceKey = (
+    (chunk.metadata?.source_type ?? chunk.metadata?.provider) as string | undefined ?? ""
+  ).toLowerCase();
+  const runDecision = sourceKey !== "" && DECISION_SOURCE_TYPES.has(sourceKey);
 
   // Run general extraction; optionally run decision extraction in parallel
   const [generalParsed, decisionParsed] = await Promise.all([

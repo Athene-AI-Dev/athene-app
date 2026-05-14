@@ -13,6 +13,9 @@
 // ============================================================
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
+
+const PAGE_SIZE = 5_000
 
 // ---- Union-Find ---------------------------------------------
 
@@ -67,23 +70,47 @@ class UnionFind {
  * Runs a connected-components pass over kg_edges.
  * Each node gets community = root node ID of its component.
  */
+async function paginateNodes(orgId: string): Promise<{ id: string }[]> {
+  const results: { id: string }[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('kg_nodes').select('id').eq('org_id', orgId)
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) throw new Error(`[community] Failed to load nodes: ${error.message}`)
+    if (!data || data.length === 0) break
+    results.push(...data)
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return results
+}
+
+async function paginateEdges(orgId: string): Promise<{ source_node: string; target_node: string }[]> {
+  const results: { source_node: string; target_node: string }[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('kg_edges').select('source_node, target_node').eq('org_id', orgId)
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) throw new Error(`[community] Failed to load edges: ${error.message}`)
+    if (!data || data.length === 0) break
+    results.push(...data)
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return results
+}
+
 export async function detectCommunities(orgId: string): Promise<void> {
-  // 1. Load all node IDs
-  const { data: nodes, error: nodeErr } = await supabaseAdmin
-    .from('kg_nodes')
-    .select('id')
-    .eq('org_id', orgId)
+  // 1. Load all node IDs (paginated — unbounded load OOMs on large orgs)
+  const nodes = await paginateNodes(orgId)
 
-  if (nodeErr) throw new Error(`[community] Failed to load nodes: ${nodeErr.message}`)
-  if (!nodes || nodes.length === 0) return
+  if (nodes.length === 0) return
+  logger.info({ orgId, nodeCount: nodes.length }, '[community] Loaded nodes — starting union-find')
 
-  // 2. Load all edges
-  const { data: edges, error: edgeErr } = await supabaseAdmin
-    .from('kg_edges')
-    .select('source_node, target_node')
-    .eq('org_id', orgId)
-
-  if (edgeErr) throw new Error(`[community] Failed to load edges: ${edgeErr.message}`)
+  // 2. Load all edges (paginated)
+  const edges = await paginateEdges(orgId)
 
   // 3. Build union-find from edges
   const uf = new UnionFind()
@@ -120,7 +147,7 @@ export async function detectCommunities(orgId: string): Promise<void> {
         .in('id', batch)
 
       if (error) {
-        console.error(`[community] Update failed for community ${communityId}:`, error.message)
+        logger.error({ orgId, communityId, err: error.message }, '[community] Update failed')
       }
     }
   }

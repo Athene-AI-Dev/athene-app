@@ -4,6 +4,7 @@ import { mapRole } from '@/lib/auth/clerk'
 import { listConnections, deleteConnection, saveConnectionMapping } from '@/lib/nango/client'
 import { PROVIDER_REGISTRY } from '@/lib/integrations/providers'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { invalidatePromptCache } from '@/lib/knowledge-graph/modules/resolver'
 
 /**
  * 🛡️ ADMIN ROLE ENFORCEMENT
@@ -115,6 +116,16 @@ export async function DELETE(req: NextRequest) {
     }
 
     await deleteConnection(connectionId, provider, orgId)
+
+    // Resolve internal org UUID and invalidate KG prompt cache so the removed
+    // integration's module addendum no longer contributes to extraction
+    const { data: orgData } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('clerk_org_id', orgId)
+      .maybeSingle()
+    if (orgData?.id) void invalidatePromptCache(orgData.id)
+
     return NextResponse.json({ success: true })
   } catch (err: any) {
     if (err.message === 'Unauthorized') return new NextResponse('Unauthorized', { status: 401 })

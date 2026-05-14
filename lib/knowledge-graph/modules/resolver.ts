@@ -23,14 +23,20 @@ const CACHE_TTL_SECONDS = 600; // 10 minutes
 export async function getActiveModules(orgId: string): Promise<VerticalModule[]> {
   const { data: connections } = await supabaseAdmin
     .from("connections")
-    .select("source_type")
+    .select("source_type, provider")
     .eq("org_id", orgId)
     .eq("status", "active");
 
-  const activeSources = new Set(connections?.map((c) => c.source_type) ?? []);
+  // Normalize to lowercase and include both source_type and provider to handle
+  // inconsistent casing from different integration flows
+  const activeSources = new Set(
+    (connections ?? []).flatMap((c) =>
+      [c.source_type, c.provider].filter(Boolean).map((v: string) => v.toLowerCase())
+    )
+  );
 
   return VERTICAL_MODULES.filter((m) =>
-    m.activating_sources.some((s) => activeSources.has(s))
+    m.activating_sources.some((s) => activeSources.has(s.toLowerCase()))
   );
 }
 

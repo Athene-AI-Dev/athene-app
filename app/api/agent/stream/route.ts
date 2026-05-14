@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/agent/stream
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
         );
         await writer.close();
       } catch (err: unknown) {
-        console.error("[agent/stream] Stream error:", err);
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, "[agent/stream] Stream error");
         const message = err instanceof Error ? err.message : "Internal Server Error";
         try {
           await writer.write(
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("[agent/stream] API error:", msg);
+    logger.error({ err: msg }, "[agent/stream] API error");
     return new NextResponse(msg, { status: 500 });
   }
 }

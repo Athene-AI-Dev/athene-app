@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getContextFromHeaders } from '@/lib/supabase/rls-client';
 import { qstash } from '@/lib/qstash/client';
 import { getServerBaseUrl } from '@/lib/url/server-base-url';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: Request) {
   const context = getContextFromHeaders(request.headers);
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
       messageId: response.messageId 
     });
   } catch (error) {
-    console.error('[graph/build/post]', error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[graph/build/post]');
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: `Failed to enqueue job: ${message}` }, { status: 500 });
   }

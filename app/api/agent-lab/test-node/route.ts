@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supervisor } from "@/lib/langgraph/nodes/supervisor";
+import { logger } from "@/lib/logger";
 import { retrievalAgent } from "@/lib/langgraph/nodes/retrieval-agent";
 import { emailAgentNode } from "@/lib/langgraph/nodes/email-agent";
 import { calendarAgentNode } from "@/lib/langgraph/nodes/calendar-agent";
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
-    console.error("[test-node] Error:", error);
+    logger.error({ err: error?.message ?? String(error) }, "[test-node] Error");
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

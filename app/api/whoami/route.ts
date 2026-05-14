@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getContextFromHeaders, withRLS } from "@/lib/supabase/rls-client";
+import { logger } from "@/lib/logger";
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
       data: result
     });
   } catch (error) {
-    console.error("Error in whoami route:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "Error in whoami route");
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

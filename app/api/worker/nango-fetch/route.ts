@@ -258,7 +258,7 @@ export async function POST(request: Request): Promise<Response> {
           body: { org_id: orgId, document_ids: indexResult.documentIds, job_type: 'incremental' },
         })
       } catch (gErr) {
-        console.error('[nango-fetch] Failed to enqueue graph-build:', gErr)
+        logger.error({ err: gErr instanceof Error ? gErr.message : String(gErr) }, '[nango-fetch] Failed to enqueue graph-build')
       }
     }
   } catch (err) {

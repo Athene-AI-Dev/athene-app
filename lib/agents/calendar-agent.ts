@@ -17,6 +17,7 @@ import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { AIMessage } from "@langchain/core/messages";
 import fs from "fs";
 import path from "path";
+import { logger } from "@/lib/logger";
 
 // ---- Structured output schema --------------------------------
 
@@ -91,7 +92,7 @@ function getSystemPrompt(): string {
   try {
     return fs.readFileSync(PROMPT_FILE_PATH, "utf8");
   } catch (err) {
-    console.error("[calendarAgent] Error reading prompt file:", err);
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, "[calendarAgent] Error reading prompt file");
     // Fallback to minimal prompt if file read fails
     return "You are a calendar assistant. Draft a calendar event based on the user request.";
   }
@@ -156,7 +157,7 @@ User Timezone: ${timezone}`;
     };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error("[calendarAgent] Error:", msg);
+    logger.error({ err: msg }, "[calendarAgent] Error");
 
     return {
       messages: [

@@ -23,6 +23,7 @@ import { z } from 'zod'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { resolveModelClient } from '../llm-factory'
 import { registerTool } from './registry'
+import { logger } from '@/lib/logger'
 
 /**
  * Sanitise a value for use in raw PostgREST `.or()` filter strings.
@@ -293,7 +294,7 @@ export const graphQueryTool = new DynamicStructuredTool({
         anyBoundary,
       )
     } catch (err: unknown) {
-      console.error('[graph-query] error:', err)
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, '[graph-query] error')
       return 'No knowledge graph data available yet.'
     }
   },

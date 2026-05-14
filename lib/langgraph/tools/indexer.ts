@@ -25,6 +25,7 @@ import { deleteByDocument, upsertEdges, upsertNodes } from "@/lib/knowledge-grap
 import type { ExtractorChunk, Visibility } from "@/lib/knowledge-graph/types";
 import { chunk as chunkText, countTokens } from "./chunker";
 import { embed, EMBEDDING_CONFIG } from "./embedder";
+import { logger } from "@/lib/logger";
 
 export type IndexDocumentInput = {
   orgId: string;
@@ -90,7 +91,7 @@ export async function indexDocument(
   });
 
   if (lockErr || !locked) {
-    console.warn(`[indexer] Could not acquire lock for document ${documentId} - another job may be running.`);
+    logger.warn({ documentId }, "[indexer] Could not acquire lock for document - another job may be running");
     // We don't throw here to avoid failing the whole worker, but we skip graph pass
   }
 
@@ -187,7 +188,7 @@ export async function indexDocument(
       .eq("id", documentId);
     if (error) {
       // Non-fatal — the embeddings are correct even if this fails
-      console.warn(`[indexer] documents update failed: ${error.message}`);
+      logger.warn({ err: error.message, documentId }, "[indexer] documents update failed");
     }
   }
 
@@ -196,9 +197,7 @@ export async function indexDocument(
   let edgesUpserted = 0;
   if (buildGraph && chunks.length > 0) {
     if (!rlsContext) {
-      console.warn(
-        "[indexer] buildGraph requested but no rlsContext provided — skipping KG"
-      );
+      logger.warn({ documentId }, "[indexer] buildGraph requested but no rlsContext provided — skipping KG");
     } else {
       const extractorChunks: ExtractorChunk[] = chunks.map((c) => ({
         text: c.text,
@@ -223,7 +222,7 @@ export async function indexDocument(
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[indexer] Knowledge Graph pass failed:", msg);
+        logger.error({ err: msg, documentId }, "[indexer] Knowledge Graph pass failed");
         // Propagate error to QStash job if this is a critical failure
         throw new Error(`KG pass failed: ${msg}`);
         }

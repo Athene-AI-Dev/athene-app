@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./server";
+import { logger } from "@/lib/logger";
 
 export type AuditLogEntry = {
   org_id: string;
@@ -14,7 +15,7 @@ export async function writeAuditLog(entry: AuditLogEntry) {
     .insert([entry]);
 
   if (error) {
-    console.error("[audit] writeAuditLog failed:", error.message);
+    logger.error({ err: error.message }, "[audit] writeAuditLog failed");
   }
 }
 
@@ -31,6 +32,6 @@ export async function writeGrantAccessAudit(entry: {
     .insert([entry]);
 
   if (error) {
-    console.error("[audit] writeGrantAccessAudit failed:", error.message);
+    logger.error({ err: error.message }, "[audit] writeGrantAccessAudit failed");
   }
 }

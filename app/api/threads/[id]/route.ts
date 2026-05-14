@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
+import { logger } from "@/lib/logger";
 
 export async function DELETE(
   request: NextRequest,
@@ -28,7 +29,7 @@ export async function DELETE(
       .select();
 
     if (error) {
-      console.error("[threads] DELETE error:", error);
+      logger.error({ err: error?.message ?? String(error) }, "[threads] DELETE error");
       return NextResponse.json({ error: "Failed to delete thread" }, { status: 500 });
     }
 
@@ -38,7 +39,7 @@ export async function DELETE(
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error("[threads] DELETE error:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "[threads] DELETE error");
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

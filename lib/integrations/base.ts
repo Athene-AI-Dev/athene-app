@@ -1,6 +1,7 @@
 ﻿import { getConnectionToken } from '@/lib/nango/client'
 import { getProviderConfig, type ProviderKey } from './providers'
 import { Nango } from '@nangohq/node'
+import { logger } from '@/lib/logger'
 
 // ─── Shared output type ─────────────────────────────────────────────────────
 
@@ -158,9 +159,7 @@ export async function baseFetch<T = unknown>(
       const retryAfterMs = retryAfterHeader
         ? Number(retryAfterHeader) * 1000
         : 2000
-      console.warn(
-        `[baseFetch] 429 rate-limited on ${url}, retrying in ${retryAfterMs}ms (attempt ${attempt + 1}/${maxRetries})`,
-      )
+      logger.warn({ url, retryAfterMs, attempt: attempt + 1, maxRetries }, '[baseFetch] 429 rate-limited, retrying')
       await sleep(retryAfterMs)
       attempt++
       continue
@@ -169,9 +168,7 @@ export async function baseFetch<T = unknown>(
     // ── Server error — exponential backoff ───────────────────────────────
     if (res.status >= 500 && attempt < maxRetries) {
       const backoffMs = 2 ** attempt * 500
-      console.warn(
-        `[baseFetch] ${res.status} server error on ${url}, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`,
-      )
+      logger.warn({ url, status: res.status, backoffMs, attempt: attempt + 1, maxRetries }, '[baseFetch] server error, retrying')
       await sleep(backoffMs)
       attempt++
       continue

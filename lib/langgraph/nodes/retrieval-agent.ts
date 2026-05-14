@@ -18,6 +18,7 @@ import { vectorSearchTool } from "../tools/registry";
 import { graphQueryTool } from "../tools/graph-query";
 import { AtheneStateType } from "../state";
 import { HumanMessage } from "@langchain/core/messages";
+import { logger } from "@/lib/logger";
 
 // ---- Constants ----------------------------------------------
 
@@ -142,7 +143,7 @@ export async function retrievalAgent(
   const query = extractQueryText(messages);
 
   if (!query) {
-    console.warn("[retrieval] No query text found in messages");
+    logger.warn({}, "[retrieval] No query text found in messages");
     return {
       retrieved_chunks: [],
     };
@@ -177,7 +178,7 @@ export async function retrievalAgent(
     vectorSearchTool
       .invoke({ query, topK }, toolConfig)
       .catch((err: unknown) => {
-        console.error("[retrieval] Vector search failed:", err);
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, "[retrieval] Vector search failed");
         return JSON.stringify({ results: [] });
       }),
 
@@ -185,7 +186,7 @@ export async function retrievalAgent(
     graphQueryTool
       .invoke({ question: query, maxHops: 2 }, toolConfig)
       .catch((err: unknown) => {
-        console.error("[retrieval] Graph query failed (continuing vector-only):", err);
+        logger.error({ err: err instanceof Error ? err.message : String(err) }, "[retrieval] Graph query failed (continuing vector-only)");
         return "No knowledge graph data available yet.";
       }),
   ]);
@@ -201,11 +202,9 @@ export async function retrievalAgent(
     mergedResults.push(graphResult);
   }
 
-  // Log for observability
-  console.info(
-    `[retrieval] query="${query.slice(0, 80)}" vectorChunks=${vectorChunks.length} graphAvailable=${!!graphResult}${
-      graphResult?.boundaryReached ? " boundaryReached=true" : ""
-    }`
+  logger.info(
+    { query: query.slice(0, 80), vectorChunks: vectorChunks.length, graphAvailable: !!graphResult, boundaryReached: graphResult?.boundaryReached ?? false },
+    "[retrieval] retrieval complete"
   );
 
   return {

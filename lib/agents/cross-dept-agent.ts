@@ -19,6 +19,7 @@ import { ToolMessage } from '@langchain/core/messages'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { crossDeptVectorSearchTool } from '@/lib/langgraph/tools/registry'
 import type { AtheneState, AtheneStateUpdate } from '@/lib/langgraph/state'
+import { logger } from '@/lib/logger'
 
 // Module-level ToolNode singleton — never recreated per request
 const toolNode = new ToolNode([crossDeptVectorSearchTool])
@@ -128,6 +129,6 @@ async function writeBIAuditRows(
 
   const { error } = await supabaseAdmin.from('bi_access_audit').insert(rows)
   if (error) {
-    console.error('[cross-dept-agent] bi_access_audit write failed:', error.message)
+    logger.error({ err: error.message }, '[cross-dept-agent] bi_access_audit write failed')
   }
 }

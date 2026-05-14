@@ -13,6 +13,7 @@
 import { qstash } from "@/lib/qstash/client";
 import { redis } from "@/lib/redis/client";
 import { getServerBaseUrl } from "@/lib/url/server-base-url";
+import { logger } from "@/lib/logger";
 
 // ---- Types --------------------------------------------------
 
@@ -96,9 +97,7 @@ export async function suspendAndQueue(
   if (existingLock) {
     // Already suspended — return the existing marker
     const existing = JSON.parse(existingLock) as SuspendedMarker;
-    console.warn(
-      `[async-bridge] Duplicate suspend for ${threadId}/${runId}, returning existing marker`
-    );
+    logger.warn({ threadId, runId }, '[async-bridge] Duplicate suspend — returning existing marker');
     return existing;
   }
 
@@ -148,9 +147,7 @@ export async function suspendAndQueue(
     ),
   ]);
 
-  console.info(
-    `[async-bridge] Suspended thread=${threadId} run=${runId} tool=${tool} qstash=${response.messageId}`
-  );
+  logger.info({ threadId, runId, tool, qstashMessageId: response.messageId }, '[async-bridge] Suspended');
 
   return marker;
 }

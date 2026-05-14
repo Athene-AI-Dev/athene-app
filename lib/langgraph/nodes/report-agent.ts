@@ -3,6 +3,7 @@ import { vectorSearch } from "@/lib/tools/vector-search";
 import { graphQueryTool } from "../tools/graph-query";
 import { SystemMessage, HumanMessage, type MessageContent } from "@langchain/core/messages";
 import { resolveModelClient } from "../llm-factory";
+import { logger } from "@/lib/logger";
 
 /**
  * Parses the raw string output from the graphQueryTool into structured
@@ -154,7 +155,7 @@ export async function reportAgent(
       sections = ["Introduction", "Key Findings", "Conclusion"];
     }
   } catch (error) {
-    console.error("Failed to parse report plan:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "[report-agent] Failed to parse report plan");
     sections = ["Introduction", "Key Findings", "Conclusion"];
   }
 
@@ -193,7 +194,7 @@ export async function reportAgent(
             undefined,
             { configurable: { orgId, role } }
           ).catch(err => {
-            console.warn(`[report-agent] Graph query failed for section "${section}":`, err);
+            logger.warn({ section, err: err instanceof Error ? err.message : String(err) }, "[report-agent] Graph query failed for section");
             return null;
           })
         ]);

@@ -11,6 +11,7 @@
 
 import { redis } from "@/lib/redis/client";
 import { getAgentGraph } from "@/lib/langgraph/graph";
+import { logger } from "@/lib/logger";
 
 // ---- Types --------------------------------------------------
 
@@ -68,9 +69,7 @@ export async function resumeGraph(
 
   const lockValue = await redis.get(lockKey);
   if (!lockValue) {
-    console.warn(
-      `[async-bridge] No suspension found for ${threadId}/${runId} — may have already been resumed or expired`
-    );
+    logger.warn({ threadId, runId }, '[async-bridge] No suspension found — may have already been resumed or expired');
     return {
       resumed: false,
       error: "No active suspension found. It may have already been resumed or expired.",
@@ -119,9 +118,7 @@ export async function resumeGraph(
       configurable: { thread_id: threadId },
     });
 
-    console.info(
-      `[async-bridge] Resumed thread=${threadId} run=${runId} success=${success}`
-    );
+    logger.info({ threadId, runId, success }, '[async-bridge] Resumed');
 
     return {
       resumed: true,
@@ -131,10 +128,7 @@ export async function resumeGraph(
     const message =
       resumeErr instanceof Error ? resumeErr.message : String(resumeErr);
 
-    console.error(
-      `[async-bridge] Failed to resume thread=${threadId}:`,
-      resumeErr
-    );
+    logger.error({ threadId, runId, err: message }, '[async-bridge] Failed to resume thread');
 
     // Update the result in Redis to reflect the resume failure
     await redis.set(

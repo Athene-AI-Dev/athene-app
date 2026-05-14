@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/admin'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 /**
  * GET: List all LLM keys for the current organization.
@@ -225,7 +226,7 @@ async function resolveInternalAdminContext(clerkOrgId: string, clerkUserId: stri
 }
 
 function handleApiError(err: any) {
-  console.error('[API Keys Error]:', err.message)
+  logger.error({ err: err.message }, '[API Keys Error]')
   if (err.message === 'Unauthorized') return new NextResponse('Unauthorized', { status: 401 })
   if (err.message === 'Forbidden') return new NextResponse('Forbidden', { status: 403 })
   if (err.message.includes('KMS_KEY')) return NextResponse.json({ error: err.message }, { status: 500 })

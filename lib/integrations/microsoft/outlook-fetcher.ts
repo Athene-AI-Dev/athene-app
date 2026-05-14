@@ -23,14 +23,27 @@ export interface EmailDraft {
   }[]
 }
 
+export interface OutlookEmail {
+  id: string
+  subject: string | null
+  bodyPreview: string | null
+  receivedDateTime: string | null
+  webLink: string
+  from?: {
+    emailAddress?: {
+      name?: string
+      address?: string
+    }
+  }
+}
+
 /**
- * Fetches unread emails for the morning briefing.
- * CRITICAL: Email bodies are NEVER indexed. Only fetched live and discarded.
- * We only fetch the bodyPreview for the briefing.
+ * Fetches recent unread emails from Outlook.
+ * For background indexing, full bodies are fetched separately via fetchEmailBody.
  */
-export async function fetchUnreadEmails(connectionId: string, orgId: string, limit = 20) {
-  const data = await graphFetch(connectionId, orgId, `/me/messages?$filter=isRead eq false&$top=${limit}&$select=subject,from,receivedDateTime,bodyPreview`)
-  return data.value
+export async function fetchUnreadEmails(connectionId: string, orgId: string, limit = 20): Promise<OutlookEmail[]> {
+  const data = await graphFetch(connectionId, orgId, `/me/messages?$filter=isRead eq false&$top=${limit}&$select=subject,from,receivedDateTime,bodyPreview,webLink`)
+  return data.value ?? []
 }
 
 /**

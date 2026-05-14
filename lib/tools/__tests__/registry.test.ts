@@ -58,6 +58,13 @@ describe('Tool Registry — getToolsForRole', () => {
       expect(tool).toHaveProperty('schema')
     }
   })
+
+  it('null role (unauthenticated) gets zero tools', () => {
+    const tools = getToolsForRole(null)
+    const names = getToolNamesForRole(null)
+    expect(tools).toHaveLength(0)
+    expect(names).toHaveLength(0)
+  })
 })
 
 // ─── Tool metadata tests ────────────────────────────────────────────────────
@@ -145,5 +152,27 @@ describe('Tool Registry — Zod schemas', () => {
 
     expect(parsed.tool).toBe('crossDeptVectorSearch')
     expect(parsed.department_ids).toEqual(['dept-sales', 'dept-eng'])
+  })
+
+  it('draftCalendarEvent rejects invalid ISO-8601 start/end strings', async () => {
+    const tool = getToolByName('draftCalendarEvent')
+    // Zod parse-level rejection — invoke catches and returns error string
+    await expect(
+      tool.invoke({ summary: 'Test', start: 'next tuesday', end: 'after lunch' })
+    ).rejects.toThrow()
+  })
+
+  it('draftCalendarEvent accepts valid ISO-8601 start/end strings', async () => {
+    const tool = getToolByName('draftCalendarEvent')
+    const result = await tool.invoke({
+      summary: 'Standup',
+      start: '2024-06-15T09:00:00Z',
+      end: '2024-06-15T09:30:00Z',
+    })
+    const parsed = JSON.parse(result)
+    expect(parsed.tool).toBe('draftCalendarEvent')
+    expect(parsed.draft.summary).toBe('Standup')
+    expect(parsed.draft.start).toBe('2024-06-15T09:00:00Z')
+    expect(parsed.draft.end).toBe('2024-06-15T09:30:00Z')
   })
 })

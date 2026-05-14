@@ -9,17 +9,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// ---- Mock ChatOpenAI ----------------------------------------
-
 const { mockMiniInvoke } = vi.hoisted(() => ({
   mockMiniInvoke: vi.fn(),
 }))
 
-vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: class FakeChatOpenAI {
-    constructor() {}
-    invoke = mockMiniInvoke
-  },
+vi.mock('@/lib/langgraph/llm-factory', () => ({
+  resolveModelClient: vi.fn().mockResolvedValue({
+    invoke: mockMiniInvoke,
+  }),
 }))
 
 // ---- Mock registry ------------------------------------------
@@ -75,7 +72,10 @@ const {
 })
 
 vi.mock('@/lib/supabase/server', () => ({
-  supabaseAdmin: { from: mockFrom },
+  supabaseAdmin: {
+    from: mockFrom,
+    rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+  },
 }))
 
 // ---- Import after mocks ------------------------------------

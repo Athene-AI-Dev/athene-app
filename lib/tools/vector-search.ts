@@ -25,7 +25,8 @@ export async function vectorSearch({
   topK = 5,
 }: Params) {
   return withVectorSearchSpan(query, orgId, topK, async (span) => {
-    const embedding = await embed(query);
+    // Pass orgId so BYOK embedding key is used — keeps index/query embedding spaces in sync
+    const embedding = await embed(query, orgId);
 
     const ctx: RLSContext = {
       org_id: orgId,
@@ -59,7 +60,8 @@ export async function crossDeptVectorSearch(params: Params) {
   const topK = params.topK ?? 5;
   return withVectorSearchSpan(params.query, params.orgId, topK, async (span) => {
     span.setAttribute("vector.cross_dept", true);
-    const embedding = await embed(params.query);
+    // Pass orgId so BYOK embedding key is used — keeps index/query embedding spaces in sync
+    const embedding = await embed(params.query, params.orgId);
 
     const ctx: RLSContext = {
       org_id: params.orgId,

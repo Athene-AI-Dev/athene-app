@@ -131,9 +131,7 @@ export default function GraphPage() {
     // FIX #5: Optional chaining for older Safari compatibility
     mql.addEventListener?.("change", handler);
 
-    // FIX #2: Type guard + TODO for fragile role piggyback
-    // TODO: Replace with a dedicated /api/user/role endpoint
-    fetch("/api/graph/nodes?limit=1")
+    fetch("/api/user/role")
       .then((r) => r.json())
       .then((d) => {
         if (d.role && typeof d.role === "string") setUserRole(d.role);

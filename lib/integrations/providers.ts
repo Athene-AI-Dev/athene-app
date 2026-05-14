@@ -17,7 +17,16 @@ export type ProviderKey =
   | 'snowflake'
   | 'github'
   | 'linear'
-  | 'zendesk';
+  | 'zendesk'
+  | 'bigquery'
+  | 'redshift'
+  | 'looker'
+  | 'tableau'
+  | 'metabase'
+  | 'dbt'
+  | 'powerbi';
+
+export type ProviderCategory = "productivity" | "crm" | "devtools" | "communication" | "data";
 
 export interface ProviderCapabilities {
   canFetch: boolean;
@@ -31,7 +40,7 @@ export interface ProviderConfig {
   displayName: string;
   description: string;
   icon: string;
-  category: "productivity" | "crm" | "devtools" | "communication" | "data";
+  category: ProviderCategory;
   nangoIntegrationId: string;
   resources: string[];
   capabilities: ProviderCapabilities;
@@ -324,6 +333,111 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
       canSearch: true,
       canWrite: true,
       requiresScopes: ['tickets:read', 'help_center:read', 'users:read'],
+    },
+  },
+  bigquery: {
+    key: 'bigquery',
+    displayName: 'BigQuery',
+    description: 'Query datasets and sync table samples for BI analysis',
+    icon: '/integrations/bigquery.svg',
+    category: 'data',
+    nangoIntegrationId: 'google-bigquery',
+    resources: ['datasets', 'tables', 'views'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: ['https://www.googleapis.com/auth/bigquery.readonly'],
+    },
+  },
+  redshift: {
+    key: 'redshift',
+    displayName: 'Amazon Redshift',
+    description: 'Query Redshift clusters and sync table data for BI analysis',
+    icon: '/integrations/redshift.svg',
+    category: 'data',
+    nangoIntegrationId: 'redshift',
+    resources: ['tables', 'views', 'schemas'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: [],
+    },
+  },
+  looker: {
+    key: 'looker',
+    displayName: 'Looker',
+    description: 'Sync Looks, Explores, and Dashboards from Looker',
+    icon: '/integrations/looker.svg',
+    category: 'data',
+    nangoIntegrationId: 'looker',
+    resources: ['looks', 'dashboards', 'explores'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: [],
+    },
+  },
+  tableau: {
+    key: 'tableau',
+    displayName: 'Tableau',
+    description: 'Sync Tableau workbooks, views, and dashboards',
+    icon: '/integrations/tableau.svg',
+    category: 'data',
+    nangoIntegrationId: 'tableau',
+    resources: ['workbooks', 'views', 'datasources'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: [],
+    },
+  },
+  metabase: {
+    key: 'metabase',
+    displayName: 'Metabase',
+    description: 'Sync questions, dashboards, and data from Metabase',
+    icon: '/integrations/metabase.svg',
+    category: 'data',
+    nangoIntegrationId: 'metabase',
+    resources: ['questions', 'dashboards', 'databases'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: [],
+    },
+  },
+  dbt: {
+    key: 'dbt',
+    displayName: 'dbt Cloud',
+    description: 'Sync dbt models, jobs, and run results for data lineage context',
+    icon: '/integrations/dbt.svg',
+    category: 'data',
+    nangoIntegrationId: 'dbt',
+    resources: ['models', 'jobs', 'runs'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: [],
+    },
+  },
+  powerbi: {
+    key: 'powerbi',
+    displayName: 'Power BI',
+    description: 'Sync Power BI reports, datasets, and dashboards',
+    icon: '/integrations/powerbi.svg',
+    category: 'data',
+    nangoIntegrationId: 'microsoft-power-bi',
+    resources: ['reports', 'datasets', 'dashboards'],
+    capabilities: {
+      canFetch: true,
+      canSearch: true,
+      canWrite: false,
+      requiresScopes: ['Dataset.Read.All', 'Report.Read.All', 'Dashboard.Read.All'],
     },
   },
 };

@@ -124,57 +124,96 @@ export const resolveUserAccess = cache(async (
   // 2. Fallback: Auto-provision if missing (Issue #401 fix)
   if (!result || !result.internal_user_id) {
     if (orgId && userId) {
-      // Lazy-sync Org
-      let { data: orgData } = await supabaseAdmin
-        .from("organizations")
-        .select("id")
-        .eq("clerk_org_id", orgId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!orgData) {
-        const { data: newOrg, error: orgErr } = await supabaseAdmin
+      try {
+        // Lazy-sync Org
+        let { data: orgData } = await supabaseAdmin
           .from("organizations")
-          .insert({ clerk_org_id: orgId, name: "New Organization", slug: "org-" + orgId.slice(-6) })
           .select("id")
+          .eq("clerk_org_id", orgId)
           .limit(1)
           .maybeSingle();
-        if (orgErr) {
-          logger.error({ orgId, err: orgErr.message }, "[rbac] Failed to auto-provision organization");
+
+        if (!orgData) {
+          // Use full Clerk ID in slug to avoid collisions on the UNIQUE constraint
+          const slug = `org-${orgId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toLowerCase()}-${Date.now().toString(36)}`;
+          const { data: newOrg, error: orgErr } = await supabaseAdmin
+            .from("organizations")
+            .insert({ clerk_org_id: orgId, name: "New Organization", slug })
+            .select("id")
+            .limit(1)
+            .maybeSingle();
+
+          if (orgErr) {
+            // Slug collision or race condition — re-fetch in case another request created it
+            logger.warn({ orgId, err: orgErr.message }, "[rbac] Org insert failed, re-fetching");
+            const { data: retryOrg } = await supabaseAdmin
+              .from("organizations")
+              .select("id")
+              .eq("clerk_org_id", orgId)
+              .limit(1)
+              .maybeSingle();
+            orgData = retryOrg;
+          } else {
+            orgData = newOrg;
+          }
+        }
+
+        if (!orgData) {
+          logger.error({ orgId }, "[rbac] Failed to resolve or create organization");
           return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
         }
-        orgData = newOrg;
+
+        // Lazy-sync Member — try insert, fall back to select on conflict
+        const mappedRole = mapRole(clerkRole || undefined) || "member";
+        let memberData: { id: string; role: string } | null = null;
+
+        const { data: newMember, error: memErr } = await supabaseAdmin
+          .from("org_members")
+          .insert({
+            org_id: orgData.id,
+            clerk_user_id: userId,
+            email: `${userId}@placeholder.athene.ai`,
+            role: mappedRole,
+          })
+          .select("id, role")
+          .limit(1)
+          .maybeSingle();
+
+        if (memErr) {
+          // UNIQUE (org_id, clerk_user_id) conflict — member already exists
+          logger.warn({ userId, orgId, err: memErr.message }, "[rbac] Member insert failed, re-fetching");
+          const { data: existing } = await supabaseAdmin
+            .from("org_members")
+            .select("id, role")
+            .eq("clerk_user_id", userId)
+            .eq("org_id", orgData.id)
+            .limit(1)
+            .maybeSingle();
+          memberData = existing;
+        } else {
+          memberData = newMember;
+        }
+
+        if (!memberData) {
+          logger.error({ userId, orgId }, "[rbac] Failed to resolve or create member");
+          return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
+        }
+
+        result = {
+          internal_user_id: memberData.id,
+          internal_org_id: orgData.id,
+          role: memberData.role as UserRole,
+          dept_id: null,
+          accessible_dept_ids: null,
+          bi_grant_id: null,
+        };
+      } catch (provisionErr) {
+        logger.error({ userId, orgId, err: (provisionErr as Error).message }, "[rbac] Auto-provision failed");
       }
+    }
 
-      // Lazy-sync Member
-      const mappedRole = mapRole(clerkRole || undefined) || "member";
-      const { data: newMember, error: memErr } = await supabaseAdmin
-        .from("org_members")
-        .insert({
-          org_id: orgData!.id,
-          clerk_user_id: userId,
-          email: "sync@athene.ai", // Placeholder
-          role: mappedRole,
-        })
-        .select("id, role")
-        .limit(1)
-        .maybeSingle();
-
-      if (memErr || !newMember) {
-        logger.error({ userId, orgId, err: memErr?.message ?? "newMember null after insert" }, "[rbac] Failed to auto-provision member");
-        return { internal_user_id: null, internal_org_id: null, role: null, dept_id: null, accessible_dept_ids: null, bi_grant_id: null };
-      }
-
-      result = {
-        internal_user_id: newMember!.id,
-        internal_org_id: orgData!.id,
-        role: newMember!.role as UserRole,
-        dept_id: null,
-        accessible_dept_ids: null,
-        bi_grant_id: null,
-      };
-    } else {
-      // No Clerk context -> Deny
+    // If still no result after provisioning attempt, deny access
+    if (!result || !result.internal_user_id) {
       result = {
         internal_user_id: null,
         internal_org_id: null,

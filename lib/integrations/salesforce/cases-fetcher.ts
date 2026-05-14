@@ -1,14 +1,31 @@
 // ============================================================
 // Salesforce Cases fetcher (ATH-67)
 //
-// SOQL: SELECT Id, Subject, Description, Status FROM Case
+// SOQL: expanded to include priority, type, account, dates
 // Returns FetchedChunk[] with cursor-based pagination.
 // ============================================================
 
 import { salesforceFetch } from './client'
 import type { FetchedChunk } from '@/lib/integrations/base'
 
-const SOQL = `SELECT+Id,Subject,Description,Status+FROM+Case`
+const SOQL = [
+  'SELECT',
+  'Id,Subject,Description,Status,Priority,Type,',
+  'Account.Name,CreatedDate,LastModifiedDate',
+  'FROM Case',
+].join('')
+
+interface SFCase {
+  Id: string
+  Subject: string
+  Description: string | null
+  Status: string
+  Priority: string | null
+  Type: string | null
+  Account: { Name: string } | null
+  CreatedDate: string | null
+  LastModifiedDate: string | null
+}
 
 export async function fetchSalesforceCases(
   connectionId: string,
@@ -16,30 +33,35 @@ export async function fetchSalesforceCases(
   orgId: string
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
-  let nextUrl: string | null = `/query?q=${SOQL}`
+  let nextUrl: string | null = `/query?q=${encodeURIComponent(SOQL)}`
 
   while (nextUrl) {
     const data = await salesforceFetch(connectionId, nextUrl, orgId, instanceUrl) as {
-      records: { Id: string; Subject: string; Description: string | null; Status: string }[]
+      records: SFCase[]
       nextRecordsUrl?: string
       done: boolean
     }
 
-    for (const record of data.records) {
+    for (const r of data.records) {
       chunks.push({
-        chunk_id:   `sf-case-${record.Id}`,
-        title:      record.Subject,
+        chunk_id:   `sf-case-${r.Id}`,
+        title:      r.Subject,
         content: [
-          `Case: ${record.Subject}`,
-          `Status: ${record.Status}`,
-          record.Description ? `Description: ${record.Description}` : null,
+          `Case: ${r.Subject}`,
+          `Status: ${r.Status}`,
+          r.Priority      ? `Priority: ${r.Priority}`              : null,
+          r.Type          ? `Type: ${r.Type}`                      : null,
+          r.Account?.Name ? `Account: ${r.Account.Name}`          : null,
+          r.Description   ? `Description: ${r.Description}`       : null,
         ].filter(Boolean).join('\n'),
-        source_url: `${instanceUrl}/lightning/r/Case/${record.Id}/view`,
+        source_url: `${instanceUrl}/lightning/r/Case/${r.Id}/view`,
         metadata: {
-          provider:    'salesforce',
+          provider:      'salesforce',
           resource_type: 'cases',
-          id:          record.Id,
-          status:      record.Status,
+          id:            r.Id,
+          status:        r.Status,
+          priority:      r.Priority ?? null,
+          last_modified: r.LastModifiedDate ?? undefined,
         },
       })
     }

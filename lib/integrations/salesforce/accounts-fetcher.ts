@@ -1,15 +1,35 @@
 // ============================================================
 // Salesforce Accounts fetcher (ATH-67)
 //
-// SOQL: SELECT Id, Name, Industry, Description FROM Account
+// SOQL: expanded to include revenue, headcount, location, owner
 // Returns FetchedChunk[] with cursor-based pagination.
-// Content is ephemeral — only used for embedding, never stored.
 // ============================================================
 
 import { salesforceFetch } from './client'
 import type { FetchedChunk } from '@/lib/integrations/base'
 
-const SOQL = `SELECT+Id,Name,Industry,Description+FROM+Account`
+const SOQL = [
+  'SELECT',
+  'Id,Name,Industry,Description,',
+  'AnnualRevenue,NumberOfEmployees,',
+  'BillingCity,BillingCountry,Phone,Website,',
+  'Owner.Name',
+  'FROM Account',
+].join('')
+
+interface SFAccount {
+  Id: string
+  Name: string
+  Industry: string | null
+  Description: string | null
+  AnnualRevenue: number | null
+  NumberOfEmployees: number | null
+  BillingCity: string | null
+  BillingCountry: string | null
+  Phone: string | null
+  Website: string | null
+  Owner: { Name: string } | null
+}
 
 export async function fetchSalesforceAccounts(
   connectionId: string,
@@ -17,30 +37,40 @@ export async function fetchSalesforceAccounts(
   orgId: string
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
-  let nextUrl: string | null = `/query?q=${SOQL}`
+  let nextUrl: string | null = `/query?q=${encodeURIComponent(SOQL)}`
 
   while (nextUrl) {
     const data = await salesforceFetch(connectionId, nextUrl, orgId, instanceUrl) as {
-      records: { Id: string; Name: string; Industry: string | null; Description: string | null }[]
+      records: SFAccount[]
       nextRecordsUrl?: string
       done: boolean
     }
 
-    for (const record of data.records) {
+    for (const r of data.records) {
+      const revenue  = r.AnnualRevenue  ? `$${r.AnnualRevenue.toLocaleString()}`    : null
+      const headcount = r.NumberOfEmployees ? `${r.NumberOfEmployees.toLocaleString()} employees` : null
+      const location = [r.BillingCity, r.BillingCountry].filter(Boolean).join(', ') || null
+
       chunks.push({
-        chunk_id:   `sf-account-${record.Id}`,
-        title:      record.Name,
+        chunk_id:   `sf-account-${r.Id}`,
+        title:      r.Name,
         content: [
-          `Account: ${record.Name}`,
-          record.Industry    ? `Industry: ${record.Industry}`       : null,
-          record.Description ? `Description: ${record.Description}` : null,
+          `Account: ${r.Name}`,
+          r.Industry   ? `Industry: ${r.Industry}`         : null,
+          revenue      ? `Annual Revenue: ${revenue}`      : null,
+          headcount    ? `Employees: ${headcount}`         : null,
+          location     ? `Location: ${location}`           : null,
+          r.Phone      ? `Phone: ${r.Phone}`               : null,
+          r.Website    ? `Website: ${r.Website}`           : null,
+          r.Owner?.Name ? `Owner: ${r.Owner.Name}`         : null,
+          r.Description ? `Description: ${r.Description}` : null,
         ].filter(Boolean).join('\n'),
-        source_url: `${instanceUrl}/lightning/r/Account/${record.Id}/view`,
+        source_url: `${instanceUrl}/lightning/r/Account/${r.Id}/view`,
         metadata: {
-          provider:    'salesforce',
+          provider:      'salesforce',
           resource_type: 'accounts',
-          id:          record.Id,
-          industry:    record.Industry ?? null,
+          id:            r.Id,
+          industry:      r.Industry ?? null,
         },
       })
     }

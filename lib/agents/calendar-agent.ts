@@ -12,7 +12,7 @@
 // ============================================================
 
 import { z } from "zod";
-import { getModel } from "../langgraph/llm-factory";
+import { resolveModelClient } from "../langgraph/llm-factory";
 import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { AIMessage } from "@langchain/core/messages";
 import fs from "fs";
@@ -121,7 +121,8 @@ User Timezone: ${timezone}`;
     .replace("{dateContext}", dateContext)
     .replace("{timezone}", timezone);
 
-  const draftModel = getModel().withStructuredOutput(calendarEventSchema, {
+  const baseModel = await resolveModelClient("gpt-4o", state.orgId);
+  const draftModel = baseModel.withStructuredOutput(calendarEventSchema, {
     name: "draft_calendar_event",
   });
 

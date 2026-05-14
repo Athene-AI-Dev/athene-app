@@ -1,6 +1,5 @@
 import { paginate, graphDownload, graphFetch } from './graph-client'
 import { parseDocument } from './document-parser'
-
 export async function listSharePointDocs(connectionId: string, orgId: string, siteId: string, itemId: string = 'root') {
   const items: any[] = []
   const endpoint = itemId === 'root' 
@@ -28,8 +27,7 @@ export async function fetchDocContent(connectionId: string, orgId: string, drive
   const arrayBuffer = await graphDownload(connectionId, orgId, `/drives/${driveId}/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
-  return parseDocument(fileName, buffer)
-}
+  return parseDocument(fileName, buffer)}
 
 /**
  * Fetches the assigned permissions for a specific SharePoint document.

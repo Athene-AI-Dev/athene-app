@@ -47,10 +47,12 @@ export function initTelemetry() {
   sdk.start();
   console.log(`[telemetry] OpenTelemetry initialized with endpoint: ${OTEL_ENDPOINT}`);
 
-  // Graceful shutdown on process exit
-  process.on("SIGTERM", () => {
-    sdk.shutdown().then(() => console.log("[telemetry] OpenTelemetry shut down")).catch(console.error);
-  });
+  // Graceful shutdown — only available in Node.js runtime, not Edge
+  if (typeof process !== "undefined" && typeof process.on === "function") {
+    process.on("SIGTERM", () => {
+      sdk.shutdown().then(() => console.log("[telemetry] OpenTelemetry shut down")).catch(console.error);
+    });
+  }
 }
 
 function getTracerInstance(): Tracer {

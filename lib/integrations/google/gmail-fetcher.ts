@@ -33,6 +33,7 @@ export interface GmailMessageFull {
   threadId: string
   labelIds: string[]
   snippet: string
+  internalDate?: string
   payload: GmailPayloadPart
 }
 
@@ -244,6 +245,79 @@ export async function searchEmailChunks(
 ): Promise<FetchedChunk[]> {
   const results = await searchEmails(connectionId, orgId, query, limit)
   return results.map(gmailMetadataToChunk)
+}
+
+// ─── Background Indexing ─────────────────────────────────────────────────────
+
+const CHUNK_SIZE = 2000
+const CHUNK_OVERLAP = 200
+
+/**
+ * Background indexing fetcher: fetches full email bodies and returns
+ * chunked FetchedChunks for embedding. Called by the nango-fetch worker.
+ * Unlike searchEmailChunks (live/agent), this indexes full body text.
+ */
+export async function indexEmailChunks(
+  connectionId: string,
+  orgId: string,
+  options?: { limit?: number },
+): Promise<FetchedChunk[]> {
+  const limit = options?.limit ?? 200
+  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=newer_than:6m&maxResults=${limit}`
+  const list = await googleFetch<{ messages?: GmailMessageRef[] }>(connectionId, orgId, listUrl)
+  if (!list.messages || list.messages.length === 0) return []
+
+  const BATCH_SIZE = 10
+  const chunks: FetchedChunk[] = []
+
+  for (let i = 0; i < list.messages.length; i += BATCH_SIZE) {
+    const batch = list.messages.slice(i, i + BATCH_SIZE)
+    const results = await Promise.all(
+      batch.map(async (msg) => {
+        try {
+          const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`
+          const full = await googleFetch<GmailMessageFull>(connectionId, orgId, url)
+          const headers = extractHeaders(full.payload.headers ?? [])
+          const body = extractBodyFromPayload(full.payload)
+          const prefix = [
+            headers.from    ? `From: ${headers.from}`    : null,
+            headers.to      ? `To: ${headers.to}`        : null,
+            headers.subject ? `Subject: ${headers.subject}` : null,
+            headers.date    ? `Date: ${headers.date}`    : null,
+          ].filter(Boolean).join('\n') + '\n\n'
+
+          const fullText = prefix + body
+          const msgChunks: FetchedChunk[] = []
+          let offset = 0
+          let idx = 0
+          while (offset < fullText.length) {
+            const slice = fullText.slice(offset, offset + CHUNK_SIZE)
+            msgChunks.push({
+              chunk_id: `gmail:${msg.id}:${idx}`,
+              title: headers.subject || '(no subject)',
+              content: slice,
+              source_url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+              metadata: {
+                provider: 'google',
+                resource_type: 'email',
+                last_modified: new Date(Number(full.internalDate ?? 0)).toISOString(),
+                author: headers.from,
+                thread_id: full.threadId,
+              },
+            })
+            offset += CHUNK_SIZE - CHUNK_OVERLAP
+            idx++
+          }
+          return msgChunks
+        } catch {
+          return []
+        }
+      })
+    )
+    for (const r of results) chunks.push(...r)
+  }
+
+  return chunks
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────────────────

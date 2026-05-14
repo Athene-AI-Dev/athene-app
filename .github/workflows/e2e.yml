@@ -2,9 +2,9 @@ name: E2E Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix-prod_1]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, fix-prod_1]
   # Allow manual trigger
   workflow_dispatch:
 

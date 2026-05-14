@@ -139,20 +139,32 @@ async function processDocument(
     return false // skipped
   }
 
-  // 3. Rule #2 Fix: Re-fetch full content from source for extraction (Zero-Storage hydration)
-  // Since we don't store text, we must hydrate from the provider in real-time.
-  const { liveDocFetch } = await import('@/lib/langgraph/tools/live-doc-fetch')
-  const fetchedChunks = await liveDocFetch(
-    doc.source_type,
-    doc.connection_id,
-    doc.org_id,
-    { limit: 1000 } // Safety limit
-  )
+  // 3. Read stored chunk text from document_embeddings (zero-copy design).
+  // chunk_text is persisted in metadata->>'chunk_text' at index time, so we
+  // never need to re-fetch from the live source — which would fail whenever the
+  // provider connection is down, rate-limited, or the token has expired.
+  const { data: embRows, error: embErr } = await supabaseAdmin
+    .from('document_embeddings')
+    .select('chunk_index, content_preview, metadata')
+    .eq('document_id', docId)
+    .order('chunk_index', { ascending: true })
 
-  // Find the specific content for this document
-  const fullContent = fetchedChunks.find(c => c.chunk_id === doc.external_id)?.content
+  if (embErr) {
+    throw new Error(`Failed to load embeddings for document ${docId}: ${embErr.message}`)
+  }
+  if (!embRows?.length) {
+    throw new Error(`No indexed chunks found for document ${docId}. Document must be indexed before KG extraction.`)
+  }
+
+  // Reconstruct full content from stored chunk text, falling back to content_preview
+  const fullContent = embRows
+    .map((row: any) => (row.metadata as any)?.chunk_text ?? row.content_preview ?? '')
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+
   if (!fullContent) {
-    throw new Error(`Failed to re-fetch content from ${doc.source_type} for ${docId}`)
+    throw new Error(`Empty chunk text for document ${docId}; metadata may be missing chunk_text field`)
   }
 
   // 4. Build RLS context for storage writes

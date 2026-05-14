@@ -162,8 +162,20 @@ const draftCalendarEventTool = new DynamicStructuredTool({
   description: TOOL_META.draftCalendarEvent.description,
   schema: z.object({
     summary: z.string().describe('Event title.'),
-    start: z.string().describe('ISO-8601 start datetime.'),
-    end: z.string().describe('ISO-8601 end datetime.'),
+    start: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+        'Must be a valid ISO-8601 datetime string (e.g. 2024-06-15T09:00:00Z)'
+      )
+      .describe('ISO-8601 start datetime.'),
+    end: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+        'Must be a valid ISO-8601 datetime string (e.g. 2024-06-15T10:00:00Z)'
+      )
+      .describe('ISO-8601 end datetime.'),
     attendees: z
       .array(z.string())
       .optional()
@@ -255,6 +267,8 @@ export function getAllToolMeta(): ToolMeta[] {
  * @returns An array of LangChain tools the role is permitted to invoke.
  */
 export function getToolsForRole(role: UserRole): DynamicStructuredTool[] {
+  // null role (unauthenticated / unresolved) gets no tools
+  if (role === null) return []
   return (Object.keys(TOOL_META) as ToolName[])
     .filter((name) => TOOL_META[name].allowedRoles.includes(role))
     .map((name) => TOOL_INSTANCES[name])
@@ -274,6 +288,8 @@ export function getToolByName(name: ToolName): DynamicStructuredTool {
  * Returns tool names available to a given role (useful for logging/debugging).
  */
 export function getToolNamesForRole(role: UserRole): ToolName[] {
+  // null role (unauthenticated / unresolved) gets no tools
+  if (role === null) return []
   return (Object.keys(TOOL_META) as ToolName[]).filter((name) =>
     TOOL_META[name].allowedRoles.includes(role),
   )

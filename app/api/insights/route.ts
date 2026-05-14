@@ -33,31 +33,38 @@ async function ensureAdminOrAnalyst() {
   return { userId, orgId, role };
 }
 
-/**
- * Resolves both internal org and member UUIDs in a single query (Recommendation #5/Audit).
- * This eliminates sequential lookup latency.
- */
 async function resolveContext(clerkUserId: string, clerkOrgId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("org_members")
-    .select(`
-      id,
-      role,
-      organizations!inner(id)
-    `)
-    .eq("clerk_user_id", clerkUserId)
-    .eq("organizations.clerk_org_id", clerkOrgId)
-    .single();
+  const { data: orgData, error: orgError } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("clerk_org_id", clerkOrgId)
+    .limit(1)
+    .maybeSingle();
 
-  if (error || !data) {
-    logger.warn({ clerkUserId, clerkOrgId, error: error?.message }, "[insights] Context resolution failed");
+  if (orgError) throw orgError;
+  if (!orgData) {
+    logger.warn({ clerkOrgId }, "[insights] Organization context not found");
+    throw new Error("Context not found");
+  }
+
+  const { data: memberData, error: memberError } = await supabaseAdmin
+    .from("org_members")
+    .select("id, role")
+    .eq("clerk_user_id", clerkUserId)
+    .eq("org_id", orgData.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (memberError) throw memberError;
+  if (!memberData) {
+    logger.warn({ clerkUserId, clerkOrgId, orgId: orgData.id }, "[insights] Member context not found");
     throw new Error("Context not found");
   }
 
   return {
-    memberId: data.id,
-    memberRole: data.role,
-    orgId: (data.organizations as any).id,
+    memberId: memberData.id,
+    memberRole: memberData.role,
+    orgId: orgData.id,
   };
 }
 
@@ -67,8 +74,8 @@ async function resolveContext(clerkUserId: string, clerkOrgId: string) {
  */
 async function runAgentQuery(
   query: string,
-  clerkUserId: string,
-  clerkOrgId: string,
+  userId: string,
+  orgId: string,
   role: string
 ): Promise<{ answer: string; citations: { title: string | null; url?: string | null }[] }> {
   try {
@@ -82,10 +89,10 @@ async function runAgentQuery(
     const agentPromise = graph.invoke(
       {
         messages: [new HumanMessage(query)],
-        orgId: clerkOrgId,
-        userId: clerkUserId,
+        orgId,
+        userId,
         role,
-        user: { id: clerkUserId, timezone: "UTC" },
+        user: { id: userId, timezone: "UTC" },
         task_type: "bi_insight",
         is_cross_dept_query: true,
       },
@@ -166,7 +173,7 @@ export async function POST(req: NextRequest) {
     const { title, query } = result_val.data;
 
     // Run the cross-department agent to get an answer
-    const { answer, citations } = await runAgentQuery(query, userId, clerkOrgId, role);
+    const { answer, citations } = await runAgentQuery(query, memberId, orgId, role);
 
     const result = { answer, citations };
 
@@ -206,7 +213,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const { userId, orgId: clerkOrgId, role } = await ensureAdminOrAnalyst();
-    const { orgId } = await resolveContext(userId, clerkOrgId);
+    const { orgId, memberId } = await resolveContext(userId, clerkOrgId);
 
     let body: any;
     try { body = await req.json(); } catch {
@@ -236,7 +243,7 @@ export async function PATCH(req: NextRequest) {
 
     // Re-run the agent if explicitly requested (Refresh button)
     if (refresh) {
-      const { answer, citations } = await runAgentQuery(existing.query, userId, clerkOrgId, role);
+      const { answer, citations } = await runAgentQuery(existing.query, memberId, orgId, role);
       patch.result = { answer, citations };
       patch.refreshed_at = new Date().toISOString(); // ATH-53: Only update timestamp on actual refresh
     }
@@ -245,6 +252,7 @@ export async function PATCH(req: NextRequest) {
       .from("insights")
       .update(patch)
       .eq("id", id)
+      .eq("org_id", orgId)
       .select()
       .single();
 
@@ -284,7 +292,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { error } = await supabaseAdmin.from("insights").delete().eq("id", id);
+    const { error } = await supabaseAdmin
+      .from("insights")
+      .delete()
+      .eq("id", id)
+      .eq("org_id", orgId);
     if (error) throw error;
 
     return NextResponse.json({ success: true });

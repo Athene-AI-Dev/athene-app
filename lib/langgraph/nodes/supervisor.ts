@@ -10,6 +10,7 @@ const ALL_AGENTS = [
   "cross_dept_retrieval",
   "email_agent",
   "calendar_agent",
+  "action_executor",
   "report_agent",
   "synthesis",
   "END",
@@ -26,6 +27,7 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 - cross_dept_retrieval: Cross-department BI analysis — revenue insights, multi-team trends. **Restricted: super_user and admin roles only.**
 - email_agent: Read, draft, or send emails.
 - calendar_agent: Read calendar, find free slots, or create events.
+- action_executor: Execute approved write actions (emails, calendar events).
 - report_agent: Plan and write structured, multi-section reports using vectorized and graph data.
 - synthesis: Synthesize a final answer from accumulated retrieved context and finish.
 - END: The request has been fully answered — stop the graph.
@@ -67,7 +69,9 @@ export async function supervisor(state: AtheneStateType) {
     .replace("{user_role}", String(userRole))
     .replace("{hops_left}", String(hopsLeft));
 
-  const structuredModel = (await resolveModelClient("medium")).withStructuredOutput(responseSchema);
+  const structuredModel = (
+    await resolveModelClient("medium", state.orgId)
+  ).withStructuredOutput(responseSchema);
 
   const response = await structuredModel.invoke([
     { role: "system", content: systemContent },

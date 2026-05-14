@@ -4,27 +4,41 @@ import { redis } from '@/lib/redis/client';
 const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
 const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
 
-if (!currentSigningKey || !nextSigningKey) {
-  throw new Error("Missing QSTASH_CURRENT_SIGNING_KEY or QSTASH_NEXT_SIGNING_KEY");
-}
-
-export const receiver = new Receiver({
-  currentSigningKey,
-  nextSigningKey,
-});
+// Build receiver lazily — only when both keys are present.
+// Top-level throws would crash any route that imports this module.
+const receiver =
+  currentSigningKey && nextSigningKey
+    ? new Receiver({ currentSigningKey, nextSigningKey })
+    : null;
 
 /**
  * Validates the Upstash signature of an incoming webhook request.
+ *
+ * In local dev (no signing keys configured), a request carrying the
+ * `x-dev-internal-bypass` header is accepted so that the briefing
+ * route can invoke the worker directly without QStash.
+ *
  * MUST be called before fulfilling any background job worker request.
  */
 export async function verifyQStashSignature(req: Request): Promise<boolean> {
+  // ── Dev bypass: allow direct in-process calls when QStash is not configured ──
+  if (!receiver) {
+    const bypass = req.headers.get('x-dev-internal-bypass');
+    if (bypass === '1') {
+      console.warn('[QStash] QSTASH signing keys absent — accepting x-dev-internal-bypass (local dev only)');
+      return true;
+    }
+    console.error('[QStash] Signature verification skipped: QSTASH_CURRENT_SIGNING_KEY / QSTASH_NEXT_SIGNING_KEY not set');
+    return false;
+  }
+
   try {
     const signature = req.headers.get('upstash-signature');
     if (!signature) {
       return false;
     }
-    
-    // We clone the request so that consuming its raw text doesn't 
+
+    // We clone the request so that consuming its raw text doesn't
     // prevent the downstream route logic from parsing JSON later.
     const body = await req.clone().text();
 

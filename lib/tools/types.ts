@@ -12,7 +12,7 @@
  *
  * Keep in sync with UserRole in lib/langgraph/state.ts and lib/auth/rbac.ts.
  */
-export type UserRole = 'member' | 'super_user' | 'admin'
+export type UserRole = 'member' | 'super_user' | 'admin' | null
 
 // ---- Tool name catalogue ----------------------------------------
 

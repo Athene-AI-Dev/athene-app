@@ -114,7 +114,7 @@ const VALID_PROVENANCE = new Set<KGProvenance>(["EXTRACTED", "INFERRED", "AMBIGU
 
 function normLabel(x: unknown): string | null {
   if (typeof x !== "string") return null;
-  const s = x.trim();
+  const s = x.trim().toLowerCase();
   return s.length === 0 || s.length > 200 ? null : s;
 }
 

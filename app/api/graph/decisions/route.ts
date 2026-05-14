@@ -15,6 +15,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
@@ -62,16 +63,33 @@ export async function GET(req: NextRequest) {
       query = query.or(`label.ilike.%${entity}%,description.ilike.%${entity}%`);
     }
 
+    // RLS visibility filter — mirrors the pattern in /api/graph/nodes
+    if (access.role === "member") {
+      query = query.or(
+        `visibility.eq.public,` +
+        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.public`)
+      );
+    } else if (access.role === "super_user") {
+      const deptIds = access.accessible_dept_ids ?? [];
+      if (deptIds.length > 0) {
+        const deptFilter = deptIds.map((id) => `department_ids.cs.{${id}}`).join(",");
+        query = query.or(`visibility.eq.public,${deptFilter}`);
+      } else {
+        query = query.eq("visibility", "public");
+      }
+    }
+    // Admins see everything — no additional filter
+
     const { data, error } = await query;
 
     if (error) {
-      console.error("[api/graph/decisions] Supabase error:", error.message);
+      logger.error({ err: error.message, org_id: orgData.id }, "[api/graph/decisions] Supabase error");
       return NextResponse.json({ error: "Query failed" }, { status: 500 });
     }
 
     return NextResponse.json(data ?? []);
   } catch (err) {
-    console.error("[api/graph/decisions] Unexpected error:", err);
+    logger.error({ err }, "[api/graph/decisions] Unexpected error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

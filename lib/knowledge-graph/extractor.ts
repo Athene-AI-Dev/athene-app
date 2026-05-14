@@ -4,8 +4,12 @@
 // Also re-exports extractSchemaEntities from bi-chunking.ts so
 // callers can import everything KG-related from this module.
 //
-// Runs a cheap LLM call (Haiku) over each chunk and returns
-// typed KGNode[] / KGEdge[]. The caller owns persistence.
+// Runs LLM calls over each chunk and returns typed KGNode[] /
+// KGEdge[]. The caller owns persistence.
+//
+// Two extraction passes run in parallel per chunk:
+//   1. General entity/relation extraction (all source types)
+//   2. Decision record extraction (qualifying source types only)
 //
 // Rule #2: chunks arrive in RAM and leave as graph structures.
 // This file never touches Supabase.
@@ -22,6 +26,7 @@ import {
   KGEdge,
   KGNode,
   KGProvenance,
+  TemporalMetadata,
   Visibility,
 } from "./types";
 import {
@@ -30,84 +35,15 @@ import {
   maxVisibility,
   nodeKey as makeNodeKey,
 } from "./utils";
+import {
+  DECISION_EXTRACTION_PROMPT,
+  DECISION_SOURCE_TYPES,
+} from "./extractor-prompt";
+import { resolveExtractionPrompt } from "./modules/resolver";
 
-const EXTRACTION_PROMPT = `# Entity & Relationship Extraction Prompt
-
-You are an entity and relationship extractor. You read a passage of text from an enterprise document and produce a structured JSON object describing the entities it mentions and how they relate.
-
-## Entity types
-
-Only use these values for \`entity_type\`:
-
-- \`person\` — named individual
-- \`project\` — named initiative, codename, or body of work
-- \`service\` — internal or external service/system (e.g. "Billing Service", "Stripe")
-- \`team\` — organizational team or department
-- \`technology\` — tool, framework, language, protocol (e.g. "PostgreSQL", "Kubernetes")
-- \`process\` — named procedure or workflow (e.g. "Quarterly Close", "Incident Response")
-- \`concept\` — domain concept that doesn't fit above
-- \`organization\` — external company / legal entity
-- \`product\` — shippable product or SKU
-
-## Relation types
-
-Only use these values for \`relation\`:
-
-- \`DEPENDS_ON\` — X cannot function without Y
-- \`OWNS\` — X is accountable for / has authority over Y
-- \`FEEDS\` — X provides data/inputs to Y
-- \`MENTIONS\` — X refers to Y without a stronger semantic link
-- \`USES\` — X consumes / leverages Y
-- \`RELATED_TO\` — unclear but adjacent
-- \`PART_OF\` — X is a component of Y
-- \`WORKS_ON\` — person works on project/service
-
-## Provenance rules
-
-For every relationship, set \`provenance\` to one of:
-
-- \`EXTRACTED\` — the relationship is **directly stated** in the text ("X depends on Y", "A owns B"). Confidence MUST be \`1.0\`.
-- \`INFERRED\` — a reasonable inference from context but not stated verbatim. Confidence in \`[0.5, 0.95]\`.
-- \`AMBIGUOUS\` — you are unsure whether it holds or which direction applies. Confidence in \`[0.0, 0.5]\`.
-
-Err toward \`AMBIGUOUS\` when in doubt. A flagged edge is recoverable; a wrong \`EXTRACTED\` edge is not.
-
-## Semantic similarity
-
-If two entities in the passage solve the same problem or represent the same idea without any
-direct structural link, add a \`RELATED_TO\` edge with provenance \`INFERRED\` and confidence
-between 0.6 and 0.8. Only do this when the similarity is genuinely non-obvious.
-
-## Rationale edges
-
-If the passage explains WHY a decision was made, extract a node for the reasoning and add a
-\`RELATED_TO\` edge from that reasoning node to the concept it justifies. Use provenance
-\`EXTRACTED\` when the rationale is stated directly, \`INFERRED\` when it is implied.
-
-## Confidence scoring rules
-
-Never use 0.5 as a default score. Apply these precisely:
-- \`EXTRACTED\` edges: confidence MUST be 1.0 (it is stated verbatim in the text)
-- \`INFERRED\` with direct structural evidence: 0.8–0.9
-- \`INFERRED\` with reasonable but uncertain inference: 0.6–0.7
-- \`INFERRED\` when speculative: 0.4–0.5
-- \`AMBIGUOUS\` edges: 0.1–0.3
-
-## Output format
-
-Return a single JSON object with exactly two keys: \`entities\` and \`relationships\`. No prose, no code fences.
-
-## Rules
-
-1. Deduplicate entities within a single response. Each (label, entity_type) pair appears once.
-2. Every \`source\` and \`target\` in \`relationships\` MUST also appear in \`entities\`.
-3. Labels are human-readable names as they appear in the text (canonical form, singular, title-case when appropriate). Do not invent identifiers.
-4. If the passage contains no meaningful entities, return \`{"entities":[],"relationships":[]}\`.
-5. Do not include quotes from the source text. Descriptions are your own concise summaries (≤ 140 chars).
-6. Do not include PII you would not want logged. Anonymize email addresses and phone numbers.`;
-
-function loadPrompt(): string {
-  return EXTRACTION_PROMPT;
+/** Resolve the dynamic prompt (base + active module addenda) for an org. */
+async function loadPrompt(orgId: string): Promise<string> {
+  return resolveExtractionPrompt(orgId);
 }
 
 // ---- Raw LLM response shape -----------------------------------
@@ -116,6 +52,7 @@ type RawEntity = {
   label?: unknown;
   entity_type?: unknown;
   description?: unknown;
+  temporal_metadata?: unknown;
 };
 
 type RawRelationship = {
@@ -203,46 +140,49 @@ function normConfidence(x: unknown, provenance: KGProvenance): number {
   return n;
 }
 
-// ---- Single-chunk extraction ----------------------------------
+// ---- Raw LLM call helper -------------------------------------
 
-async function extractFromChunk(
-  chunk: ExtractorChunk,
+async function llmExtract(
+  systemPrompt: string,
+  text: string,
   orgId: string
-): Promise<ExtractionResult> {
-  const systemPrompt = loadPrompt();
-
+): Promise<RawExtraction | null> {
   let raw: string;
   try {
     const llm = await resolveModelClient("medium", orgId);
     const res = await llm.invoke([
       new SystemMessage(systemPrompt),
       new HumanMessage(
-        `Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${chunk.text}\n---`
+        `Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${text}\n---`
       ),
     ]);
     const content = res.content;
-    raw = typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content.map((c: any) => c.text ?? "").join("")
-        : "";
+    raw =
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.map((c: any) => c.text ?? "").join("")
+          : "";
   } catch (err) {
     console.error(
       "[kg/extractor] LLM call failed:",
       err instanceof Error ? err.message : String(err)
     );
-    return { nodes: [], edges: [] };
+    return null;
   }
-
   const parsed = parseJSON(raw);
-  if (!parsed) {
-    console.warn("[kg/extractor] Could not parse LLM response as JSON");
-    return { nodes: [], edges: [] };
-  }
+  if (!parsed) console.warn("[kg/extractor] Could not parse LLM response as JSON");
+  return parsed;
+}
 
+// ---- Normalize a parsed extraction into KGNode[]/KGEdge[] ----
+
+function normalizeExtraction(
+  parsed: RawExtraction,
+  chunk: ExtractorChunk,
+  allowTemporalMetadata = false
+): ExtractionResult {
   const deptIds = chunk.department_id ? [chunk.department_id] : [];
-
-  // Normalize entities
   const nodes: KGNode[] = [];
   const seenNodes = new Set<string>();
 
@@ -260,7 +200,7 @@ async function extractFromChunk(
         ? e.description.trim().slice(0, 140)
         : null;
 
-    nodes.push({
+    const node: KGNode = {
       org_id: chunk.org_id,
       label,
       entity_type: entityType,
@@ -268,10 +208,26 @@ async function extractFromChunk(
       visibility: chunk.visibility,
       source_documents: [chunk.document_id],
       description,
-    });
+    };
+
+    // Attach temporal_metadata for decision entities when extraction supports it
+    if (allowTemporalMetadata && entityType === "decision" && e.temporal_metadata) {
+      const tm = e.temporal_metadata as Record<string, unknown>;
+      const temporal: TemporalMetadata = {};
+      if (typeof tm.occurred_at === "string") temporal.occurred_at = tm.occurred_at;
+      if (typeof tm.decision_maker === "string") temporal.decision_maker = tm.decision_maker;
+      if (Array.isArray(tm.alternatives_considered))
+        temporal.alternatives_considered = (tm.alternatives_considered as unknown[])
+          .filter((x): x is string => typeof x === "string");
+      if (typeof tm.outcome === "string") temporal.outcome = tm.outcome;
+      if (typeof tm.confidence_of_date === "number")
+        temporal.confidence_of_date = tm.confidence_of_date;
+      if (Object.keys(temporal).length > 0) node.temporal_metadata = temporal;
+    }
+
+    nodes.push(node);
   }
 
-  // Build edges — only keep ones whose endpoints exist in nodes
   const nodeKeys = new Set(nodes.map((n) => `${n.label}::${n.entity_type}`));
   const edges: KGEdge[] = [];
   const seenEdges = new Set<string>();
@@ -313,6 +269,41 @@ async function extractFromChunk(
   }
 
   return { nodes, edges };
+}
+
+// ---- Single-chunk extraction (dual-prompt) -------------------
+
+async function extractFromChunk(
+  chunk: ExtractorChunk,
+  orgId: string
+): Promise<ExtractionResult> {
+  const systemPrompt = await loadPrompt(orgId);
+  const runDecision = DECISION_SOURCE_TYPES.has(chunk.metadata?.source_type as string ?? "");
+
+  // Run general extraction; optionally run decision extraction in parallel
+  const [generalParsed, decisionParsed] = await Promise.all([
+    llmExtract(systemPrompt, chunk.text, orgId),
+    runDecision
+      ? llmExtract(DECISION_EXTRACTION_PROMPT, chunk.text, orgId)
+      : Promise.resolve(null),
+  ]);
+
+  const general = generalParsed
+    ? normalizeExtraction(generalParsed, chunk, false)
+    : { nodes: [], edges: [] };
+
+  const decision = decisionParsed
+    ? normalizeExtraction(decisionParsed, chunk, true)
+    : { nodes: [], edges: [] };
+
+  // Merge: decision nodes/edges are additive — they introduce new decision-type nodes
+  // that general extraction may not have captured. The merge in extractEntitiesAndRelations
+  // handles deduplication by (org_id, label, entity_type).
+  return {
+    nodes: [...general.nodes, ...decision.nodes],
+    edges: [...general.edges, ...decision.edges],
+  };
+
 }
 
 // ---- Public API -----------------------------------------------

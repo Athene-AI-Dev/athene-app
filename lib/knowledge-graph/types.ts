@@ -15,7 +15,43 @@ export type EntityType =
   | "technology"
   | "process"
   | "organization"
-  | "product";
+  | "product"
+  // Decision Memory
+  | "decision"
+  | "risk"
+  | "obligation"
+  | "metric"
+  // RevOps module
+  | "deal"
+  | "account"
+  | "contact"
+  | "persona"
+  | "objection"
+  | "win_reason"
+  | "loss_reason"
+  | "competitor"
+  // Engineering module
+  | "incident"
+  | "runbook"
+  | "pull_request"
+  | "tech_debt_item"
+  | "sla_item"
+  | "on_call_rotation"
+  | "architecture_decision"
+  // Customer Success module
+  | "customer"
+  | "feature_request"
+  | "bug_report"
+  | "renewal"
+  | "health_score"
+  | "success_plan"
+  // Legal & Compliance module
+  | "contract"
+  | "clause"
+  | "counterparty"
+  | "regulation"
+  | "risk_item"
+  | "audit_finding";
 
 export type Visibility = "org_wide" | "department" | "private" | "team";
 
@@ -36,6 +72,42 @@ export type KGRelation =
   | "RELATED_TO"
   | "PART_OF"
   | "WORKS_ON"
+  // Decision Memory
+  | "DECIDED_BY"
+  | "SUPERSEDES"
+  | "LED_TO"
+  | "REVERSED_BY"
+  | "APPLIED_TO"
+  // Incident / Engineering
+  | "CAUSED"
+  | "RESOLVED_BY"
+  | "BLOCKED_BY"
+  | "DEPLOYED_WITH"
+  | "DEPRECATED_BY"
+  | "ONCALL_FOR"
+  | "CAUSED_INCIDENT"
+  // RevOps
+  | "COMPETES_WITH"
+  | "OBJECTED_TO"
+  | "WON_AGAINST"
+  | "LOST_TO"
+  | "EXPANDED_FROM"
+  | "CHURNED_FROM"
+  | "INFLUENCED_BY"
+  // Customer Success
+  | "REPORTED_BY"
+  | "AFFECTS"
+  | "REQUESTED_BY"
+  | "RESOLVED_VIA"
+  | "IMPACTS_RENEWAL"
+  | "TIED_TO_ACCOUNT"
+  // Legal
+  | "OBLIGATES"
+  | "RESTRICTS"
+  | "SUBJECT_TO"
+  | "GOVERNS"
+  | "BREACHES"
+  | "RISKS"
   | (string & {});
 
 /**
@@ -50,6 +122,17 @@ export type ExtractorChunk = {
   document_id: string;
   department_id?: string | null;
   visibility: Visibility;
+  /** Optional passthrough metadata (e.g. source_type) used by dual-prompt decision guard */
+  metadata?: Record<string, unknown>;
+};
+
+/** Temporal context extracted for decision-type entities. */
+export type TemporalMetadata = {
+  occurred_at?: string;
+  decision_maker?: string;
+  alternatives_considered?: string[];
+  outcome?: string;
+  confidence_of_date?: number;
 };
 
 /** A node to be upserted into kg_nodes. */
@@ -63,6 +146,7 @@ export type KGNode = {
   description?: string | null;
   community?: number | null;
   metadata?: Record<string, unknown>;
+  temporal_metadata?: TemporalMetadata | null;
   updated_at?: string;
 };
 

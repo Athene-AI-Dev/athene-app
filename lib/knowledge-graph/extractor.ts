@@ -16,6 +16,7 @@
 // ============================================================
 
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { logger } from "@/lib/logger";
 export { extractSchemaEntities } from "@/lib/integrations/bi-chunking";
 import { resolveModelClient } from "@/lib/langgraph/llm-factory";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -147,32 +148,45 @@ async function llmExtract(
   text: string,
   orgId: string
 ): Promise<RawExtraction | null> {
-  let raw: string;
-  try {
-    const llm = await resolveModelClient("medium", orgId);
-    const res = await llm.invoke([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(
-        `Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${text}\n---`
-      ),
-    ]);
-    const content = res.content;
-    raw =
-      typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content.map((c: any) => c.text ?? "").join("")
-          : "";
-  } catch (err) {
-    console.error(
-      "[kg/extractor] LLM call failed:",
-      err instanceof Error ? err.message : String(err)
-    );
-    return null;
+  // Up to 2 attempts: first normal, second with an explicit JSON reminder if parsing failed
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    let raw: string;
+    try {
+      const llm = await resolveModelClient("medium", orgId);
+      const jsonReminder = attempt > 0
+        ? "IMPORTANT: Your previous response could not be parsed as JSON. Return ONLY a valid JSON object — no prose, no markdown fences.\n\n"
+        : "";
+      const res = await llm.invoke([
+        new SystemMessage(systemPrompt),
+        new HumanMessage(
+          `${jsonReminder}Extract entities and relationships from the following passage. Return JSON only.\n\n---\n${text}\n---`
+        ),
+      ]);
+      const content = res.content;
+      raw =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content.map((c: any) => c.text ?? "").join("")
+            : "";
+    } catch (err) {
+      logger.error(
+        { orgId, err: err instanceof Error ? err.message : String(err) },
+        "[kg/extractor] LLM call failed"
+      );
+      return null; // don't retry on network/LLM errors
+    }
+
+    const parsed = parseJSON(raw);
+    if (parsed) return parsed;
+
+    if (attempt === 0) {
+      logger.warn({ orgId }, "[kg/extractor] JSON parse failed on first attempt — retrying with JSON reminder");
+    } else {
+      logger.error({ orgId }, "[kg/extractor] JSON parse failed on retry — chunk will produce no graph data");
+    }
   }
-  const parsed = parseJSON(raw);
-  if (!parsed) console.warn("[kg/extractor] Could not parse LLM response as JSON");
-  return parsed;
+  return null;
 }
 
 // ---- Normalize a parsed extraction into KGNode[]/KGEdge[] ----

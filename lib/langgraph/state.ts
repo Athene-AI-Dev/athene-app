@@ -46,9 +46,12 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => [],
   }),
-  // Retrieved chunks (raw, before synthesis)
+  // Retrieved chunks (raw, before synthesis).
+  // Last-write-wins: each retrieval hop replaces the prior set so synthesis
+  // only sees the chunks from the most recent retrieval, not an ever-growing
+  // accumulation across all hops that would overflow the context window.
   retrieved_chunks: Annotation<any[]>({
-    reducer: (x, y) => x.concat(y),
+    reducer: (_x, y) => y,
     default: () => [],
   }),
   // Action execution results

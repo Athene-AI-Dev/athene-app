@@ -93,6 +93,8 @@ type VisibilityLevel = 'org_wide' | 'department' | 'bi_accessible' | 'confidenti
  * Upserts a row in the `documents` table for this chunk and returns its UUID.
  * Uses UNIQUE (org_id, connection_id, external_id) to make it idempotent.
  */
+type UpsertDocumentResult = { documentId: string; contentChanged: boolean }
+
 async function upsertDocumentRecord(
   chunk: FetchedChunk,
   orgId: string,
@@ -100,7 +102,23 @@ async function upsertDocumentRecord(
   departmentId: string | null,
   visibility: VisibilityLevel,
   ownerUserId: string | null
-): Promise<string> {
+): Promise<UpsertDocumentResult> {
+  const newContentHash = createHash('sha256').update(chunk.content).digest('hex')
+
+  // Check whether an identical version of this document is already indexed.
+  // If the content_hash matches, skip re-embedding to avoid wasting API quota.
+  const { data: existing } = await supabaseAdmin
+    .from('documents')
+    .select('id, content_hash')
+    .eq('org_id', orgId)
+    .eq('connection_id', connectionId)
+    .eq('external_id', chunk.chunk_id)
+    .maybeSingle()
+
+  if (existing?.content_hash === newContentHash) {
+    return { documentId: existing.id as string, contentChanged: false }
+  }
+
   const { data, error } = await supabaseAdmin
     .from('documents')
     .upsert(
@@ -115,6 +133,7 @@ async function upsertDocumentRecord(
         visibility,
         external_url: chunk.source_url,
         metadata: chunk.metadata,
+        content_hash: newContentHash,
       },
       { onConflict: 'org_id,connection_id,external_id' }
     )
@@ -124,7 +143,7 @@ async function upsertDocumentRecord(
   if (error || !data) {
     throw new Error(`[indexing] Failed to upsert document record: ${error?.message}`)
   }
-  return data.id as string
+  return { documentId: data.id as string, contentChanged: true }
 }
 
 // ---- Main Indexing Function -------------------------------------
@@ -153,10 +172,12 @@ export async function indexDocument(
   visibility: VisibilityLevel = 'department',
   ownerUserId: string | null = null
 ): Promise<string> {
-  // 0. Resolve/create the documents row
-  const documentId = await upsertDocumentRecord(
+  // 0. Resolve/create the documents row; skip embedding if content unchanged
+  const { documentId, contentChanged } = await upsertDocumentRecord(
     chunk, orgId, connectionId, departmentId, visibility, ownerUserId
   )
+  if (!contentChanged) return documentId
+
   // 1. Split content into chunks
   const contentChunks = chunkContent(chunk.content)
 
@@ -232,7 +253,12 @@ export async function indexDocuments(
   // ---- Phase 1: resolve document rows and split into sub-chunks ----
   for (const chunk of chunks) {
     try {
-      const documentId = await upsertDocumentRecord(chunk, orgId, connectionId, departmentId, visibility, ownerUserId)
+      const { documentId, contentChanged } = await upsertDocumentRecord(chunk, orgId, connectionId, departmentId, visibility, ownerUserId)
+      if (!contentChanged) {
+        // Content hash unchanged — embeddings are still valid, skip re-embedding
+        prepared.push({ chunk, documentId, subChunks: [] })
+        continue
+      }
       const subChunks = chunkContent(chunk.content)
       if (subChunks.length > 0) {
         prepared.push({ chunk, documentId, subChunks })
@@ -247,8 +273,10 @@ export async function indexDocuments(
   }
 
   // ---- Phase 2: flatten sub-chunk texts and build record templates -
-  const allTexts: string[] = prepared.flatMap(item => item.subChunks)
-  const allTemplates = prepared.flatMap(item =>
+  // Only include items with subChunks (items with empty subChunks had unchanged content)
+  const changedItems = prepared.filter(item => item.subChunks.length > 0)
+  const allTexts: string[] = changedItems.flatMap(item => item.subChunks)
+  const allTemplates = changedItems.flatMap(item =>
     item.subChunks.map((text, index) => ({
       org_id: orgId,
       document_id: item.documentId,

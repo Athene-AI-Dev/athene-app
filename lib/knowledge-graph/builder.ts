@@ -125,7 +125,7 @@ async function processDocument(
   // 1. Load the document metadata for content_hash dedup check
   const { data: doc, error: docErr } = await supabaseAdmin
     .from('documents')
-    .select('id, org_id, connection_id, external_id, source_type, content_hash, last_extracted_hash, dept_id, visibility')
+    .select('id, org_id, connection_id, external_id, source_type, content_hash, last_extracted_hash, department_id, visibility')
     .eq('id', docId)
     .eq('org_id', orgId)
     .single()
@@ -156,14 +156,11 @@ async function processDocument(
     throw new Error(`No indexed chunks found for document ${docId}. Document must be indexed before KG extraction.`)
   }
 
-  // Reconstruct full content from stored chunk text, falling back to content_preview
-  const fullContent = embRows
-    .map((row: any) => (row.metadata as any)?.chunk_text ?? row.content_preview ?? '')
-    .filter(Boolean)
-    .join('\n\n')
-    .trim()
-
-  if (!fullContent) {
+  // Verify at least one chunk has text before proceeding
+  const hasText = embRows.some(
+    (row: any) => ((row.metadata as any)?.chunk_text ?? row.content_preview ?? '').length > 0
+  )
+  if (!hasText) {
     throw new Error(`Empty chunk text for document ${docId}; metadata may be missing chunk_text field`)
   }
 
@@ -177,19 +174,24 @@ async function processDocument(
   // 5. Delete existing graph contributions from this document before re-extraction
   await deleteByDocument(ctx, docId)
 
-  // 6. Run entity/relation extraction
-  // We use the full content and the same chunker as indexing to ensure index alignment
-  const { chunk: chunkText } = await import('@/lib/langgraph/tools/chunker')
-  const rawChunks = chunkText(fullContent)
-
-  const extractorChunks = rawChunks.map((c) => ({
-    text: c.text,
-    chunk_index: c.chunk_index,
-    org_id: orgId,
-    document_id: docId,
-    department_id: doc.dept_id ?? undefined,
-    visibility: (doc.visibility ?? 'department') as any,
-  }))
+  // 6. Run entity/relation extraction.
+  // Use the stored sub-chunks from document_embeddings directly — no re-chunking.
+  // Re-chunking with a different strategy would misalign KG citations with vector search results.
+  const extractorChunks = embRows
+    .map((row: any, idx: number) => {
+      const text: string = (row.metadata as any)?.chunk_text ?? row.content_preview ?? ''
+      if (!text) return null
+      return {
+        text,
+        chunk_index: row.chunk_index ?? idx,
+        org_id: orgId,
+        document_id: docId,
+        department_id: doc.department_id ?? undefined,
+        visibility: (doc.visibility ?? 'department') as any,
+        metadata: row.metadata ?? {},
+      }
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null)
 
   const { nodes, edges } = await extractEntitiesAndRelations(extractorChunks, supabaseAdmin)
 

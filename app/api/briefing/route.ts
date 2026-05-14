@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getContextFromHeaders, withRLS } from '@/lib/supabase/rls-client';
 import { qstash } from '@/lib/qstash/client';
 import { getServerBaseUrl } from '@/lib/url/server-base-url';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,8 +61,8 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(result);
-  } catch (error) {
-    console.error('[briefing/get]', error);
+  } catch (error: any) {
+    logger.error({ err: error?.message, org_id: context.org_id }, '[briefing] GET error');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
@@ -90,8 +91,8 @@ export async function POST(request: Request) {
         message: 'Briefing generation job enqueued',
         messageId: response.messageId,
       });
-    } catch (error) {
-      console.error('[briefing/post] QStash enqueue failed:', error);
+    } catch (error: any) {
+      logger.error({ err: error?.message, org_id: context.org_id }, '[briefing] POST QStash enqueue failed');
       const message = error instanceof Error ? error.message : String(error);
       return NextResponse.json({ error: `Failed to enqueue job: ${message}` }, { status: 500 });
     }
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
 
   // ── Dev / no-QStash path: call worker synchronously with internal bypass header ──
   // verifyQStashSignature accepts x-dev-internal-bypass when signing keys are absent.
-  console.warn('[briefing/post] QSTASH_TOKEN not set — calling worker synchronously (dev mode)');
+  logger.warn({ org_id: context.org_id }, '[briefing] POST QSTASH_TOKEN not set — calling worker synchronously (dev mode)');
   try {
     const workerRes = await fetch(workerUrl, {
       method: 'POST',
@@ -120,8 +121,8 @@ export async function POST(request: Request) {
       message: 'Briefing generated (dev mode — synchronous)',
       ...result,
     });
-  } catch (error) {
-    console.error('[briefing/post] Direct worker call failed:', error);
+  } catch (error: any) {
+    logger.error({ err: error?.message, org_id: context.org_id }, '[briefing] POST direct worker call failed');
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: `Failed to generate briefing: ${message}` }, { status: 500 });
   }

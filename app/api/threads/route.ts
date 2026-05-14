@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/threads
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     .order("updated_at", { ascending: false });
 
   if (error) {
-    console.error("[threads] GET error:", error);
+    logger.error({ err: error.message, org_id: orgData.id }, "[threads] GET error");
     return NextResponse.json({ error: "Failed to fetch threads" }, { status: 500 });
   }
 
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    console.error("[threads] POST error:", error);
+    logger.error({ err: error.message, org_id: orgData.id }, "[threads] POST error");
     return NextResponse.json({ error: "Failed to create thread" }, { status: 500 });
   }
 

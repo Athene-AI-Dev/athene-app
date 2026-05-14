@@ -1,31 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useOrganization, useUser } from '@clerk/nextjs'
+import { useOrganization } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { 
-  Key, 
-  Plus, 
-  Trash2, 
-  RefreshCw, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Key,
+  Plus,
+  Trash2,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
   ShieldAlert,
-  Search,
   ExternalLink,
   Activity
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 type ProviderID = 'anthropic' | 'openai' | 'google' | 'deepseek'
@@ -95,14 +85,12 @@ const PROVIDERS: Array<{
 ]
 
 export default function KeysPage() {
-  const { isLoaded, organization, membership } = useOrganization()
-  const { user } = useUser()
+  const { isLoaded, membership } = useOrganization()
   const router = useRouter()
-  
+
   const [keys, setKeys] = useState<LLMKey[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
-  const [isRotating, setIsRotating] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -256,9 +244,9 @@ export default function KeysPage() {
 
               {/* LLM Model Dropdown */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-[var(--sidebar-text-secondary)]">Target LLM</label>
-                <select 
-                  className="w-full p-2.5 rounded-lg border border-[var(--sidebar-border)] bg-[var(--nav-hover)] text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Target LLM</label>
+                <select
+                  className="w-full h-12 px-4 rounded-xl border border-border bg-muted/30 text-sm font-bold text-foreground outline-none focus:border-primary/40 transition-colors appearance-none"
                   value={newKey.model}
                   onChange={(e) => setNewKey({ ...newKey, model: e.target.value })}
                 >
@@ -269,22 +257,22 @@ export default function KeysPage() {
               </div>
 
               {/* Embedded Gateway URL */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[var(--sidebar-text-secondary)] flex items-center gap-1">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
                   API Gateway URL
-                  <a 
-                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || '#'} 
-                    target="_blank" 
+                  <a
+                    href={PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || '#'}
+                    target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:text-blue-400 transition-colors"
+                    className="hover:text-primary transition-colors"
                     title="Open API Gateway Docs"
                   >
-                    <ExternalLink className="w-3 h-3 text-blue-500" />
+                    <ExternalLink className="w-3 h-3 text-primary" />
                   </a>
                 </label>
-                <div className="p-2 rounded-lg bg-[var(--nav-hover)]/50 border border-[var(--sidebar-border)] text-xs font-mono text-[var(--sidebar-text-secondary)] flex items-center justify-between select-all overflow-x-auto">
+                <div className="p-3 rounded-xl bg-muted/20 border border-border text-[11px] font-mono text-muted-foreground flex items-center justify-between select-all overflow-x-auto">
                   <span>{PROVIDERS.find(p => p.id === newKey.provider)?.gatewayUrl || 'N/A'}</span>
-                  <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded font-sans font-medium uppercase tracking-wider shrink-0 ml-2">Gateway</span>
+                  <span className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-sans font-bold uppercase tracking-wider shrink-0 ml-2">Gateway</span>
                 </div>
               </div>
 

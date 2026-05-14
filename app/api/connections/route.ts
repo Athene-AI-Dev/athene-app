@@ -4,6 +4,7 @@ import { listConnections, saveConnectionMapping } from "@/lib/nango/client";
 import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { dispatchThrottled } from "@/lib/qstash/client";
+import { invalidatePromptCache } from "@/lib/knowledge-graph/modules/resolver";
 
 /**
  * POST /api/connections
@@ -76,6 +77,9 @@ export async function POST(request: Request) {
   } catch (mappingErr: any) {
     console.warn("[connections/post] saveConnectionMapping failed (non-fatal):", mappingErr.message);
   }
+
+  // Invalidate the cached extraction prompt — active modules may have changed
+  void invalidatePromptCache(internalOrgId);
 
   // Immediately dispatch indexing job — pass internalOrgId so the worker queries connections correctly
   const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;

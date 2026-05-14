@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
+import {
   LayoutDashboard,
   MessageSquare,
   BarChart3,
@@ -16,7 +16,8 @@ import {
   ClipboardList,
   Bot,
   Database,
-  Network
+  Network,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/auth/rbac";
@@ -74,6 +75,7 @@ function AppSidebar({ role, className }: { role: UserRole; className?: string })
     { icon: LayoutDashboard, label: "Command Center", href: "/dashboard" },
     { icon: MessageSquare, label: "Chat", href: "/chat" },
     { icon: Network, label: "Knowledge Graph", href: "/graph" },
+    { icon: GitBranch, label: "Decisions", href: "/decisions" },
     { icon: BarChart3, label: "Insights", href: "/insights" },
     { icon: Newspaper, label: "Briefing", href: "/briefing" },
   ];

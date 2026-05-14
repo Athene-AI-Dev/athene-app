@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getContextFromHeaders, withRLS } from "@/lib/supabase/rls-client";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const context = getContextFromHeaders(request.headers);
 

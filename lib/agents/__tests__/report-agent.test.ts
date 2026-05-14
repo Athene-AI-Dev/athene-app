@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { reportAgent } from "../report-agent";
 import { HumanMessage } from "@langchain/core/messages";
-import { ChatOpenAI } from "@langchain/openai";
+
 import { vectorSearch } from "../../tools/vector-search";
 
 // Mock the vector search
@@ -13,9 +13,9 @@ const { mockInvoke } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
 }));
 
-vi.mock("@langchain/openai", () => {
+vi.mock("../../langgraph/llm-factory", () => {
   return {
-    ChatOpenAI: vi.fn().mockImplementation(function () {
+    getModel: vi.fn().mockImplementation(() => {
       return {
         invoke: mockInvoke,
       };

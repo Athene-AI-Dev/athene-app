@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { cachedAuth } from "@/lib/auth/cached-clerk";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
-import { rateLimit } from "@/lib/redis/client";
+import { rateLimit, cached } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { withSSEFrameSpan } from "@/lib/telemetry/spans";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, orgId, orgRole } = await auth();
+    const authResult = await cachedAuth(req);
+    const { userId, orgId, orgRole } = authResult;
 
     if (!userId || !orgId) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message exceeds maximum length of 10,000 characters." }, { status: 400 });
     }
 
-    // 2. Validate Thread ID (prevent predictable patterns/unbounded growth)
+    // 2. Validate Thread ID
     if (!threadId) {
       return NextResponse.json({ error: "threadId is required to maintain conversation state and prevent unbounded history." }, { status: 400 });
     }
@@ -37,13 +39,19 @@ export async function POST(req: NextRequest) {
 
     const effectiveThreadId = threadId;
 
-    // Resolve internal org and user for thread persistence
-    let { data: orgRow } = await supabaseAdmin
-      .from("organizations")
-      .select("id")
-      .eq("clerk_org_id", orgId)
-      .limit(1)
-      .maybeSingle();
+    // Resolve internal org and user for thread persistence (cached)
+    let orgRow = await cached(
+      `org:clerk:${orgId}`,
+      300,
+      async () => {
+        const { data } = await supabaseAdmin
+          .from("organizations")
+          .select("id")
+          .eq("clerk_org_id", orgId)
+          .single();
+        return data;
+      }
+    );
 
     // ATH-PROD: Auto-sync organization if missing (Issue #404 fix)
     if (!orgRow) {
@@ -65,13 +73,19 @@ export async function POST(req: NextRequest) {
       orgRow = newOrg;
     }
 
-    let { data: memberRow } = await supabaseAdmin
-      .from("org_members")
-      .select("id")
-      .eq("clerk_user_id", userId)
-      .eq("org_id", orgRow!.id)
-      .limit(1)
-      .maybeSingle();
+    let memberRow = await cached(
+      `member:clerk:${userId}:${orgRow!.id}`,
+      300,
+      async () => {
+        const { data } = await supabaseAdmin
+          .from("org_members")
+          .select("id, timezone")
+          .eq("clerk_user_id", userId)
+          .eq("org_id", orgRow!.id)
+          .single();
+        return data;
+      }
+    );
 
     // ATH-PROD: Auto-sync user membership if missing
     if (!memberRow) {
@@ -92,7 +106,7 @@ export async function POST(req: NextRequest) {
         logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
         return NextResponse.json({ error: "Failed to sync user membership" }, { status: 500 });
       }
-      memberRow = newMember;
+      memberRow = newMember ? { ...newMember, timezone: null } : null;
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
@@ -105,8 +119,8 @@ export async function POST(req: NextRequest) {
       .from("threads")
       .upsert({
         id: effectiveThreadId,
-        org_id: orgRow!.id,
-        user_id: memberRow!.id,
+        org_id: orgRow.id,
+        user_id: memberRow.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 
@@ -117,7 +131,7 @@ export async function POST(req: NextRequest) {
     }
 
     const graph = await getAgentGraph();
-    
+
     // ATH-43: Prevent concurrent messages if the thread is awaiting approval
     const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
     if (currentState?.values?.awaiting_approval) {
@@ -131,13 +145,13 @@ export async function POST(req: NextRequest) {
 
     const initialState = {
       messages: [new HumanMessage(message)],
-      orgId: orgRow!.id,
-      userId: memberRow!.id,
+      orgId: orgRow.id,
+      userId: memberRow.id,
       role,
       user: {
-        id: userId, // Keep Clerk ID for display/identity if needed
-        internalId: memberRow!.id,
-        timezone: "UTC", // TODO: Fetch real timezone from user preferences in DB
+        id: userId,
+        internalId: memberRow.id,
+        timezone: (memberRow as any)?.timezone ?? "UTC",
       },
       task_type: task_type || "general",
       is_cross_dept_query: !!is_cross_dept_query,
@@ -147,37 +161,64 @@ export async function POST(req: NextRequest) {
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
 
+    let firstTokenSent = false;
+    const firstTokenTime = Date.now();
+
     (async () => {
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {
             thread_id: effectiveThreadId,
           },
-          streamMode: "values",
+          streamMode: ["values", "messages"],
         });
 
-        for await (const chunk of eventStream as AsyncIterable<any>) {
-          const lastMessage = chunk.messages?.[chunk.messages.length - 1];
-          if (lastMessage) {
-            const data = JSON.stringify({
-              content: lastMessage.content,
-              final_answer: chunk.final_answer ?? null,
-              cited_sources: chunk.cited_sources ?? [],
-              awaiting_approval: chunk.awaiting_approval ?? false,
-              pending_write_action: chunk.pending_write_action ?? null,
-              active_agent: chunk.next_node ?? null,
-            });
-            await writer.write(encoder.encode(`data: ${data}\n\n`));
+        for await (const [mode, chunk] of eventStream as AsyncIterable<[string, any]>) {
+          if (mode === "messages") {
+            const messageChunk = (chunk as any[])?.[0];
+            if (messageChunk?.content) {
+              const token = typeof messageChunk.content === "string"
+                ? messageChunk.content
+                : Array.isArray(messageChunk.content)
+                  ? messageChunk.content.map((c: any) => c.text || "").join("")
+                  : "";
+              if (token && !firstTokenSent) {
+                firstTokenSent = true;
+                console.log(`[agent] First token latency: ${Date.now() - firstTokenTime}ms`);
+              }
+              if (token) {
+                const data = JSON.stringify({ token });
+                await withSSEFrameSpan("llm_token", async () => {
+                  await writer.write(encoder.encode(`data: ${data}\n\n`));
+                });
+              }
+            }
+          } else if (mode === "values") {
+            const messages = chunk.messages as any[] | undefined;
+            const lastMessage = messages?.[messages.length - 1];
+            if (lastMessage) {
+              const data = JSON.stringify({
+                content: lastMessage.content,
+                final_answer: chunk.final_answer ?? null,
+                cited_sources: chunk.cited_sources ?? [],
+                awaiting_approval: chunk.awaiting_approval ?? false,
+                active_agent: chunk.next ?? null,
+              });
+              await withSSEFrameSpan("agent_chunk", async () => {
+                await writer.write(encoder.encode(`data: ${data}\n\n`));
+              });
+            }
           }
         }
         await writer.close();
       } catch (err: any) {
         console.error("[agent] Stream error:", err);
+        const isQuota = err.message.includes("quota") || err.message.includes("rate_limit") || err.message.includes("429");
         const errorData = JSON.stringify({
           error: true,
-          content: err.message.includes("quota") 
-            ? "Synthesis Halted: OpenAI Quota Exhausted. Please check your billing or provide a BYOK key in Admin settings." 
-            : `System Error: ${err.message}`,
+          content: isQuota
+            ? "Synthesis halted: LLM quota exceeded. Check your API key billing or add a BYOK key in Admin → Keys."
+            : `Synthesis error: ${err.message}`,
         });
         await writer.write(encoder.encode(`data: ${errorData}\n\n`));
         await writer.close();
@@ -187,8 +228,8 @@ export async function POST(req: NextRequest) {
     return new Response(stream.readable, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error: unknown) {

@@ -19,6 +19,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import type { UserRole, ToolName, ToolMeta } from './types'
+import { withToolSpan } from '@/lib/telemetry/spans'
 
 // ---- Tool metadata catalogue ------------------------------------
 
@@ -85,15 +86,18 @@ export const vectorSearchTool = new DynamicStructuredTool({
       .describe('Optional filter by source type (e.g. "drive", "confluence").'),
   }),
   func: async ({ query, top_k, source_type }) => {
-    // Stub — actual implementation delegated to lib/langgraph/tools/vector-search.ts
-    return JSON.stringify({
-      tool: 'vectorSearch',
-      query,
-      top_k,
-      source_type: source_type ?? null,
-      results: [],
-      message: 'Vector search executed (stub).',
-    })
+    return withToolSpan('vectorSearch', async (span) => {
+      // Stub — actual implementation delegated to lib/langgraph/tools/vector-search.ts
+      span.setAttribute('tool.top_k', top_k);
+      return JSON.stringify({
+        tool: 'vectorSearch',
+        query,
+        top_k,
+        source_type: source_type ?? null,
+        results: [],
+        message: 'Vector search executed (stub).',
+      });
+    });
   },
 })
 
@@ -114,14 +118,18 @@ export const crossDeptVectorSearchTool = new DynamicStructuredTool({
       .describe('Number of results to return per department.'),
   }),
   func: async ({ query, department_ids, top_k }) => {
-    return JSON.stringify({
-      tool: 'crossDeptVectorSearch',
-      query,
-      department_ids,
-      top_k,
-      results: [],
-      message: 'Cross-department vector search executed (stub).',
-    })
+    return withToolSpan('crossDeptVectorSearch', async (span) => {
+      span.setAttribute('tool.department_count', department_ids.length);
+      span.setAttribute('tool.top_k', top_k);
+      return JSON.stringify({
+        tool: 'crossDeptVectorSearch',
+        query,
+        department_ids,
+        top_k,
+        results: [],
+        message: 'Cross-department vector search executed (stub).',
+      });
+    });
   },
 })
 
@@ -138,11 +146,14 @@ const draftEmailTool = new DynamicStructuredTool({
       .describe('Optional CC recipients.'),
   }),
   func: async ({ to, subject, body, cc }) => {
-    return JSON.stringify({
-      tool: 'draftEmail',
-      draft: { to, subject, body, cc: cc ?? [] },
-      message: 'Email draft created (stub). Use email-send to deliver after approval.',
-    })
+    return withToolSpan('draftEmail', async (span) => {
+      span.setAttribute('tool.recipient_count', to.length);
+      return JSON.stringify({
+        tool: 'draftEmail',
+        draft: { to, subject, body, cc: cc ?? [] },
+        message: 'Email draft created (stub). Use email-send to deliver after approval.',
+      });
+    });
   },
 })
 
@@ -151,8 +162,20 @@ const draftCalendarEventTool = new DynamicStructuredTool({
   description: TOOL_META.draftCalendarEvent.description,
   schema: z.object({
     summary: z.string().describe('Event title.'),
-    start: z.string().describe('ISO-8601 start datetime.'),
-    end: z.string().describe('ISO-8601 end datetime.'),
+    start: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+        'Must be a valid ISO-8601 datetime string (e.g. 2024-06-15T09:00:00Z)'
+      )
+      .describe('ISO-8601 start datetime.'),
+    end: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
+        'Must be a valid ISO-8601 datetime string (e.g. 2024-06-15T10:00:00Z)'
+      )
+      .describe('ISO-8601 end datetime.'),
     attendees: z
       .array(z.string())
       .optional()
@@ -161,19 +184,22 @@ const draftCalendarEventTool = new DynamicStructuredTool({
     description: z.string().optional().describe('Optional event description.'),
   }),
   func: async ({ summary, start, end, attendees, location, description }) => {
-    return JSON.stringify({
-      tool: 'draftCalendarEvent',
-      draft: {
-        summary,
-        start,
-        end,
-        attendees: attendees ?? [],
-        location: location ?? null,
-        description: description ?? null,
-      },
-      message:
-        'Calendar event drafted (stub). Use calendar-create to finalize after approval.',
-    })
+    return withToolSpan('draftCalendarEvent', async (span) => {
+      span.setAttribute('tool.attendee_count', attendees?.length ?? 0);
+      return JSON.stringify({
+        tool: 'draftCalendarEvent',
+        draft: {
+          summary,
+          start,
+          end,
+          attendees: attendees ?? [],
+          location: location ?? null,
+          description: description ?? null,
+        },
+        message:
+          'Calendar event drafted (stub). Use calendar-create to finalize after approval.',
+      });
+    });
   },
 })
 
@@ -192,15 +218,18 @@ const planReportTool = new DynamicStructuredTool({
       .describe('Optional list of data sources to include.'),
   }),
   func: async ({ topic, sections, data_sources }) => {
-    return JSON.stringify({
-      tool: 'planReport',
-      plan: {
-        topic,
-        sections: sections ?? [],
-        data_sources: data_sources ?? [],
-      },
-      message: 'Report plan generated (stub).',
-    })
+    return withToolSpan('planReport', async (span) => {
+      span.setAttribute('tool.section_count', sections?.length ?? 0);
+      return JSON.stringify({
+        tool: 'planReport',
+        plan: {
+          topic,
+          sections: sections ?? [],
+          data_sources: data_sources ?? [],
+        },
+        message: 'Report plan generated (stub).',
+      });
+    });
   },
 })
 
@@ -238,6 +267,8 @@ export function getAllToolMeta(): ToolMeta[] {
  * @returns An array of LangChain tools the role is permitted to invoke.
  */
 export function getToolsForRole(role: UserRole): DynamicStructuredTool[] {
+  // null role (unauthenticated / unresolved) gets no tools
+  if (role === null) return []
   return (Object.keys(TOOL_META) as ToolName[])
     .filter((name) => TOOL_META[name].allowedRoles.includes(role))
     .map((name) => TOOL_INSTANCES[name])
@@ -257,6 +288,8 @@ export function getToolByName(name: ToolName): DynamicStructuredTool {
  * Returns tool names available to a given role (useful for logging/debugging).
  */
 export function getToolNamesForRole(role: UserRole): ToolName[] {
+  // null role (unauthenticated / unresolved) gets no tools
+  if (role === null) return []
   return (Object.keys(TOOL_META) as ToolName[]).filter((name) =>
     TOOL_META[name].allowedRoles.includes(role),
   )

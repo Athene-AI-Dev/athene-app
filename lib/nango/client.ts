@@ -128,7 +128,6 @@ export async function getConnection(
   // Verify ownership in Supabase first
   const { data: mapping, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
-
     .select('id')
     .eq('org_id', orgId)
     .eq('connection_id', connectionId)
@@ -240,7 +239,9 @@ export async function saveConnectionMapping(
       .upsert({
         org_id: orgId,
         connection_id: connectionId,
-        provider_config_key: providerConfigKey
+        provider_config_key: providerConfigKey,
+        sync_status: 'connected',
+        last_synced_at: null,
       }, {
         onConflict: 'org_id, connection_id, provider_config_key'
       })
@@ -299,8 +300,20 @@ export async function deleteConnection(
 
     if (deleteError) throw deleteError;
 
-    // 4. TODO: Delete document_embeddings for this integration (ATH-32 Step 4)
-    // This will be implemented when the embeddings table structure is finalized.
+    // 4. Delete indexed content: connections → documents → document_embeddings (cascade)
+    // The connections table ON DELETE CASCADE propagates to documents and document_embeddings,
+    // so deleting the connections row is sufficient to clean up all indexed data.
+    const { error: connDeleteError } = await supabaseAdmin
+      .from('connections')
+      .delete()
+      .eq('nango_connection_id', connectionId);
+
+    if (connDeleteError) {
+      // Non-fatal: log but don't fail the deletion — Nango connection is already gone
+      console.warn(
+        `[deleteConnection] Failed to clean up connections table for ${connectionId}: ${connDeleteError.message}`
+      );
+    }
 
     return { success: true };
   } catch (error: unknown) {

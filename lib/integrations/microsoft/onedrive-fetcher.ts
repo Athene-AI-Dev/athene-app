@@ -1,6 +1,5 @@
 import { paginate, graphDownload, graphFetch } from './graph-client'
 import { parseDocument } from './document-parser'
-
 export async function listOneDriveDocs(connectionId: string, orgId: string, itemId: string = 'root') {
   const items: any[] = []
   const endpoint = itemId === 'root' 
@@ -27,8 +26,7 @@ export async function fetchOneDriveDocContent(connectionId: string, orgId: strin
   const arrayBuffer = await graphDownload(connectionId, orgId, `/me/drive/items/${itemId}/content`)
   const buffer = Buffer.from(arrayBuffer)
   
-  return parseDocument(fileName, buffer)
-}
+  return parseDocument(fileName, buffer)}
 
 /**
  * Fetches the assigned permissions for a specific OneDrive item.

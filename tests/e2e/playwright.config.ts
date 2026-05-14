@@ -47,7 +47,7 @@ export default defineConfig({
 
   /* Spin up the Next.js dev server before the test run */
   webServer: {
-    command: "npm run dev",
+    command: "pnpm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -18,6 +18,12 @@ interface HubSpotContact {
     email: string | null
     phone: string | null
     company: string | null
+    jobtitle: string | null
+    lifecyclestage: string | null
+    city: string | null
+    country: string | null
+    createdate: string | null
+    lastmodifieddate: string | null
   }
 }
 
@@ -36,7 +42,7 @@ export async function fetchHubSpotContacts(
   while (true) {
     const qs = new URLSearchParams({
       limit: '100',
-      properties: 'firstname,lastname,email,phone,company',
+      properties: 'firstname,lastname,email,phone,company,jobtitle,lifecyclestage,city,country,createdate,lastmodifieddate',
       ...(after ? { after } : {}),
     })
 
@@ -46,14 +52,19 @@ export async function fetchHubSpotContacts(
       const p        = record.properties
       const fullName = [p.firstname, p.lastname].filter(Boolean).join(' ') || 'Unnamed Contact'
 
+      const location = [p.city, p.country].filter(Boolean).join(', ') || null
+
       chunks.push({
         chunk_id:   `hs-contact-${record.id}`,
         title:      fullName,
         content: [
           `Contact: ${fullName}`,
-          p.email   ? `Email: ${p.email}`     : null,
-          p.phone   ? `Phone: ${p.phone}`     : null,
-          p.company ? `Company: ${p.company}` : null,
+          p.jobtitle       ? `Title: ${p.jobtitle}`                 : null,
+          p.company        ? `Company: ${p.company}`                : null,
+          p.email          ? `Email: ${p.email}`                    : null,
+          p.phone          ? `Phone: ${p.phone}`                    : null,
+          location         ? `Location: ${location}`                : null,
+          p.lifecyclestage ? `Lifecycle Stage: ${p.lifecyclestage}` : null,
         ].filter(Boolean).join('\n'),
         source_url: `https://app.hubspot.com/contacts/contact/${record.id}`,
         metadata: {
@@ -62,6 +73,7 @@ export async function fetchHubSpotContacts(
           id:          record.id,
           email:       p.email ?? null,
           company:     p.company ?? null,
+          lifecycle:   p.lifecyclestage ?? null,
         },
       })
     }

@@ -92,6 +92,10 @@ export default function IntegrationsPage() {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const fetchIntegrations = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/integrations");
@@ -119,13 +123,33 @@ export default function IntegrationsPage() {
   const handleConnect = useCallback(async (provider: ProviderConfig) => {
     setConnecting(provider.key);
     try {
-      const sessionRes = await fetch("/api/nango/session", { method: "POST" });
-      if (!sessionRes.ok) throw new Error("Failed to secure Nango session");
+      const sessionRes = await fetch("/api/nango/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+
+      if (!sessionRes.ok) {
+        // Differentiate between "not configured" (503) and generic errors
+        const errBody = await sessionRes.json().catch(() => ({}));
+        if (sessionRes.status === 503 && errBody?.error === 'not_configured') {
+          setToast({
+            msg: "Nango not configured — add NANGO_SECRET_KEY & NEXT_PUBLIC_NANGO_PUBLIC_KEY to .env.local and restart.",
+            type: "error",
+          });
+        } else {
+          setToast({ msg: `Connection setup failed (${sessionRes.status}). Check server logs.`, type: "error" });
+        }
+        setConnecting(null);
+        return;
+      }
+
       const { token } = await sessionRes.json();
+      if (!token) throw new Error("Nango session token missing");
 
       const nango = new Nango({ connectSessionToken: token });
 
-      await nango.openConnectUI({
+      nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "close") {
             setConnecting(null);

@@ -84,7 +84,7 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
                 className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
               />
             </Link>
-            <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_rgba(167,139,250,0.5)]" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_rgba(217,122,46,0.45)]" />
           </div>
           <div className="w-7 h-7 rounded-full border border-border overflow-hidden hover:border-primary/50 transition-colors">
             <UserButton 

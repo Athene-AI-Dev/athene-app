@@ -6,82 +6,185 @@ import { supabaseAdmin } from "../supabase/server";
 /** LLM tier used by the agent registry to select model complexity */
 export type ModelTier = "simple" | "medium" | "complex";
 
-const TIER_MAP: Record<ModelTier, string> = {
+// OpenAI model names per tier
+const OPENAI_TIER_MAP: Record<ModelTier, string> = {
   simple: "gpt-4o-mini",
   medium: "gpt-4o-mini",
-  complex: "gpt-4o-mini",
+  complex: "gpt-4o",
 };
 
+// DeepSeek model names per tier (OpenAI-compatible API)
+const DEEPSEEK_TIER_MAP: Record<ModelTier, string> = {
+  simple: "deepseek-chat",
+  medium: "deepseek-chat",
+  complex: "deepseek-reasoner",
+};
+
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
+
+type DecryptedKeyRow = { provider: string; plaintext: string };
+
+/** Returns true when DeepSeek should be used as the system default provider. */
+function useDeepSeekByDefault(): boolean {
+  return !process.env.OPENAI_API_KEY && !!process.env.DEEPSEEK_API_KEY;
+}
+
+function resolveModelName(tierOrName: ModelTier | string): string {
+  if (useDeepSeekByDefault()) {
+    return DEEPSEEK_TIER_MAP[tierOrName as ModelTier] ?? tierOrName;
+  }
+  return OPENAI_TIER_MAP[tierOrName as ModelTier] ?? tierOrName;
+}
+
 /**
- * LLM Factory to ensure we use singletons for model instances.
+ * Fetches decrypted BYOK material for an org via SECURITY DEFINER RPC.
+ * Returns null if KMS is missing, RPC fails, or no key for that provider.
  */
+export async function fetchByokPlaintext(
+  orgId: string,
+  provider: "openai" | "anthropic" | "google" | "deepseek"
+): Promise<string | null> {
+  const kmsKey = process.env.KMS_KEY;
+  if (!kmsKey || !orgId) return null;
+
+  const { data, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
+    p_org_id: orgId,
+    p_kms_key: kmsKey,
+  });
+
+  if (error) {
+    console.warn(`[LLMFactory] get_decrypted_llm_key failed:`, error.message);
+    return null;
+  }
+
+  const rows = (data ?? []) as DecryptedKeyRow[];
+  const row = rows.find((r) => r.provider === provider);
+  return row?.plaintext ?? null;
+}
+
+/** Build a DeepSeek chat client using the OpenAI-compatible endpoint. */
+function makeDeepSeekModel(modelName: string, temperature: number, apiKey?: string) {
+  return new ChatOpenAI({
+    modelName,
+    temperature,
+    apiKey: apiKey ?? process.env.DEEPSEEK_API_KEY ?? "",
+    configuration: { baseURL: DEEPSEEK_BASE_URL },
+  });
+}
+
 class LLMFactory {
   private static instances: Map<string, any> = new Map();
 
-  static getModel(tierOrName: ModelTier | string = "gpt-4o", temperature: number = 0) {
-    const modelName = TIER_MAP[tierOrName as ModelTier] || tierOrName;
-    const cacheKey = `${modelName}-${temperature}`;
+  /**
+   * Returns a system-key model instance (singleton per model+temperature).
+   * Prefers OpenAI when OPENAI_API_KEY is set; falls back to DeepSeek
+   * when only DEEPSEEK_API_KEY is present.
+   */
+  static getModel(tierOrName: ModelTier | string = "medium", temperature: number = 0) {
+    const modelName = resolveModelName(tierOrName);
+    const provider = useDeepSeekByDefault() ? "deepseek" : "openai";
+    const cacheKey = `${provider}-${modelName}-${temperature}`;
 
     if (!this.instances.has(cacheKey)) {
-      this.instances.set(
-        cacheKey,
-        new ChatOpenAI({
-          modelName,
-          temperature,
-        })
-      );
+      const instance = useDeepSeekByDefault()
+        ? makeDeepSeekModel(modelName, temperature)
+        : new ChatOpenAI({ modelName, temperature });
+      this.instances.set(cacheKey, instance);
     }
     return this.instances.get(cacheKey)!;
   }
 
   /**
-   * 🔑 BYOK (Bring Your Own Key) Resolver
-   * Fetches the decrypted key for an organization and returns a provider-specific client.
+   * BYOK — returns a provider-specific model using a decrypted org key.
+   * Supports: openai | anthropic | google | deepseek.
+   * Falls back to system default when no BYOK key is found.
    */
   static async getBYOKModel(orgId: string, provider: string, temperature: number = 0) {
     const cacheKey = `byok-${orgId}-${provider}-${temperature}`;
     if (this.instances.has(cacheKey)) return this.instances.get(cacheKey);
 
-    // Fetch decrypted key via SECURITY DEFINER RPC
-    const { data: apiKey, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
-      p_org_id: orgId,
-      p_provider: provider,
-    });
-
-    if (error || !apiKey) {
-      console.warn(`[LLMFactory] No active BYOK key found for org ${orgId} / ${provider}. Falling back to system keys.`);
-      return this.getModel("gpt-4o", temperature);
+    const validProviders = ["openai", "anthropic", "google", "deepseek"];
+    if (!validProviders.includes(provider)) {
+      return this.getModel("medium", temperature);
     }
 
-    let instance;
+    const apiKey = await fetchByokPlaintext(
+      orgId,
+      provider as "openai" | "anthropic" | "google" | "deepseek"
+    );
+
+    if (!apiKey) {
+      console.warn(
+        `[LLMFactory] No BYOK key for org ${orgId} / ${provider}. Using system default.`
+      );
+      return this.getModel("medium", temperature);
+    }
+
+    let instance: any;
     if (provider === "anthropic") {
       instance = new ChatAnthropic({
         apiKey,
-        modelName: "claude-3-5-sonnet-20240620",
+        modelName: "claude-sonnet-4-6",
         temperature,
       });
     } else if (provider === "openai") {
-      instance = new ChatOpenAI({
-        apiKey,
-        modelName: "gpt-4o",
-        temperature,
-      });
-    } else if (provider === "google") {
+      instance = new ChatOpenAI({ apiKey, modelName: "gpt-4o", temperature });
+    } else if (provider === "deepseek") {
+      instance = makeDeepSeekModel("deepseek-chat", temperature, apiKey);
+    } else {
       instance = new ChatGoogleGenerativeAI({
         apiKey,
         model: "gemini-1.5-pro",
         temperature,
       });
-    } else {
-      return this.getModel("gpt-4o", temperature);
     }
 
     this.instances.set(cacheKey, instance);
     return instance;
   }
 
-  static async resolveModelClient(tier: ModelTier = "medium") {
-    return this.getModel(tier);
+  /**
+   * Resolves the chat model for agent nodes.
+   * Priority: org BYOK openai → org BYOK deepseek → system env (openai or deepseek).
+   */
+  static async resolveModelClient(
+    tierOrName: ModelTier | string = "medium",
+    orgId?: string,
+    temperature: number = 0
+  ) {
+    const openAiModelName = OPENAI_TIER_MAP[tierOrName as ModelTier] ?? tierOrName;
+    const deepseekModelName = DEEPSEEK_TIER_MAP[tierOrName as ModelTier] ?? tierOrName;
+
+    if (orgId) {
+      // Try BYOK OpenAI first
+      const openaiKey = await fetchByokPlaintext(orgId, "openai");
+      if (openaiKey) {
+        const cacheKey = `resolve-openai-${orgId}-${openAiModelName}-${temperature}`;
+        if (!this.instances.has(cacheKey)) {
+          this.instances.set(
+            cacheKey,
+            new ChatOpenAI({ apiKey: openaiKey, modelName: openAiModelName, temperature })
+          );
+        }
+        return this.instances.get(cacheKey)!;
+      }
+
+      // Try BYOK DeepSeek
+      const deepseekKey = await fetchByokPlaintext(orgId, "deepseek");
+      if (deepseekKey) {
+        const cacheKey = `resolve-deepseek-${orgId}-${deepseekModelName}-${temperature}`;
+        if (!this.instances.has(cacheKey)) {
+          this.instances.set(
+            cacheKey,
+            makeDeepSeekModel(deepseekModelName, temperature, deepseekKey)
+          );
+        }
+        return this.instances.get(cacheKey)!;
+      }
+    }
+
+    // System default (OpenAI or DeepSeek depending on env)
+    return this.getModel(tierOrName, temperature);
   }
 }
 

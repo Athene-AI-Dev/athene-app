@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
                   : "";
               if (token && !firstTokenSent) {
                 firstTokenSent = true;
-                console.log(`[agent] First token latency: ${Date.now() - firstTokenTime}ms`);
+                logger.info({ latencyMs: Date.now() - firstTokenTime }, "[agent] First token latency");
               }
               if (token) {
                 const data = JSON.stringify({ token });
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
         }
         await writer.close();
       } catch (err: any) {
-        console.error("[agent] Stream error:", err);
+        logger.error({ err: err?.message }, "[agent] Stream error");
         const isQuota = err.message.includes("quota") || err.message.includes("rate_limit") || err.message.includes("429");
         const errorData = JSON.stringify({
           error: true,
@@ -293,7 +293,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("[agent] API error:", msg);
+    logger.error({ err: msg }, "[agent] API error");
     return new NextResponse(msg, { status: 500 });
   }
 }

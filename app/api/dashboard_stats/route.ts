@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,11 +45,11 @@ export async function GET(req: NextRequest) {
     ]);
 
     // Log individual query errors without crashing the whole response
-    if (docsErr) console.error("[dashboard/stats] documents query:", docsErr.message);
-    if (nodesErr) console.error("[dashboard/stats] kg_nodes query:", nodesErr.message);
-    if (actionsErr) console.error("[dashboard/stats] hitl_decisions count:", actionsErr.message);
-    if (connErr) console.error("[dashboard/stats] connections query:", connErr.message);
-    if (decisionsErr) console.error("[dashboard/stats] recent decisions:", decisionsErr.message);
+    if (docsErr) logger.error({ err: docsErr.message }, "[dashboard/stats] documents query");
+    if (nodesErr) logger.error({ err: nodesErr.message }, "[dashboard/stats] kg_nodes query");
+    if (actionsErr) logger.error({ err: actionsErr.message }, "[dashboard/stats] hitl_decisions count");
+    if (connErr) logger.error({ err: connErr.message }, "[dashboard/stats] connections query");
+    if (decisionsErr) logger.error({ err: decisionsErr.message }, "[dashboard/stats] recent decisions");
 
     const decisionStatusMap: Record<string, string> = {
       approved: 'Success',
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
       }))
     });
   } catch (error: any) {
-    console.error("[dashboard/stats] Error:", error);
+    logger.error({ err: error?.message ?? String(error) }, "[dashboard/stats] Error");
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

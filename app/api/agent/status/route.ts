@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { getAgentGraph } from "@/lib/langgraph/graph";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("[AgentStatus] Error fetching status:", error);
+    logger.error({ err: error?.message ?? String(error) }, "[AgentStatus] Error fetching status");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

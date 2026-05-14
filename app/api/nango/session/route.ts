@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getNango } from "@/lib/nango/client";
 import { auth } from "@clerk/nextjs/server";
 import { mapRole } from "@/lib/auth/clerk";
+import { logger } from "@/lib/logger";
 
 export async function POST() {
   const { userId, orgId, orgRole } = await auth();
@@ -40,7 +41,7 @@ export async function POST() {
 
     return NextResponse.json({ token: data.token });
   } catch (err) {
-    console.error('[nango/session]', err);
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[nango/session]');
     return NextResponse.json({ error: 'Failed to create session' }, { status: 500 });
   }
 }

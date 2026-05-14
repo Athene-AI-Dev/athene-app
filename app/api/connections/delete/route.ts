@@ -4,6 +4,7 @@ import { deleteConnection } from "@/lib/nango/client";
 import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { invalidatePromptCache } from "@/lib/knowledge-graph/modules/resolver";
+import { logger } from "@/lib/logger";
 
 /**
  * 🔒 SECURE DELETE ENDPOINT (Final Clean Version)
@@ -36,19 +37,23 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Resolve internal org UUID for cache invalidation (orgId here is Clerk's ID)
-  const { data: orgData } = await supabaseAdmin
+  // Resolve internal org UUID — nango_connections.org_id stores internal UUIDs, not Clerk IDs
+  const { data: orgData, error: orgLookupErr } = await supabaseAdmin
     .from("organizations")
     .select("id")
     .eq("clerk_org_id", orgId)
     .maybeSingle();
 
+  if (orgLookupErr || !orgData) {
+    return NextResponse.json({ success: false, error: "Organization not found" }, { status: 404 });
+  }
+
   try {
-    // ⚡ Hardened deletion with strict OrgId ownership check
-    await deleteConnection(connectionId, providerConfigKey, orgId);
+    // Pass internal UUID so the nango_connections ownership check matches
+    await deleteConnection(connectionId, providerConfigKey, orgData.id);
 
     // Invalidate KG extraction prompt cache so removed module no longer contributes
-    if (orgData?.id) void invalidatePromptCache(orgData.id);
+    void invalidatePromptCache(orgData.id);
 
     return NextResponse.json({
       success: true,
@@ -56,7 +61,7 @@ export async function DELETE(request: Request) {
       connectionId
     });
   } catch (err: any) {
-    console.error("Error deleting connection:", err);
+    logger.error({ err: err?.message }, '[connections/delete] Error deleting connection');
     
     return NextResponse.json(
       { 

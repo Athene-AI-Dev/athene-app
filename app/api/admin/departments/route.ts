@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { cached } from "@/lib/redis/client";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
   const { userId, orgId, orgRole } = await auth();
@@ -45,7 +46,7 @@ export async function GET() {
     return NextResponse.json({ departments });
 
   } catch (err: any) {
-    console.error("[admin-departments] GET failed:", err.message);
+    logger.error({ err: err.message }, "[admin-departments] GET failed");
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

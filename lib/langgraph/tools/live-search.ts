@@ -19,6 +19,7 @@ import { searchZendesk } from '@/lib/integrations/zendesk/searcher'
 import { notionSearch } from '@/lib/integrations/notion/searcher'
 import { snowflakeSearch } from '@/lib/integrations/snowflake/searcher'
 import { registerTool } from './registry'
+import { logger } from '@/lib/logger'
 
 // ---- Searcher Registry ------------------------------------------
 
@@ -101,19 +102,14 @@ export async function liveSearch(
   const searcher = searcherRegistry.get(provider)
 
   if (!searcher) {
-    console.warn(
-      `[live-search] Unknown provider "${provider}". Available: ${listSearchers().join(', ')}`
-    )
+    logger.warn({ provider, available: listSearchers() }, '[live-search] Unknown provider')
     return []
   }
 
   try {
     return await searcher(connectionId, orgId, query, options)
   } catch (err) {
-    console.error(
-      `[live-search] Error searching ${provider}:`,
-      err instanceof Error ? err.message : String(err)
-    )
+    logger.error({ provider, err: err instanceof Error ? err.message : String(err) }, '[live-search] Error searching provider')
     return []
   }
 }

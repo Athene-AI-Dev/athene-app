@@ -20,6 +20,7 @@ import { fetchSlackMessages } from '@/lib/integrations/slack/channels-fetcher'
 import { fetchZendeskTickets } from '@/lib/integrations/zendesk/tickets-fetcher'
 import { fetchZendeskArticles } from '@/lib/integrations/zendesk/articles-fetcher'
 import { registerTool } from './registry'
+import { logger } from '@/lib/logger'
 
 // ---- Provider Registry ------------------------------------------
 
@@ -107,19 +108,14 @@ export async function liveDocFetch(
   const fetcher = providerRegistry.get(provider)
 
   if (!fetcher) {
-    console.warn(
-      `[live-doc-fetch] Unknown provider "${provider}". Available: ${listProviders().join(', ')}`
-    )
+    logger.warn({ provider, available: listProviders() }, '[live-doc-fetch] Unknown provider')
     return []
   }
 
   try {
     return await fetcher(connectionId, orgId, options)
   } catch (err) {
-    console.error(
-      `[live-doc-fetch] Error fetching from ${provider}:`,
-      err instanceof Error ? err.message : String(err)
-    )
+    logger.error({ provider, err: err instanceof Error ? err.message : String(err) }, '[live-doc-fetch] Error fetching from provider')
     return []
   }
 }

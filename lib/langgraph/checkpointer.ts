@@ -1,5 +1,6 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { MemorySaver } from "@langchain/langgraph";
+import { logger } from "@/lib/logger";
 
 let checkpointerInstance: PostgresSaver | MemorySaver | null = null;
 let usingMemory = false;
@@ -23,10 +24,7 @@ export async function getCheckpointer(): Promise<PostgresSaver | MemorySaver> {
   const raw = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
 
   if (!raw) {
-    console.warn(
-      "[checkpointer] No DB connection string found (SUPABASE_DB_URL / DATABASE_URL). " +
-      "Falling back to MemorySaver — conversation history will not persist across cold starts."
-    );
+    logger.warn({}, "[checkpointer] No DB connection string found (SUPABASE_DB_URL / DATABASE_URL). Falling back to MemorySaver — conversation history will not persist across cold starts.");
     usingMemory = true;
     checkpointerInstance = new MemorySaver();
     return checkpointerInstance;
@@ -42,14 +40,11 @@ export async function getCheckpointer(): Promise<PostgresSaver | MemorySaver> {
     await saver.setup();
     checkpointerInstance = saver;
     usingMemory = false;
-    console.info("[checkpointer] PostgresSaver initialized.");
+    logger.info({}, "[checkpointer] PostgresSaver initialized.");
     return saver;
   } catch (err) {
     // Don't cache the fallback — allow retry on next cold start
-    console.error(
-      "[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver:",
-      err
-    );
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, "[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver");
     usingMemory = true;
     const mem = new MemorySaver();
     checkpointerInstance = mem;

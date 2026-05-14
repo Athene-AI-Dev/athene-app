@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("[workflows] POST Error:", error);
+    logger.error({ err: error?.message ?? String(error) }, "[workflows] POST Error");
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("[workflows] GET Error:", error);
+    logger.error({ err: error?.message ?? String(error) }, "[workflows] GET Error");
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

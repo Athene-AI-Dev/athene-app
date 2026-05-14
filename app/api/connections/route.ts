@@ -5,6 +5,7 @@ import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { dispatchThrottled } from "@/lib/qstash/client";
 import { invalidatePromptCache } from "@/lib/knowledge-graph/modules/resolver";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/connections
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
   try {
     await saveConnectionMapping(internalOrgId, nangoConnectionId, provider);
   } catch (mappingErr: any) {
-    console.warn("[connections/post] saveConnectionMapping failed (non-fatal):", mappingErr.message);
+    logger.warn({ err: mappingErr.message }, '[connections/post] saveConnectionMapping failed (non-fatal)');
   }
 
   // Invalidate the cached extraction prompt — active modules may have changed
@@ -115,12 +116,19 @@ export async function GET() {
   }
 
   try {
-    /** 
-     * ✅ AUDIT CHECK: Fetch specifically for current orgId
-     * We use listConnections which performs a strict .eq("org_id", orgId) check 
-     * against the Supabase nango_connections table.
-     */
-    const connections = await listConnections(orgId);
+    // nango_connections.org_id stores internal UUIDs (saved by POST handler with internalOrgId).
+    // Must resolve Clerk orgId → internal UUID before querying.
+    const { data: orgData, error: orgLookupErr } = await supabaseAdmin
+      .from("organizations")
+      .select("id")
+      .eq("clerk_org_id", orgId)
+      .maybeSingle();
+
+    if (orgLookupErr || !orgData) {
+      return NextResponse.json({ success: false, error: "Organization not found" }, { status: 404 });
+    }
+
+    const connections = await listConnections(orgData.id);
 
     return NextResponse.json({
       success: true,
@@ -129,7 +137,7 @@ export async function GET() {
     });
 
   } catch (err: any) {
-    console.error("Error fetching connections:", err);
+    logger.error({ err: err?.message }, '[connections/get] Error fetching connections');
     
     // ✅ AUDIT CHECK: Robust error signaling (401/403/500)
     return NextResponse.json(

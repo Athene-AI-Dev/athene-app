@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { getContextFromHeaders } from '@/lib/supabase/rls-client'
 import { assertAdminRole } from '@/lib/auth/rbac'
+import { logger } from '@/lib/logger'
 
 export async function GET(req: Request) {
   const context = getContextFromHeaders(req.headers)
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
       .eq('org_id', context.org_id)
       
     if (updateError) {
-      console.error("Failed to update visibility:", updateError)
+      logger.error({ err: updateError?.message ?? String(updateError) }, "Failed to update visibility")
       return NextResponse.json({ 
         ...data, 
         warning: "Grant created but document visibility sync failed. Manual sync required." 

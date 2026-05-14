@@ -2,6 +2,7 @@ import type { AtheneStateType, AtheneStateUpdate } from "../langgraph/state";
 import { vectorSearch } from "../tools/vector-search";
 import { SystemMessage, HumanMessage, type MessageContent } from "@langchain/core/messages";
 import { resolveModelClient } from "../langgraph/llm-factory";
+import { logger } from "@/lib/logger";
 
 // Inlined prompt template — avoids fs.readFileSync which crashes in Edge Runtime.
 const PLAN_PROMPT_TEMPLATE = `# Report Planning Prompt
@@ -91,7 +92,7 @@ export async function reportAgent(
       sections = ["Introduction", "Key Findings", "Conclusion"];
     }
   } catch (error) {
-    console.error("Failed to parse report plan:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "[report-agent] Failed to parse report plan");
     sections = ["Introduction", "Key Findings", "Conclusion"];
     }
   }
@@ -162,13 +163,13 @@ INSTRUCTIONS:
           if (validChunkIds.has(chunkId.trim())) {
             return match;
           }
-          console.warn(`Stripped invalid citation: ${match}`);
+          logger.warn({ citation: match }, "[report-agent] Stripped invalid citation");
           return "";
         });
 
         return `## ${section}\n\n${sectionContent}`;
       } catch (err) {
-        console.error(`Error generating section "${section}":`, err);
+        logger.error({ section, err: err instanceof Error ? err.message : String(err) }, "[report-agent] Error generating section");
         return `## ${section}\n\n*(Error generating this section)*`;
       }
     })

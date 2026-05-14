@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { getContextFromHeaders } from '@/lib/supabase/rls-client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export async function GET() {
     .limit(200)
 
   if (error) {
-    console.error('[files/get]', error.message)
+    logger.error({ err: error.message }, '[files/get]')
     return NextResponse.json({ error: 'Failed to load files' }, { status: 500 })
   }
 
@@ -91,7 +92,7 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle()
 
   if (fetchErr) {
-    console.error('[files/delete] fetch error:', fetchErr.message)
+    logger.error({ err: fetchErr.message }, '[files/delete] fetch error')
     return NextResponse.json({ error: 'Failed to look up document' }, { status: 500 })
   }
   if (!doc) {
@@ -105,7 +106,7 @@ export async function DELETE(req: NextRequest) {
       .remove([doc.external_id])
 
     if (storageErr) {
-      console.warn('[files/delete] Storage remove failed (continuing):', storageErr.message)
+      logger.warn({ detail: String(storageErr.message) }, '[files/delete] Storage remove failed (continuing)')
     }
   }
 
@@ -117,7 +118,7 @@ export async function DELETE(req: NextRequest) {
     .eq('org_id', context.org_id)
 
   if (deleteErr) {
-    console.error('[files/delete] DB delete error:', deleteErr.message)
+    logger.error({ err: deleteErr.message }, '[files/delete] DB delete error')
     return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 })
   }
 

@@ -1,6 +1,7 @@
 import { Nango } from '@nangohq/node'
 import { supabaseAdmin } from '../supabase/server'
 import { getProvider } from '@/lib/integrations/providers'
+import { logger } from '@/lib/logger'
 
 
 let nangoInstance: Nango | null = null;
@@ -9,7 +10,7 @@ export function getNango() {
   if (!nangoInstance) {
     const nangoSecretKey = process.env.NANGO_SECRET_KEY;
     if (!nangoSecretKey) {
-       console.warn("⚠️ [Config] Missing NANGO_SECRET_KEY. Integration features will be disabled.");
+       logger.warn({}, "[Config] Missing NANGO_SECRET_KEY. Integration features will be disabled.");
     }
     nangoInstance = new Nango({
       secretKey: nangoSecretKey || 'placeholder-key'
@@ -28,7 +29,7 @@ function handleNangoError(error: unknown, context: string): never {
   const nangoCode = err?.error?.code;
   const message = err?.error?.message || (error instanceof Error ? error.message : String(error));
 
-  console.error(`[Nango Error] ${context}:`, { status, nangoCode, message });
+  logger.error({ context, status, nangoCode, message }, '[Nango Error]');
 
   // 1. Handle Revoked or Expired OAuth Sessions
   if (status === 401 || nangoCode === 'invalid_credentials') {
@@ -248,7 +249,7 @@ export async function saveConnectionMapping(
 
     if (error) throw error
   } catch (error: unknown) {
-    console.error('Error in saveConnectionMapping:', error instanceof Error ? error.message : String(error));
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[nango] saveConnectionMapping failed');
     throw error;
   }
 }
@@ -310,9 +311,7 @@ export async function deleteConnection(
 
     if (connDeleteError) {
       // Non-fatal: log but don't fail the deletion — Nango connection is already gone
-      console.warn(
-        `[deleteConnection] Failed to clean up connections table for ${connectionId}: ${connDeleteError.message}`
-      );
+      logger.warn({ connectionId, err: connDeleteError.message }, '[nango] deleteConnection: failed to clean up connections table');
     }
 
     return { success: true };

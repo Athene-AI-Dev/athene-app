@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { getContextFromHeaders } from "@/lib/supabase/rls-client";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/files/upload
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     );
 
     if (ctxErr || !uploadCtx) {
-      console.error("[files/upload] RPC ensure_upload_connection failed:", ctxErr?.message);
+      logger.error({ err: ctxErr?.message ?? String(ctxErr) }, "[files/upload] RPC ensure_upload_connection failed");
       return NextResponse.json(
         { error: `Context resolution failed: ${ctxErr?.message || "Unknown error"}` },
         { status: 500 },
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
       });
 
     if (storageError) {
-      console.error("[files/upload] Storage error:", storageError.message);
+      logger.error({ err: storageError.message }, "[files/upload] Storage error");
       return NextResponse.json(
         { error: `Storage upload failed: ${storageError.message}` },
         { status: 500 },
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (docErr || !doc) {
-      console.error("[files/upload] Document error:", docErr?.message);
+      logger.error({ err: docErr?.message ?? String(docErr) }, "[files/upload] Document error");
       return NextResponse.json(
         { error: `Document insert failed: ${docErr?.message}` },
         { status: 500 },
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
       storagePath,
     });
   } catch (err: any) {
-    console.error("[files/upload] Unexpected error:", err.message);
+    logger.error({ err: err?.message ?? String(err) }, "[files/upload] Unexpected error");
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -12,6 +12,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveUserAccess } from "@/lib/auth/rbac";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
@@ -60,16 +61,16 @@ export async function GET(req: NextRequest) {
     // Find all APPLIED_TO edges where target = this node
     const { data: edges } = await supabaseAdmin
       .from("kg_edges")
-      .select("source_id")
+      .select("source_node")
       .eq("org_id", internalOrgId)
-      .eq("target_id", targetNode.id)
+      .eq("target_node", targetNode.id)
       .eq("relation", "APPLIED_TO");
 
     if (!edges?.length) {
       return NextResponse.json([]);
     }
 
-    const sourceIds = edges.map((e) => e.source_id);
+    const sourceIds = edges.map((e) => e.source_node);
 
     // Fetch the decision nodes, ordered chronologically
     const { data: decisions, error } = await supabaseAdmin
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
       .order("temporal_metadata->occurred_at", { ascending: true, nullsFirst: true });
 
     if (error) {
-      console.error("[api/graph/timeline] Supabase error:", error.message);
+      logger.error({ err: error.message, entity: entityLabel, org_id: internalOrgId }, "[api/graph/timeline] Supabase error");
       return NextResponse.json({ error: "Query failed" }, { status: 500 });
     }
 
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
       decisions: decisions ?? [],
     });
   } catch (err) {
-    console.error("[api/graph/timeline] Unexpected error:", err);
+    logger.error({ err }, "[api/graph/timeline] Unexpected error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

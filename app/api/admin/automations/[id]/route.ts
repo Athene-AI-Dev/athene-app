@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { withRLS, type RLSContext } from '@/lib/supabase/rls-client'
+import { qstash } from '@/lib/qstash/client'
+import { logger } from '@/lib/logger'
 
 async function resolveAutomationContext(): Promise<RLSContext | Response> {
   const { userId, orgId: clerkOrgId, orgRole } = await auth()
@@ -19,7 +21,7 @@ async function resolveAutomationContext(): Promise<RLSContext | Response> {
     .maybeSingle()
 
   if (orgError) {
-    console.error('[automation_context] Org lookup error:', orgError)
+    logger.error({ err: orgError.message }, '[automation_context] Org lookup error')
     return NextResponse.json({ error: orgError.message }, { status: 500 })
   }
 
@@ -36,7 +38,7 @@ async function resolveAutomationContext(): Promise<RLSContext | Response> {
     .maybeSingle()
 
   if (memberError) {
-    console.error('[automation_context] Member lookup error:', memberError)
+    logger.error({ err: memberError.message }, '[automation_context] Member lookup error')
     return NextResponse.json({ error: memberError.message }, { status: 500 })
   }
 
@@ -61,13 +63,13 @@ export async function PATCH(
 ) {
   const context = await resolveAutomationContext()
   const { id } = await params
-  
+
   if (context instanceof Response) return context
 
   try {
     const body = await req.json()
     const { id: _id, org_id: _orgId, user_id: _userId, ...safeBody } = body
-    
+
     return withRLS(context, async (supabase) => {
       const { data, error } = await supabase
         .from('automations')
@@ -79,20 +81,20 @@ export async function PATCH(
         .single()
 
       if (error) {
-        console.error('[automation_patch] Error:', error)
+        logger.error({ err: error.message, id, org_id: context.org_id }, '[automation_patch] Error')
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
-      
+
       return NextResponse.json(data)
     })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 }
 
 /**
  * DELETE /api/admin/automations/[id]
- * Removes an automation.
+ * Cancels the QStash schedule (if any) then removes the automation row.
  */
 export async function DELETE(
   req: Request,
@@ -100,22 +102,56 @@ export async function DELETE(
 ) {
   const context = await resolveAutomationContext()
   const { id } = await params
-  
+
   if (context instanceof Response) return context
 
   return withRLS(context, async (supabase) => {
-    const { error } = await supabase
+    // 1. Fetch the automation first to get qstash_schedule_id
+    const { data: automation, error: fetchError } = await supabase
+      .from('automations')
+      .select('id, qstash_schedule_id')
+      .eq('id', id)
+      .eq('org_id', context.org_id)
+      .eq('user_id', context.user_id)
+      .maybeSingle()
+
+    if (fetchError) {
+      logger.error({ err: fetchError.message, id }, '[automation_delete] Fetch error')
+      return NextResponse.json({ error: fetchError.message }, { status: 500 })
+    }
+
+    if (!automation) {
+      return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+    }
+
+    // 2. Cancel the QStash schedule if one exists (best-effort — don't block deletion)
+    if (automation.qstash_schedule_id) {
+      try {
+        await qstash.schedules.delete(automation.qstash_schedule_id)
+        logger.info({ scheduleId: automation.qstash_schedule_id, id }, '[automation_delete] QStash schedule cancelled')
+      } catch (scheduleErr: any) {
+        // Non-fatal: the schedule may have already expired or been deleted in QStash.
+        // Log and proceed — the DB row must still be removed.
+        logger.warn(
+          { err: scheduleErr.message, scheduleId: automation.qstash_schedule_id, id },
+          '[automation_delete] QStash schedule cancel failed — proceeding with DB delete'
+        )
+      }
+    }
+
+    // 3. Delete the automation row
+    const { error: deleteError } = await supabase
       .from('automations')
       .delete()
       .eq('id', id)
       .eq('org_id', context.org_id)
       .eq('user_id', context.user_id)
 
-    if (error) {
-      console.error('[automation_delete] Error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (deleteError) {
+      logger.error({ err: deleteError.message, id }, '[automation_delete] Delete error')
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
-    
+
     return new Response(null, { status: 204 })
   })
 }

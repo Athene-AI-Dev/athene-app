@@ -1,6 +1,7 @@
 import { Client } from '@upstash/qstash';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { incrWithExpire, redis } from '@/lib/redis/client';
+import { logger } from '@/lib/logger';
 
 const qstashToken = process.env.QSTASH_TOKEN;
 
@@ -52,7 +53,7 @@ export async function dispatchThrottled({
     const count = await incrWithExpire(key, CONCURRENCY_TTL_SECONDS);
 
     if (count === null) {
-      console.warn(`[QStash] Redis unreachable — throttling ${key}`);
+      logger.warn({ key }, '[QStash] Redis unreachable — throttling dispatch');
       return { dispatched: false };
     }
 
@@ -68,7 +69,7 @@ export async function dispatchThrottled({
       });
 
       if (error) {
-        console.error('[QStash] Failed to queue pending job:', error);
+        logger.error({ err: error.message, orgId, sourceType }, '[QStash] Failed to queue pending job');
       }
 
       return { dispatched: false };
@@ -81,8 +82,8 @@ export async function dispatchThrottled({
       await redis.decr(key);
       throw publishErr;
     }
-  } catch (error) {
-    console.error('[QStash] Dispatch error:', error);
+  } catch (error: any) {
+    logger.error({ err: error?.message, orgId, sourceType }, '[QStash] Dispatch error');
     return { dispatched: false };
   }
 }
@@ -106,7 +107,7 @@ export async function releaseSlot(orgId: string, sourceType: string) {
       .limit(1);
 
     if (selectErr) {
-      console.error('[QStash] Error fetching pending jobs:', selectErr);
+      logger.error({ err: selectErr.message, orgId, sourceType }, '[QStash] Error fetching pending jobs');
       return;
     }
 
@@ -132,7 +133,7 @@ export async function releaseSlot(orgId: string, sourceType: string) {
       url: job.url,
       body: job.body,
     });
-  } catch (error) {
-    console.error('[QStash] releaseSlot error:', error);
+  } catch (error: any) {
+    logger.error({ err: error?.message, orgId, sourceType }, '[QStash] releaseSlot error');
   }
 }

@@ -1,5 +1,6 @@
 import { Receiver } from '@upstash/qstash';
 import { redis } from '@/lib/redis/client';
+import { logger } from '@/lib/logger';
 
 const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
 const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
@@ -25,10 +26,10 @@ export async function verifyQStashSignature(req: Request): Promise<boolean> {
   if (!receiver) {
     const bypass = req.headers.get('x-dev-internal-bypass');
     if (bypass === '1') {
-      console.warn('[QStash] QSTASH signing keys absent — accepting x-dev-internal-bypass (local dev only)');
+      logger.warn({}, '[QStash] QSTASH signing keys absent — accepting x-dev-internal-bypass (local dev only)');
       return true;
     }
-    console.error('[QStash] Signature verification skipped: QSTASH_CURRENT_SIGNING_KEY / QSTASH_NEXT_SIGNING_KEY not set');
+    logger.error({}, '[QStash] Signature verification skipped: QSTASH_CURRENT_SIGNING_KEY / QSTASH_NEXT_SIGNING_KEY not set');
     return false;
   }
 
@@ -49,8 +50,8 @@ export async function verifyQStashSignature(req: Request): Promise<boolean> {
     });
 
     return isValid;
-  } catch (err) {
-    console.error('[QStash] Signature verification failed:', err);
+  } catch (err: any) {
+    logger.error({ err: err?.message }, '[QStash] Signature verification failed');
     return false;
   }
 }
@@ -76,8 +77,8 @@ export async function checkIdempotency(req: Request): Promise<boolean> {
     const result = await redis.set(key, '1', { nx: true, ex: 86400 });
 
     return result === 'OK';
-  } catch (err) {
-    console.error('[QStash] Idempotency check failed (Redis error):', err);
+  } catch (err: any) {
+    logger.error({ err: err?.message }, '[QStash] Idempotency check failed (Redis error)');
     // Fail-open: if Redis is down, we allow the request but risk double-processing
     // rather than blocking all background work.
     return true;

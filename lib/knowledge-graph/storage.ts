@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 import type { KGEdge, KGNode, KGProvenance } from "./types";
 import { strongerProvenance, unionStrings, nodeKey, edgeKey } from "./utils";
+import { logger } from "@/lib/logger";
 
 // ---- Node upsert ----------------------------------------------
 
@@ -33,7 +34,14 @@ export async function upsertNodes(
   ctx: RLSContext,
   nodes: KGNode[]
 ): Promise<Map<string, string>> {
-  return withRLS(ctx, async (supabase) => {
+  return withRLS(ctx, (supabase) => _upsertNodesWithClient(supabase, ctx, nodes));
+}
+
+async function _upsertNodesWithClient(
+  supabase: SupabaseClient,
+  ctx: RLSContext,
+  nodes: KGNode[]
+): Promise<Map<string, string>> {
     if (nodes.length === 0) return new Map();
     // 1. Fetch any existing rows for the incoming (label, entity_type) pairs
     const labels = Array.from(new Set(nodes.map((n) => n.label)));
@@ -159,7 +167,6 @@ export async function upsertNodes(
       idMap.set(nodeKey(row.label, row.entity_type), row.id);
     }
     return idMap;
-  });
 }
 
 // ---- Edge upsert ----------------------------------------------
@@ -178,7 +185,15 @@ export async function upsertEdges(
   edges: KGEdge[],
   nodeIdMap: Map<string, string>
 ): Promise<void> {
-  await withRLS(ctx, async (supabase) => {
+  await withRLS(ctx, (supabase) => _upsertEdgesWithClient(supabase, ctx, edges, nodeIdMap));
+}
+
+async function _upsertEdgesWithClient(
+  supabase: SupabaseClient,
+  ctx: RLSContext,
+  edges: KGEdge[],
+  nodeIdMap: Map<string, string>
+): Promise<void> {
     if (edges.length === 0) return;
     // Resolve label→id. Skip edges whose endpoints weren't upserted.
     type Resolved = {
@@ -301,6 +316,32 @@ export async function upsertEdges(
       const { error } = await supabase.from("kg_edges").insert(Array.from(uniqueToInsert.values()));
       if (error) throw new Error(`kg_edges insert failed: ${error.message}`);
     }
+}
+
+// ---- Combined graph upsert ------------------------------------
+
+/**
+ * Upsert nodes and then edges in a single withRLS session.
+ *
+ * Supabase JS has no multi-statement transaction API. Running nodes
+ * and edges inside one withRLS() callback at least shares a single
+ * Postgres connection and session context. The caller (builder.ts)
+ * is responsible for the compensating rollback: if this throws,
+ * call deleteByDocument() to remove any orphaned nodes.
+ *
+ * Returns the label→id map produced by upsertNodes so callers that
+ * need it (e.g. tests) don't have to call upsertNodes separately.
+ */
+export async function upsertGraph(
+  ctx: RLSContext,
+  nodes: KGNode[],
+  edges: KGEdge[]
+): Promise<Map<string, string>> {
+  return withRLS(ctx, async (supabase) => {
+    // Inline the node upsert logic (same as upsertNodes but reuses the client)
+    const nodeIdMap = await _upsertNodesWithClient(supabase, ctx, nodes);
+    await _upsertEdgesWithClient(supabase, ctx, edges, nodeIdMap);
+    return nodeIdMap;
   });
 }
 
@@ -423,11 +464,11 @@ function maxVisibilityRaw(a: string, b: string): string {
   const valB = b || "restricted";
 
   if (!(valA in VISIBILITY_RANK)) {
-    console.warn(`[maxVisibilityRaw] Unrecognised visibility value: "${valA}" - falling back to restricted`);
+    logger.warn({ value: valA }, "[storage] Unrecognised visibility value in maxVisibilityRaw — falling back to restricted");
     return valB;
   }
   if (!(valB in VISIBILITY_RANK)) {
-    console.warn(`[maxVisibilityRaw] Unrecognised visibility value: "${valB}" - falling back to restricted`);
+    logger.warn({ value: valB }, "[storage] Unrecognised visibility value in maxVisibilityRaw — falling back to restricted");
     return valA;
   }
   return VISIBILITY_RANK[valA] >= VISIBILITY_RANK[valB] ? valA : valB;

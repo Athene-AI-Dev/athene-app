@@ -1,8 +1,15 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { invalidateRBACCache, resolveUserAccess } from "@/lib/auth/rbac";
+
+// Internal role → Clerk org role (inverse of mapRole in lib/auth/clerk.ts)
+const INTERNAL_TO_CLERK_ROLE: Record<string, string> = {
+  admin: "org:admin",
+  member: "org:member",
+  super_user: "org:bi_analyst",
+};
 
 
 /**
@@ -91,18 +98,38 @@ export async function PATCH(
 
     if (updateError) throw updateError;
 
-    // 7. Invalidate RBAC Cache
+    // 7. Sync role change to Clerk (Clerk is auth source-of-truth — must stay in sync)
+    if (newRole !== undefined && newRole !== currentMember.role && updatedMember.clerk_user_id) {
+      const clerkRole = INTERNAL_TO_CLERK_ROLE[newRole];
+      if (clerkRole) {
+        try {
+          const client = await clerkClient();
+          await client.organizations.updateOrganizationMembership({
+            organizationId: orgId,
+            userId: updatedMember.clerk_user_id,
+            role: clerkRole,
+          });
+        } catch (clerkErr: any) {
+          logger.error(
+            { err: clerkErr.message, targetClerkUserId: updatedMember.clerk_user_id, orgId, newRole },
+            "[admin-users] Clerk role sync failed — DB updated but Clerk role may diverge"
+          );
+        }
+      }
+    }
+
+    // 8. Invalidate RBAC Cache
     if (updatedMember.clerk_user_id) {
       await invalidateRBACCache(updatedMember.clerk_user_id, orgId);
     }
 
-    // 8. Determine action name for audit log
+    // 9. Determine action name for audit log
     let action = "update_user";
     if (newRole !== undefined && newRole !== currentMember.role) action = "change_role";
     if (active === false && currentMember.active === true) action = "deactivate_user";
     if (active === true && currentMember.active === false) action = "reactivate_user";
 
-    // 9. Audit Log (Security-sensitive actions should always be logged)
+    // 10. Audit Log (Security-sensitive actions should always be logged)
     await supabaseAdmin.from("admin_actions").insert({
       org_id: orgData.id,
       admin_user_id: adminMember?.id || null, // Fallback to null if adminMember missing (e.g. system action)

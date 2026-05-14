@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { extractEntitiesAndRelations } from './extractor'
-import { upsertNodes, upsertEdges, deleteByDocument } from './storage'
+import { upsertGraph, deleteByDocument } from './storage'
 import { detectCommunities } from './community'
 import type { RLSContext } from '@/lib/supabase/rls-client'
 import { logger } from '@/lib/logger'
@@ -197,9 +197,26 @@ async function processDocument(
 
   // BUG-12 FIX: Only update global counters after full success
   if (nodes.length > 0 || edges.length > 0) {
-    // 7. Upsert nodes and edges into the graph
-    const nodeIdMap = await upsertNodes(ctx, nodes)
-    await upsertEdges(ctx, edges, nodeIdMap)
+    // 7. Upsert nodes then edges in one session.
+    // upsertGraph shares a single withRLS connection for both writes.
+    // If edges fail after nodes succeed we run a compensating deleteByDocument
+    // so the next extraction run starts from a clean slate for this document.
+    try {
+      await upsertGraph(ctx, nodes, edges)
+    } catch (upsertErr: any) {
+      logger.error(
+        { err: upsertErr.message, docId, orgId },
+        "[builder] upsertGraph failed — compensating rollback via deleteByDocument"
+      )
+      // Best-effort cleanup: remove any orphaned nodes written before the failure
+      await deleteByDocument(ctx, docId).catch((rollbackErr: any) =>
+        logger.error(
+          { err: rollbackErr.message, docId, orgId },
+          "[builder] compensating rollback also failed — graph may have orphaned nodes; will self-heal on next extraction"
+        )
+      )
+      throw upsertErr
+    }
 
     result.totalNodes += nodes.length
     result.totalEdges += edges.length

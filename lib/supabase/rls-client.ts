@@ -15,6 +15,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "./server";
+import { logger } from "@/lib/logger";
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -59,13 +60,13 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
 
   // Reject Clerk org IDs (format: "org_2abc…") — org_id must be an internal UUID FK
   if (!UUID_RE.test(org_id)) {
-    console.error("[rls-client] x-current-org-id is not a valid UUID — middleware may be passing a Clerk org ID instead of the internal UUID. org_id:", org_id.slice(0, 20));
+    logger.error({ org_id_prefix: org_id.slice(0, 20) }, "[rls-client] x-current-org-id is not a valid UUID — middleware may be passing a Clerk org ID instead of the internal UUID");
     return null;
   }
 
   const VALID_ROLES = ["member", "super_user", "admin"] as const;
   if (!VALID_ROLES.includes(user_role as typeof VALID_ROLES[number])) {
-    console.warn("[rls-client] Unexpected x-current-user-role header value:", user_role);
+    logger.warn({ user_role }, "[rls-client] Unexpected x-current-user-role header value");
     return null;
   }
 
@@ -144,7 +145,7 @@ export async function withRLS<T>(
         .eq("org_id", context.org_id);
 
       if (error) {
-        console.error("Failed to fetch super_user grants:", error.message);
+        logger.error({ org_id: context.org_id, user_id: context.user_id, err: error.message }, "[rls-client] Failed to fetch super_user grants");
       }
       if (data) {
         grants = data as Grant[];
@@ -164,7 +165,7 @@ export async function withRLS<T>(
   });
 
   if (ctxError) {
-    console.error("set_app_context RPC failed:", ctxError.message);
+    logger.error({ org_id: context.org_id, user_id: context.user_id, err: ctxError.message }, "[rls-client] set_app_context RPC failed — falling back to PostgREST headers only");
     // Headers are still set, so PostgREST path may still work.
     // Don't throw — let the query attempt proceed.
   }
@@ -176,7 +177,7 @@ export async function withRLS<T>(
     });
 
     if (grantsError) {
-      console.error("set_session_grants RPC failed:", grantsError.message);
+      logger.error({ org_id: context.org_id, user_id: context.user_id, err: grantsError.message }, "[rls-client] set_session_grants RPC failed — super_user grant isolation may not apply");
     }
   }
 

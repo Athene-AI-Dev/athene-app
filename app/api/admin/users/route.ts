@@ -148,7 +148,8 @@ export async function POST(request: Request) {
         org_id: orgData.id,
         email: email,
         role: targetRole,
-        display_name: email.split("@")[0], // Standardize on 'display_name' per blueprint
+        department_id: departmentId,
+        display_name: email.split("@")[0],
       })
       .select()
       .limit(1)

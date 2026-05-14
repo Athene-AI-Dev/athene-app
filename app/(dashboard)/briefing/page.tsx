@@ -47,6 +47,7 @@ export default function BriefingPage() {
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [history, setHistory] = useState<Briefing[]>([]);
   const [enqueuing, setEnqueuing] = useState(false);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -132,6 +133,7 @@ export default function BriefingPage() {
   // Generate / trigger synthesis — check res.ok BEFORE res.json(), then poll for result
   const handleGenerateNow = useCallback(async () => {
     setEnqueuing(true);
+    setPollingTimedOut(false);
     try {
       const res = await fetch('/api/briefing', { method: 'POST' });
       if (!res.ok) {
@@ -160,7 +162,8 @@ export default function BriefingPage() {
         } else if (attempts >= MAX_ATTEMPTS) {
           if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
           setEnqueuing(false);
-          toast.info('Synthesis is taking longer than expected. Try refreshing manually.');
+          setPollingTimedOut(true);
+          toast.info('Synthesis is taking longer than expected. Try again below.');
         }
       }, 5_000);
 
@@ -357,6 +360,11 @@ export default function BriefingPage() {
               : <><Sparkles className="w-6 h-6 group-hover:animate-pulse" /> Trigger Neural Synthesis</>
             }
           </Button>
+          {pollingTimedOut && !enqueuing && (
+            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest relative z-10 opacity-70">
+              Synthesis timed out after 90s — click above to try again
+            </p>
+          )}
         </Card>
       ) : (
         <div className="grid gap-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">

@@ -173,8 +173,8 @@ export default function FilesPage() {
       }
     }
 
-    toast.error(`Purged asset: ${file?.name ?? fileId}`, {
-      description: "Data removed from Knowledge Graph indexing.",
+    toast.success(`File removed from Knowledge Graph`, {
+      description: file?.name ?? fileId,
     });
   };
 

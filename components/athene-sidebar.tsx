@@ -156,14 +156,8 @@ function AppSidebar({ role, className }: { role: UserRole; className?: string })
       </SidebarContent>
 
       <SidebarFooter className="p-6 bg-transparent border-t border-border/50">
-        <button
-          onClick={() => {
-            import("sonner").then(({ toast }) => {
-              toast.success("Agent Deployment Initiated", {
-                description: "Synthesizing neural grid for production deployment.",
-              });
-            });
-          }}
+        <Link
+          href="/builder"
           className="relative w-full h-14 bg-primary text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-accent hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-3 overflow-visible shadow-lg shadow-primary/25">
           <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full border-2 border-card bg-white flex items-center justify-center shadow-lg group-data-[collapsible=icon]:hidden">
              <img src="/logo.png" alt="A" className="w-7 h-7 object-contain" />
@@ -172,7 +166,7 @@ function AppSidebar({ role, className }: { role: UserRole; className?: string })
           <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center">
              <img src="/logo.png" alt="A" className="w-6 h-6 object-contain invert" />
           </div>
-        </button>
+        </Link>
       </SidebarFooter>
     </Sidebar>
   );

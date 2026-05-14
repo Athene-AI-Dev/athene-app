@@ -211,17 +211,34 @@ export default function BuilderPage() {
              <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] mt-1 opacity-60">Intelligence Pipeline Editor</p>
           </div>
           <div className="h-12 w-px bg-border hidden md:block" />
+          <TooltipProvider>
           <div className="hidden md:flex items-center gap-4">
-             <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                <MousePointer2 className="w-6 h-6" />
-             </Button>
-             <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                <Layers className="w-6 h-6" />
-             </Button>
-             <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                <Settings2 className="w-6 h-6" />
-             </Button>
+             <Tooltip>
+               <TooltipTrigger asChild>
+                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
+                    <MousePointer2 className="w-6 h-6" />
+                 </Button>
+               </TooltipTrigger>
+               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Select tool — coming soon</TooltipContent>
+             </Tooltip>
+             <Tooltip>
+               <TooltipTrigger asChild>
+                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
+                    <Layers className="w-6 h-6" />
+                 </Button>
+               </TooltipTrigger>
+               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Layers panel — coming soon</TooltipContent>
+             </Tooltip>
+             <Tooltip>
+               <TooltipTrigger asChild>
+                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
+                    <Settings2 className="w-6 h-6" />
+                 </Button>
+               </TooltipTrigger>
+               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Node settings — coming soon</TooltipContent>
+             </Tooltip>
           </div>
+          </TooltipProvider>
         </div>
 
         <div className="flex items-center gap-5 pr-4">

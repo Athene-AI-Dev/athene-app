@@ -144,11 +144,11 @@ export function LandingPage() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link href="/sign-in" className="hidden sm:block text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors duration-200">
+          <Link href="https://athene-app.vercel.app/sign-in" className="hidden sm:block text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors duration-200">
             Sign In
           </Link>
           <Link
-            href="/sign-up"
+            href="https://athene-app.vercel.app/sign-up"
             className="h-11 px-7 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-[0.2em] hover:opacity-90 transition-all active:scale-95 flex items-center shadow-lg shadow-primary/20"
           >
             Get Started
@@ -177,14 +177,14 @@ export function LandingPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-4">
             <Link
-              href="/sign-up"
+              href="https://athene-app.vercel.app/sign-up"
               className="relative group h-16 px-12 rounded-[2rem] bg-primary text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/25 hover:opacity-90"
             >
               <span className="text-white">Start for free</span>
               <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              href="/sign-in"
+              href="https://athene-app.vercel.app/sign-in"
               className="h-16 px-12 rounded-[2rem] border border-border bg-muted/30 text-muted-foreground text-[11px] font-black uppercase tracking-widest flex items-center gap-4 hover:border-primary/40 hover:text-foreground hover:bg-muted/60 transition-all active:scale-95"
             >
               View demo
@@ -408,14 +408,14 @@ export function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
             <Link
-              href="/sign-up"
+              href="https://athene-app.vercel.app/sign-up"
               className="group h-16 px-12 rounded-[2rem] bg-primary text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/30 hover:opacity-90"
             >
               <span className="text-white">Get started free</span>
               <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
-              href="/sign-in"
+              href="https://athene-app.vercel.app/sign-in"
               className="h-16 px-12 rounded-[2rem] border border-border bg-muted/30 text-muted-foreground text-[11px] font-black uppercase tracking-widest flex items-center gap-4 hover:border-primary/40 hover:text-foreground hover:bg-muted/60 transition-all active:scale-95"
             >
               Sign in

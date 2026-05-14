@@ -15,6 +15,7 @@
 
 import OpenAI from "openai"
 import { supabaseAdmin } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
 
 // ---- Dimension constant -------------------------------------------------
 
@@ -71,14 +72,21 @@ type DecryptedKeyRow = { provider: string; plaintext: string }
 
 async function fetchByokEmbeddingConfig(orgId: string): Promise<EmbeddingConfig | null> {
   const kmsKey = process.env.KMS_KEY
-  if (!kmsKey || !orgId) return null
+  if (!orgId) return null
+  if (!kmsKey) {
+    logger.error({ orgId }, "[EmbeddingFactory] KMS_KEY is not set — cannot decrypt BYOK embedding key; falling back to system provider. Set KMS_KEY in environment.")
+    return null
+  }
 
   const { data, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
     p_org_id: orgId,
     p_kms_key: kmsKey,
   })
 
-  if (error) return null
+  if (error) {
+    logger.warn({ orgId, err: error.message }, "[EmbeddingFactory] get_decrypted_llm_key RPC failed — falling back to system embedding provider")
+    return null
+  }
 
   const rows = (data ?? []) as DecryptedKeyRow[]
 
@@ -236,9 +244,9 @@ async function embedTexts(
       return await callProviderWithRetry(texts, config)
     } catch (err) {
       lastErr = err
-      console.warn(
-        `[EmbeddingFactory] Provider '${config.provider}' failed (${err instanceof Error ? err.message : String(err)}), ` +
-        `trying next in fallback chain…`
+      logger.warn(
+        { provider: config.provider, err: err instanceof Error ? err.message : String(err) },
+        "[EmbeddingFactory] Provider failed — trying next in fallback chain"
       )
     }
   }
@@ -250,18 +258,13 @@ async function embedTexts(
 
 // ---- Startup assertion --------------------------------------------------
 
-let _dimLogged = false
 function assertDims(vec: number[]): void {
-  if (!_dimLogged) {
-    _dimLogged = true
-    console.log(`[EmbeddingFactory] dims=${vec.length} configured=${EMBEDDING_DIMS}`)
-    if (vec.length !== EMBEDDING_DIMS) {
-      console.error(
-        `[EmbeddingFactory] DIMENSION MISMATCH: provider returned ${vec.length}-dim vectors ` +
-        `but DB column is vector(${EMBEDDING_DIMS}). ` +
-        `Indexing jobs will fail. Check EMBEDDING_DIMS env and migration state.`
-      )
-    }
+  if (vec.length !== EMBEDDING_DIMS) {
+    throw new Error(
+      `[EmbeddingFactory] Embedding dimension mismatch: provider returned ${vec.length}-dim vectors ` +
+      `but DB schema expects vector(${EMBEDDING_DIMS}). ` +
+      `Check EMBEDDING_DIMS env var and that the configured provider matches the migration.`
+    )
   }
 }
 

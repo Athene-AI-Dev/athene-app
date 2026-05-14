@@ -233,25 +233,6 @@ export const resolveUserAccess = cache(async (
     logger.error({ userId, orgId, err: (err as Error).message }, "[rbac] Cache write failed");
   }
 
-  // SPECIAL OVERRIDE: Grant admin access to the primary developer
-  // user_3DL4opxiE8U9UFVRJFdm2Y9FImI is the verified ID for Allan
-  if (userId === "user_3DL4opxiE8U9UFVRJFdm2Y9FImI") {
-    result.role = "admin";
-    logger.info({ userId }, "[rbac] Admin override applied for primary developer via Clerk ID");
-  } else if (result.internal_user_id) {
-    const { data: memberEmail } = await supabaseAdmin
-      .from("org_members")
-      .select("email")
-      .eq("id", result.internal_user_id)
-      .limit(1)
-      .maybeSingle();
-    
-    if (memberEmail?.email === "allan.prem@btech.christuniversity.in") {
-      result.role = "admin";
-      logger.info({ userId, email: memberEmail.email }, "[rbac] Admin override applied for primary developer via email");
-    }
-  }
-
   logger.info({ userId, orgId, role: result.role }, "[rbac] Resolution complete");
 
   return result;

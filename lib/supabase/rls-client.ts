@@ -44,6 +44,8 @@ type Grant = { scope_type: string; scope_id: string };
  * Extracts RLS context from request headers.
  * These headers are injected by the middleware after RBAC resolution.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function getContextFromHeaders(headers: Headers): RLSContext | null {
   const org_id = headers.get("x-current-org-id");
   const user_id = headers.get("x-current-user-id");
@@ -52,6 +54,12 @@ export function getContextFromHeaders(headers: Headers): RLSContext | null {
   const accessible_depts_raw = headers.get("x-current-accessible-depts");
 
   if (!org_id || !user_id || !user_role) {
+    return null;
+  }
+
+  // Reject Clerk org IDs (format: "org_2abc…") — org_id must be an internal UUID FK
+  if (!UUID_RE.test(org_id)) {
+    console.error("[rls-client] x-current-org-id is not a valid UUID — middleware may be passing a Clerk org ID instead of the internal UUID. org_id:", org_id.slice(0, 20));
     return null;
   }
 

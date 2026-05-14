@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { deleteConnection } from "@/lib/nango/client";
 import { mapRole } from "@/lib/auth/clerk";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { invalidatePromptCache } from "@/lib/knowledge-graph/modules/resolver";
 
 /**
  * 🔒 SECURE DELETE ENDPOINT (Final Clean Version)
@@ -34,9 +36,19 @@ export async function DELETE(request: Request) {
     );
   }
 
+  // Resolve internal org UUID for cache invalidation (orgId here is Clerk's ID)
+  const { data: orgData } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("clerk_org_id", orgId)
+    .maybeSingle();
+
   try {
     // ⚡ Hardened deletion with strict OrgId ownership check
     await deleteConnection(connectionId, providerConfigKey, orgId);
+
+    // Invalidate KG extraction prompt cache so removed module no longer contributes
+    if (orgData?.id) void invalidatePromptCache(orgData.id);
 
     return NextResponse.json({
       success: true,

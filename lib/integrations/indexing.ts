@@ -177,6 +177,8 @@ export async function indexDocument(
     embedding: embeddings[index],
     // SHA-256 hash — used to skip re-embedding unchanged chunks
     content_hash: createHash('sha256').update(text).digest('hex'),
+    // Searchable preview — fallback when metadata.chunk_text is unavailable
+    content_preview: text.slice(0, 200),
     // Zero-copy: store chunk text here so LLM retrieval never re-hits the source
     metadata: { ...chunk.metadata, chunk_text: text },
   }))
@@ -256,6 +258,8 @@ export async function indexDocuments(
       visibility,
       chunk_index: index,
       content_hash: createHash('sha256').update(text).digest('hex'),
+      // Searchable preview — fallback when metadata.chunk_text is unavailable
+      content_preview: text.slice(0, 200),
       // Zero-copy: chunk text stored here for LLM context — source never re-fetched at query time
       metadata: { ...item.chunk.metadata, chunk_text: text },
     }))
@@ -269,11 +273,11 @@ export async function indexDocuments(
       const batchEmbeddings = await generateEmbeddings(batchTexts, orgId)
       allEmbeddings.push(...batchEmbeddings)
     } catch (err) {
-      console.error(
-        `[indexing] Embedding batch ${i}–${i + batchTexts.length} failed:`,
-        err instanceof Error ? err.message : String(err)
+      logger.error(
+        { batchStart: i, batchEnd: i + batchTexts.length, err: err instanceof Error ? err.message : String(err) },
+        '[indexing] Embedding batch failed'
       )
-      // Fill with null placeholders so index alignment is preserved
+      // Fill with empty placeholders so index alignment is preserved; filtered out before upsert
       allEmbeddings.push(...batchTexts.map(() => []))
       errors += batchTexts.length
     }
@@ -290,7 +294,7 @@ export async function indexDocuments(
       .upsert(records, { onConflict: 'document_id,chunk_index' })
 
     if (error) {
-      console.error('[indexing] Bulk upsert error:', error.message)
+      logger.error({ err: error.message }, '[indexing] Bulk upsert error')
       errors += records.length
       return { indexed: 0, errors, documentIds: [] }
     }

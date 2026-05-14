@@ -58,15 +58,6 @@ function Reveal({
   )
 }
 
-// ─── Gradient text helper ────────────────────────────────────────────────────
-
-const GOLD_GRAD = {
-  background: "linear-gradient(135deg, #D97033 0%, #F0B429 55%, #E07840 100%)",
-  WebkitBackgroundClip: "text" as const,
-  WebkitTextFillColor: "transparent" as const,
-  backgroundClip: "text" as const,
-}
-
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const FEATURES = [
@@ -158,8 +149,7 @@ export function LandingPage() {
           </Link>
           <Link
             href="/sign-up"
-            className="h-11 px-7 rounded-2xl text-white text-[11px] font-black uppercase tracking-[0.2em] hover:opacity-90 transition-all active:scale-95 flex items-center shadow-lg shadow-primary/20"
-            style={{ background: "linear-gradient(135deg, #D97033, #E07840)" }}
+            className="h-11 px-7 rounded-2xl bg-primary text-white text-[11px] font-black uppercase tracking-[0.2em] hover:opacity-90 transition-all active:scale-95 flex items-center shadow-lg shadow-primary/20"
           >
             Get Started
           </Link>
@@ -178,7 +168,7 @@ export function LandingPage() {
           <h1 className="text-[3.8rem] sm:text-7xl md:text-8xl lg:text-[7.5rem] font-black tracking-tighter leading-[0.87] uppercase">
             Your organization&apos;s<br />
             intelligence,{" "}
-            <span style={GOLD_GRAD}>unified.</span>
+            <span className="text-primary">unified.</span>
           </h1>
 
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed font-semibold tracking-tight">
@@ -188,12 +178,10 @@ export function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-4">
             <Link
               href="/sign-up"
-              className="relative group h-16 px-12 rounded-[2rem] text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/25 overflow-hidden"
-              style={{ background: "linear-gradient(135deg, #D97033, #E07840, #F0B429)" }}
+              className="relative group h-16 px-12 rounded-[2rem] bg-primary text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/25 hover:opacity-90"
             >
-              <span className="relative z-10 text-white">Start for free</span>
-              <ArrowRight className="relative z-10 w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
-              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="text-white">Start for free</span>
+              <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
               href="/sign-in"
@@ -205,8 +193,7 @@ export function LandingPage() {
 
           {/* App preview */}
           <div className="mt-16 relative mx-auto max-w-4xl">
-            <div className="absolute -inset-4 rounded-[2.5rem] blur-3xl opacity-10 dark:opacity-15"
-              style={{ background: "linear-gradient(135deg, #D97033, #F0B429)" }} />
+            <div className="absolute -inset-4 rounded-[2.5rem] blur-3xl opacity-10 dark:opacity-15 bg-primary" />
             <div className="relative rounded-3xl border border-border bg-card overflow-hidden shadow-2xl dark:shadow-black/60">
               {/* Browser chrome */}
               <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-muted/30">
@@ -225,8 +212,7 @@ export function LandingPage() {
               <div className="p-8 space-y-6 min-h-[280px]">
                 <div className="flex justify-end">
                   <div
-                    className="max-w-sm px-6 py-4 rounded-2xl text-[13px] font-semibold text-white leading-relaxed"
-                    style={{ background: "linear-gradient(135deg, #D97033, #F0B429)" }}
+                    className="max-w-sm px-6 py-4 rounded-2xl bg-primary text-[13px] font-semibold text-white leading-relaxed"
                   >
                     What&apos;s our Q1 renewal risk from enterprise customers?
                   </div>
@@ -261,7 +247,7 @@ export function LandingPage() {
         <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
           {STATS.map((stat, i) => (
             <Reveal key={stat.label} delay={i * 80} className="text-center">
-              <div className="text-4xl font-black tracking-tighter" style={GOLD_GRAD}>
+              <div className="text-4xl font-black tracking-tighter text-primary">
                 {stat.value}
               </div>
               <div className="text-[10px] font-black uppercase tracking-[0.38em] text-muted-foreground mt-2">
@@ -283,7 +269,7 @@ export function LandingPage() {
             </div>
             <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase">
               Built for how<br />
-              <span style={GOLD_GRAD}>teams actually work</span>
+              <span className="text-primary">teams actually work</span>
             </h2>
             <p className="text-muted-foreground text-lg font-semibold max-w-xl mx-auto leading-relaxed">
               Six tightly integrated capabilities that turn fragmented data into organizational intelligence.
@@ -328,7 +314,7 @@ export function LandingPage() {
             </div>
             <h2 className="text-5xl md:text-7xl font-black tracking-tighter uppercase">
               Up and running<br />
-              <span style={GOLD_GRAD}>in minutes</span>
+              <span className="text-primary">in minutes</span>
             </h2>
           </Reveal>
 
@@ -343,8 +329,7 @@ export function LandingPage() {
                       <step.icon className="w-10 h-10 text-primary" />
                     </div>
                     <div
-                      className="absolute -top-3 -right-3 w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-primary/20"
-                      style={{ background: "linear-gradient(135deg, #D97033, #F0B429)" }}
+                      className="absolute -top-3 -right-3 w-8 h-8 rounded-xl bg-primary flex items-center justify-center text-[10px] font-black text-white shadow-lg shadow-primary/20"
                     >
                       {step.step}
                     </div>
@@ -366,7 +351,7 @@ export function LandingPage() {
           <Reveal className="text-center space-y-5">
             <h2 className="text-5xl md:text-6xl font-black tracking-tighter uppercase">
               Works with everything<br />
-              <span style={GOLD_GRAD}>your team uses</span>
+              <span className="text-primary">your team uses</span>
             </h2>
             <p className="text-muted-foreground font-semibold">60+ integrations. OAuth-powered. Continuously synced.</p>
           </Reveal>
@@ -416,7 +401,7 @@ export function LandingPage() {
         <Reveal className="relative max-w-3xl mx-auto text-center space-y-10">
           <h2 className="text-6xl md:text-8xl font-black tracking-tighter uppercase leading-[0.87]">
             Ready to unify<br />
-            <span style={GOLD_GRAD}>your intelligence?</span>
+            <span className="text-primary">your intelligence?</span>
           </h2>
           <p className="text-muted-foreground text-lg font-semibold leading-relaxed">
             Join hundreds of organizations that have replaced scattered knowledge with a single reasoning layer.
@@ -424,12 +409,10 @@ export function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
             <Link
               href="/sign-up"
-              className="group h-16 px-12 rounded-[2rem] text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/30 overflow-hidden relative"
-              style={{ background: "linear-gradient(135deg, #D97033, #E07840, #F0B429)" }}
+              className="group h-16 px-12 rounded-[2rem] bg-primary text-[11px] font-black uppercase tracking-widest flex items-center gap-4 transition-all active:scale-95 shadow-2xl shadow-primary/30 hover:opacity-90"
             >
-              <span className="relative z-10 text-white">Get started free</span>
-              <ArrowRight className="relative z-10 w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
-              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="text-white">Get started free</span>
+              <ArrowRight className="w-5 h-5 text-white group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
               href="/sign-in"

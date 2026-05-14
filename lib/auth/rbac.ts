@@ -70,20 +70,30 @@ export const resolveUserAccess = cache(async (
       .maybeSingle();
 
     if (orgData) {
-      // 1. Fetch Member Basic Data (Resilient to missing 'active' column)
+      // 1. Fetch Member Basic Data
       const { data: memberData, error: memberError } = await supabaseAdmin
         .from("org_members")
-        .select("id, role") // Intentionally omitted 'active' and 'department_id' as they are missing in some envs
+        .select("id, role, active, department_id")
         .eq("clerk_user_id", userId)
         .eq("org_id", orgData.id)
         .limit(1)
         .maybeSingle();
 
       if (memberError) {
-        console.warn(`RBAC Member query failed: ${memberError.message}`);
+        logger.warn({ userId, orgId, err: memberError.message }, "[rbac] Member query failed");
       }
 
-      if (memberData) {
+      // Deactivated members are explicitly denied — do not fall through to auto-provision
+      if (memberData && memberData.active === false) {
+        result = {
+          internal_user_id: null,
+          internal_org_id: orgData.id,
+          role: null,
+          dept_id: null,
+          accessible_dept_ids: null,
+          bi_grant_id: null,
+        };
+      } else if (memberData) {
         // 2. Fetch Grants Separately (Resilient to missing relationships)
         const { data: grantData, error: grantError } = await supabaseAdmin
           .from("access_grants")
@@ -92,7 +102,7 @@ export const resolveUserAccess = cache(async (
           .eq("org_id", orgData.id);
 
         if (grantError) {
-          console.warn(`RBAC Grants query failed: ${grantError.message}`);
+          logger.warn({ userId, orgId, err: grantError.message }, "[rbac] Grants query failed");
         }
 
         const grants = Array.isArray(grantData) ? grantData : [];
@@ -110,7 +120,7 @@ export const resolveUserAccess = cache(async (
           internal_user_id: memberData.id,
           internal_org_id: orgData.id,
           role: memberData.role,
-          dept_id: null,
+          dept_id: memberData.department_id ?? null,
           accessible_dept_ids: accessible_dept_ids.length ? accessible_dept_ids : null,
           bi_grant_id: activeGrants[0]?.id ?? null,
         };
@@ -184,12 +194,13 @@ export const resolveUserAccess = cache(async (
           logger.warn({ userId, orgId, err: memErr.message }, "[rbac] Member insert failed, re-fetching");
           const { data: existing } = await supabaseAdmin
             .from("org_members")
-            .select("id, role")
+            .select("id, role, active")
             .eq("clerk_user_id", userId)
             .eq("org_id", orgData.id)
             .limit(1)
             .maybeSingle();
-          memberData = existing;
+          // If the member exists but is deactivated, deny access
+          memberData = existing && existing.active !== false ? existing : null;
         } else {
           memberData = newMember;
         }

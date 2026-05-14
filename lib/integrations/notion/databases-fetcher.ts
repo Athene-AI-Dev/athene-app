@@ -1,7 +1,11 @@
 import { notionFetch } from './client'
 import { FetchedChunk } from '../base'
+import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '../sync-config'
 
-export async function fetchAllDatabases(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
+export async function fetchAllDatabases(connectionId: string, orgId: string, syncConfig?: SyncConfig): Promise<FetchedChunk[]> {
+  const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
+  const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
+
   const chunks: FetchedChunk[] = []
   let hasMore = true
   let startCursor: string | undefined = undefined
@@ -18,6 +22,10 @@ export async function fetchAllDatabases(connectionId: string, orgId: string): Pr
 
     for (const db of searchResults.results) {
       if (db.object !== 'database') continue
+
+      // ── Selective sync: skip databases not in the user's selection ──
+      if (selectedIds && selectedIds.size > 0 && !selectedIds.has(db.id)) continue
+      if (excludedIds.has(db.id)) continue
 
       const title = getDatabaseTitle(db)
 

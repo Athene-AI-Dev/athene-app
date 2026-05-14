@@ -1,7 +1,11 @@
 import { notionFetch } from './client'
 import { FetchedChunk } from '../base'
+import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '../sync-config'
 
-export async function fetchAllPages(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
+export async function fetchAllPages(connectionId: string, orgId: string, syncConfig?: SyncConfig): Promise<FetchedChunk[]> {
+  const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
+  const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
+
   const chunks: FetchedChunk[] = []
   let hasMore = true
   let startCursor: string | undefined = undefined
@@ -18,6 +22,10 @@ export async function fetchAllPages(connectionId: string, orgId: string): Promis
 
     for (const page of searchResults.results) {
       if (page.object !== 'page') continue
+
+      // ── Selective sync: skip pages not in the user's selection ──
+      if (selectedIds && selectedIds.size > 0 && !selectedIds.has(page.id)) continue
+      if (excludedIds.has(page.id)) continue
 
       const title = getPageTitle(page)
       const content = await fetchPageContent(connectionId, orgId, page.id)

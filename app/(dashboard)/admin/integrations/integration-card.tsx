@@ -40,7 +40,7 @@ interface IntegrationCardProps {
   description: string;
   onDisconnect: (integration: Integration) => void;
   onIndex: (integration: Integration) => Promise<void>;
-  onConfigure?: (integration: Integration) => void;
+  onConfigureSync: (integration: Integration) => void;
 }
 
 const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
@@ -58,7 +58,7 @@ export function IntegrationCard({
   description,
   onDisconnect,
   onIndex,
-  onConfigure,
+  onConfigureSync,
 }: IntegrationCardProps) {
   const [indexing, setIndexing] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -176,23 +176,21 @@ export function IntegrationCard({
             {isError ? "Retry Sync" : "Force Sync"}
           </Button>
 
-          {CONFIGURABLE.has(integration.provider) && onConfigure && (
-            <Button
-              onClick={() => onConfigure(integration)}
-              variant="ghost"
-              className={cn(
-                "h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all gap-2",
-                needsConfig
-                  ? "text-amber-400 hover:bg-amber-400/10"
-                  : "text-foreground hover:bg-[#D96FAB]/10 hover:text-[#D96FAB]"
-              )}
-            >
-              <Settings2 className="w-3 h-3" />
-              {needsConfig ? "Configure" : "Reconfigure"}
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            onClick={() => onConfigureSync(integration)}
+            className={cn(
+              "h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all gap-2",
+              needsConfig
+                ? "text-amber-400 hover:bg-amber-400/10"
+                : "text-foreground hover:bg-[#D96FAB]/10 hover:text-[#D96FAB]"
+            )}
+          >
+            <Settings2 className="w-3 h-3" />
+            {needsConfig ? "Configure" : "Reconfigure"}
+          </Button>
         </div>
-
+        
         <Button
           variant="ghost"
           size="icon"

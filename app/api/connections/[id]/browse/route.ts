@@ -2,26 +2,23 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { listDriveFiles, searchDrive } from "@/lib/integrations/google/drive-fetcher";
-import { listSnowflakeTables } from "@/lib/integrations/snowflake/schema-fetcher";
-import { listBigQueryTables } from "@/lib/integrations/bigquery/client";
-import { listRedshiftTables } from "@/lib/integrations/redshift/client";
-import { logger } from "@/lib/logger";
+import { getProviderBrowser, isBrowsable } from "@/lib/integrations/browsing";
+import type { ProviderKey } from "@/lib/integrations/providers";
 
 interface Params { params: Promise<{ id: string }> }
 
 /**
  * GET /api/connections/[id]/browse
  *
- * Lists files from Google Drive or tables from Snowflake for the given connection.
- * The [id] param is the Supabase connections.id UUID.
+ * Lists browsable resources for a connection so the user can
+ * select which ones to sync.
  *
  * Query params:
- *   ?type=drive_files       - Google Drive listing (default for google_drive connections)
- *   ?folderId=xxx           - Scope Drive listing to a specific folder
- *   ?pageToken=xxx          - Drive pagination token
- *   ?search=xxx             - Drive full-text search (overrides folderId)
- *   ?type=snowflake_tables  - Snowflake table list (default for snowflake connections)
+ *   - parentId: ID of the parent resource to list children of (optional, null = root)
+ *   - pageToken: pagination token from a previous response (optional)
+ *   - limit: max number of results per page (optional, default 50)
+ *
+ * Admin-only. Connection ownership is verified via org_id.
  */
 export async function GET(request: Request, { params }: Params) {
   const { userId, orgId, orgRole } = await auth();
@@ -30,10 +27,9 @@ export async function GET(request: Request, { params }: Params) {
 
   const { id: connectionId } = await params;
   const url = new URL(request.url);
-  const browseType = url.searchParams.get("type");
-  const folderId = url.searchParams.get("folderId") ?? undefined;
+  const parentId = url.searchParams.get("parentId") ?? undefined;
   const pageToken = url.searchParams.get("pageToken") ?? undefined;
-  const search = url.searchParams.get("search") ?? undefined;
+  const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
 
   // Resolve Clerk orgId → internal UUID
   const { data: orgData, error: orgErr } = await supabaseAdmin
@@ -47,79 +43,53 @@ export async function GET(request: Request, { params }: Params) {
   }
   const internalOrgId = orgData.id as string;
 
-  // Verify connection belongs to this org
+  // Load the connection and verify org ownership
   const { data: conn, error: connErr } = await supabaseAdmin
     .from("connections")
-    .select("id, provider, nango_connection_id, metadata")
+    .select("id, org_id, provider, nango_connection_id")
     .eq("id", connectionId)
     .eq("org_id", internalOrgId)
-    .maybeSingle();
+    .single();
 
   if (connErr || !conn) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
 
-  const provider = conn.provider as string;
-  const nangoConnectionId = conn.nango_connection_id as string;
+  const provider = conn.provider as ProviderKey;
 
-  // ── Google Drive ──────────────────────────────────────────
-  if (browseType === "drive_files" || (!browseType && provider === "google_drive")) {
-    try {
-      let result;
-      if (search) {
-        result = await searchDrive(nangoConnectionId, internalOrgId, search, pageToken);
-      } else {
-        result = await listDriveFiles(nangoConnectionId, internalOrgId, folderId, pageToken);
-      }
-      return NextResponse.json({ files: result.files, nextPageToken: result.nextPageToken ?? null });
-    } catch (err: any) {
-      logger.error({ connectionId, err: err.message }, "[browse] Drive listing failed");
-      return NextResponse.json({ error: err.message ?? "Drive listing failed" }, { status: 500 });
-    }
+  // Check if this provider supports browsing
+  if (!isBrowsable(provider)) {
+    return NextResponse.json({
+      browsable: false,
+      message: `${provider} does not support selective resource browsing. All resources will be synced.`,
+      resources: [],
+    });
   }
 
-  // ── Snowflake ─────────────────────────────────────────────
-  if (browseType === "snowflake_tables" || (!browseType && provider === "snowflake")) {
-    try {
-      const tables = await listSnowflakeTables(nangoConnectionId, internalOrgId);
-      return NextResponse.json({ tables });
-    } catch (err: any) {
-      logger.error({ connectionId, err: err.message }, "[browse] Snowflake table listing failed");
-      // Surface permission errors clearly rather than 500
-      return NextResponse.json(
-        { tables: [], error: err.message ?? "Snowflake table listing failed" },
-        { status: 200 }
-      );
-    }
+  const browser = getProviderBrowser(provider);
+  if (!browser) {
+    return NextResponse.json({ error: "Browser not available" }, { status: 500 });
   }
 
-  // ── BigQuery ──────────────────────────────────────────────
-  if (browseType === "bigquery_tables" || (!browseType && provider === "bigquery")) {
-    try {
-      const tables = await listBigQueryTables(nangoConnectionId, internalOrgId);
-      return NextResponse.json({ tables });
-    } catch (err: any) {
-      logger.error({ connectionId, err: err.message }, "[browse] BigQuery table listing failed");
-      return NextResponse.json(
-        { tables: [], error: err.message ?? "BigQuery table listing failed" },
-        { status: 200 }
-      );
-    }
-  }
+  try {
+    const result = await browser(
+      conn.nango_connection_id,
+      internalOrgId,
+      parentId,
+      { pageToken, limit }
+    );
 
-  // ── Redshift ──────────────────────────────────────────────
-  if (browseType === "redshift_tables" || (!browseType && provider === "redshift")) {
-    try {
-      const tables = await listRedshiftTables(nangoConnectionId, internalOrgId);
-      return NextResponse.json({ tables });
-    } catch (err: any) {
-      logger.error({ connectionId, err: err.message }, "[browse] Redshift table listing failed");
-      return NextResponse.json(
-        { tables: [], error: err.message ?? "Redshift table listing failed" },
-        { status: 200 }
-      );
-    }
+    return NextResponse.json({
+      browsable: true,
+      resources: result.resources,
+      nextPageToken: result.nextPageToken ?? null,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[browse] Error browsing ${provider}:`, message);
+    return NextResponse.json(
+      { error: `Failed to browse resources: ${message}` },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ error: "Unsupported browse type for this provider" }, { status: 400 });
 }

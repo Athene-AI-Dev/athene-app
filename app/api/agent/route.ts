@@ -3,7 +3,7 @@ import { cachedAuth } from "@/lib/auth/cached-clerk";
 import { HumanMessage } from "@langchain/core/messages";
 import { getAgentGraph } from "@/lib/langgraph/graph";
 import { mapRole } from "@/lib/auth/clerk";
-import { rateLimit, cached } from "@/lib/redis/client";
+import { rateLimit, cached, redis } from "@/lib/redis/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { withSSEFrameSpan } from "@/lib/telemetry/spans";
@@ -73,6 +73,12 @@ export async function POST(req: NextRequest) {
       orgRow = newOrg;
     }
 
+    // Org-level rate limit: 100 requests/min across all users in the org
+    const { allowed: orgAllowed } = await rateLimit(`agent:org:${orgRow!.id}`, 100, 60);
+    if (!orgAllowed) {
+      return NextResponse.json({ error: "Org rate limit exceeded — try again shortly" }, { status: 429 });
+    }
+
     let memberRow = await cached(
       `member:clerk:${userId}:${orgRow!.id}`,
       300,
@@ -132,13 +138,62 @@ export async function POST(req: NextRequest) {
 
     const graph = await getAgentGraph();
 
-    // ATH-43: Prevent concurrent messages if the thread is awaiting approval
-    const currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
-    if (currentState?.values?.awaiting_approval) {
+    // 2D: Redis lock — prevent two concurrent requests from both passing the
+    // awaiting_approval check and spawning parallel graph execution branches.
+    const lockKey = `thread_lock:${effectiveThreadId}`;
+    let lockAcquired = false;
+    try {
+      const lockResult = await redis.set(lockKey, "1", { nx: true, ex: 8 });
+      lockAcquired = lockResult !== null;
+    } catch {
+      // Redis down — fail-open (still process, just without the lock guarantee)
+      lockAcquired = true;
+    }
+    if (!lockAcquired) {
       return NextResponse.json(
-        { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
-        { status: 409 }
+        { error: "Previous message is still processing. Please wait a moment before sending another." },
+        { status: 429 }
       );
+    }
+
+    let currentState: Awaited<ReturnType<typeof graph.getState>> | undefined;
+    try {
+      currentState = await graph.getState({ configurable: { thread_id: effectiveThreadId } });
+    } catch {
+      // Checkpoint not found — first message on this thread, fine to proceed
+    }
+
+    // ATH-43 + 2C: Block concurrent messages if the thread is awaiting approval.
+    // Auto-expire approvals that have been pending for more than 24 hours so threads
+    // don't get permanently locked when a user closes their browser.
+    if (currentState?.values?.awaiting_approval) {
+      const pendingAction = currentState.values.pending_write_action as
+        | { requested_at?: string } | null | undefined;
+      const requestedAt = pendingAction?.requested_at
+        ? new Date(pendingAction.requested_at)
+        : null;
+      const isExpired = requestedAt
+        ? Date.now() - requestedAt.getTime() > 24 * 60 * 60 * 1000
+        : false;
+
+      if (isExpired) {
+        // Auto-reject the stale action and clear the lock state so the thread recovers
+        logger.warn({ threadId: effectiveThreadId }, "[agent] HITL approval expired after 24h — auto-rejecting stale action");
+        try {
+          await graph.updateState(
+            { configurable: { thread_id: effectiveThreadId } },
+            { awaiting_approval: false, pending_write_action: null }
+          );
+        } catch (stateErr) {
+          logger.error({ threadId: effectiveThreadId, err: stateErr }, "[agent] Failed to clear expired HITL state");
+        }
+      } else {
+        try { await redis.del(lockKey); } catch { /* best-effort */ }
+        return NextResponse.json(
+          { error: "A specific action is awaiting your approval. Please approve, edit, or reject it before sending more messages." },
+          { status: 409 }
+        );
+      }
     }
 
     const role = mapRole(orgRole ?? undefined) ?? "member";
@@ -165,6 +220,10 @@ export async function POST(req: NextRequest) {
     const firstTokenTime = Date.now();
 
     (async () => {
+      // Release the thread lock once the stream is initialised — the race-condition
+      // window is closed once graph.stream() has started and taken ownership of state.
+      try { await redis.del(lockKey); } catch { /* best-effort */ }
+
       try {
         const eventStream = await graph.stream(initialState, {
           configurable: {

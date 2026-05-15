@@ -437,7 +437,7 @@ export const PROVIDER_REGISTRY: Record<ProviderKey, ProviderConfig> = {
       canFetch: true,
       canSearch: true,
       canWrite: false,
-      requiresScopes: ['Dataset.Read.All', 'Report.Read.All', 'Dashboard.Read.All'],
+      requiresScopes: ['Dataset.Read.All', 'Report.Read.All', 'Dashboard.Read.All', 'Tenant.Read.All'],
     },
   },
 };

@@ -1,7 +1,7 @@
 import { googleFetch, googleFetchRaw } from './api-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import type { FetchedChunk } from '@/lib/integrations/base'
 import { assertSafeMetadata } from '@/lib/integrations/base'
-import { supabaseAdmin } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ const EXTRACTABLE_BINARY: Record<string, 'pdf' | 'docx'> = {
 // ─── Listing & Searching ─────────────────────────────────────────────────────
 
 /**
- * Lists files in a user's Google Drive.
+ * Lists files in a user's Google Drive, including Shared Drives.
  *
  * @param connectionId - Nango connection ID.
  * @param orgId - Organization ID for ownership verification.
@@ -70,6 +70,8 @@ export async function listDriveFiles(
     q,
     fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
     pageSize: String(pageSize),
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
   if (pageToken) params.set('pageToken', pageToken)
 
@@ -78,12 +80,18 @@ export async function listDriveFiles(
 }
 
 /**
- * Full-text search across a user's Google Drive.
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param query - The search string.
- * @param pageToken - Optional pagination token.
+ * Lists Shared Drives the user has access to.
+ */
+export async function listSharedDrives(
+  connectionId: string,
+  orgId: string
+): Promise<{ drives: Array<{ id: string; name: string }> }> {
+  const url = 'https://www.googleapis.com/drive/v3/drives'
+  return googleFetch<any>(connectionId, orgId, url)
+}
+
+/**
+ * Full-text search across a user's Google Drive, including Shared Drives.
  */
 export async function searchDrive(
   connectionId: string,
@@ -98,6 +106,8 @@ export async function searchDrive(
     q,
     fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
     pageSize: '20',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
   if (pageToken) params.set('pageToken', pageToken)
 
@@ -109,19 +119,6 @@ export async function searchDrive(
 
 /**
  * Fetches the text content of a Google Drive file.
- * Routes to the correct endpoint based on MIME type:
- * - Google Docs → exported as text/plain
- * - Google Sheets → exported as CSV
- * - Google Slides → exported as text/plain
- * - PDF → downloaded via alt=media, extracted with pdf-parse
- * - DOCX → downloaded via alt=media, extracted with mammoth
- * - Other text/* → downloaded via alt=media, decoded as UTF-8
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param fileId - The Drive file ID.
- * @param mimeType - The file's MIME type from the listing response.
- * @returns The extracted text content as a string.
  */
 export async function fetchDriveFileContent(
   connectionId: string,
@@ -152,7 +149,7 @@ export async function fetchDriveFileContent(
   }
 
   // Regular files (PDF, DOCX, TXT, etc.) → download raw bytes
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`
   const res = await googleFetchRaw(connectionId, orgId, url)
   const buffer = await res.arrayBuffer()
 
@@ -243,95 +240,104 @@ export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk
 }
 
 /**
- * Recursively fetches all files within a single Drive folder, up to maxDepth levels.
+ * Full indexing pipeline entry point for Drive.
+ * Respects selected folders and Shared Drives from sync_config.
+ *
+ * @param connectionId - Nango connection ID.
+ * @param orgId - Organization ID for ownership verification.
+ * @returns Array of FetchedChunks ready for indexDocument.
  */
-async function fetchFolderRecursive(
+export async function fetchDriveChunks(
   connectionId: string,
   orgId: string,
-  folderId: string,
+): Promise<FetchedChunk[]> {
+  const chunks: FetchedChunk[] = []
+
+  // 0. Load sync_config to check for selected folders/drives
+  const { data: conn } = await supabaseAdmin
+    .from('connections')
+    .select('sync_config')
+    .eq('nango_connection_id', connectionId)
+    .single()
+  
+  const syncConfig = conn?.sync_config as any
+  const selections = syncConfig?.selected_resources || []
+
+  // If no selections, default to root listing (standard behavior)
+  if (selections.length === 0) {
+    return fetchDriveRecursive(connectionId, orgId)
+  }
+
+  for (const selection of selections) {
+    const isSharedDrive = selection.type === 'shared_drive'
+    const resourceChunks = await fetchDriveRecursive(
+      connectionId, 
+      orgId, 
+      isSharedDrive ? undefined : selection.id, 
+      isSharedDrive ? selection.id : undefined,
+      selection.departmentId
+    )
+    chunks.push(...resourceChunks)
+  }
+
+  return chunks
+}
+
+/**
+ * Internal recursive fetcher for a specific folder or Shared Drive.
+ */
+async function fetchDriveRecursive(
+  connectionId: string,
+  orgId: string,
+  folderId?: string,
+  driveId?: string,
+  departmentId?: string,
   depth = 0,
-  maxDepth = 5,
+  maxDepth = 5
 ): Promise<FetchedChunk[]> {
   if (depth > maxDepth) return []
   const chunks: FetchedChunk[] = []
   let pageToken: string | undefined
 
   do {
-    const listing = await listDriveFiles(connectionId, orgId, folderId, pageToken)
+    const q = folderId
+      ? `'${folderId}' in parents and trashed=false`
+      : 'trashed=false'
+
+    const params = new URLSearchParams({
+      q,
+      fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
+      pageSize: '100',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    })
+    if (driveId) {
+      params.set('driveId', driveId)
+      params.set('corpora', 'drive')
+    }
+    if (pageToken) params.set('pageToken', pageToken)
+
+    const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
+    const listing = await googleFetch<DriveListResponse>(connectionId, orgId, url)
+
     for (const file of listing.files) {
       if (file.mimeType === GOOGLE_FOLDER_MIME) {
         // Recurse into sub-folder
-        const sub = await fetchFolderRecursive(connectionId, orgId, file.id, depth + 1, maxDepth)
+        const sub = await fetchDriveRecursive(connectionId, orgId, file.id, driveId, departmentId, depth + 1, maxDepth)
         chunks.push(...sub)
         continue
       }
-      try {
-        const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
-        if (content.startsWith('[Unsupported binary format:')) continue
-        chunks.push(driveFileToChunk(file, content))
-      } catch (err) {
-        logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
-      }
-    }
-    pageToken = listing.nextPageToken
-  } while (pageToken)
-
-  return chunks
-}
-
-/**
- * Full indexing pipeline entry point for Drive.
- *
- * If selectedFolderIds is provided, only files within those folders are fetched
- * (recursively, up to 5 levels deep). If omitted, reads selected_folder_ids from
- * connections.metadata in Supabase. Falls back to listing the entire Drive if no
- * selection is configured — preserving backward compatibility.
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param selectedFolderIds - Folders to sync. If undefined, self-loads from DB.
- */
-export async function fetchDriveChunks(
-  connectionId: string,
-  orgId: string,
-  selectedFolderIds?: string[],
-): Promise<FetchedChunk[]> {
-  // Self-load from Supabase if not passed explicitly
-  let folderIds = selectedFolderIds
-  if (folderIds === undefined) {
-    const { data: conn } = await supabaseAdmin
-      .from('connections')
-      .select('metadata')
-      .eq('nango_connection_id', connectionId)
-      .maybeSingle()
-    const stored = (conn?.metadata as any)?.selected_folder_ids as string[] | undefined
-    folderIds = stored?.length ? stored : undefined
-  }
-
-  // If specific folders are selected, fetch each recursively
-  if (folderIds?.length) {
-    const all: FetchedChunk[] = []
-    for (const folderId of folderIds) {
-      const folderChunks = await fetchFolderRecursive(connectionId, orgId, folderId)
-      all.push(...folderChunks)
-    }
-    return all
-  }
-
-  // Fallback: list entire Drive root (backward-compatible)
-  const chunks: FetchedChunk[] = []
-  let pageToken: string | undefined
-
-  do {
-    const listing = await listDriveFiles(connectionId, orgId, undefined, pageToken)
-
-    for (const file of listing.files) {
-      if (file.mimeType === GOOGLE_FOLDER_MIME) continue
 
       try {
         const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
         if (content.startsWith('[Unsupported binary format:')) continue
-        chunks.push(driveFileToChunk(file, content))
+
+        const chunk = driveFileToChunk(file, content)
+        if (departmentId) {
+          chunk.metadata.department_id = departmentId // ✅ Inject department tag
+        }
+        chunks.push(chunk)
+>>>>>>> e9793dd (feat: implement enterprise integration enhancements for Power BI and Google Drive)
       } catch (err) {
         logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
       }

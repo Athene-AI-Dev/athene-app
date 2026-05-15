@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ResourceBrowser } from "@/components/integrations/ResourceBrowser";
 import { VERTICAL_MODULES } from "@/lib/knowledge-graph/modules/registry";
 
 // Reverse map: Nango integration ID (e.g. "google-drive") → internal key (e.g. "google_drive")
@@ -31,7 +32,7 @@ const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
   Object.values(PROVIDER_REGISTRY).map((p) => [p.nangoIntegrationId, p.key])
 );
 
-const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
+const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift", "powerbi"]);
 
 function ConfirmDialog({
   open,
@@ -100,6 +101,7 @@ export default function IntegrationsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Integration | null>(null);
+
 
   // Queue of configurable providers connected during a single Nango session.
   // Processed in a useEffect after integrations refresh so we have the full Integration object.
@@ -313,6 +315,40 @@ export default function IntegrationsPage() {
         onConnect={handleConnect}
         connecting={connecting}
       />
+
+      {/* Resource Browser Dialog (Power BI & Google Drive) */}
+      {(configuring?.provider === "google_drive" || configuring?.provider === "powerbi") && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="bg-card border border-white/10 shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden rounded-[2.5rem] animate-in zoom-in-95 duration-300">
+             <div className="absolute top-6 right-6 z-10">
+                <Button variant="ghost" size="icon" onClick={() => setConfiguring(null)} className="rounded-full hover:bg-white/5">
+                   <X className="w-5 h-5 text-muted-foreground" />
+                </Button>
+             </div>
+             <ResourceBrowser 
+               connectionId={configuring.connectionId} 
+               provider={configuring.provider}
+               onSave={async (selections) => {
+                 const res = await fetch("/api/integrations/resources/save", {
+                   method: "POST",
+                   headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({
+                     connectionId: configuring.connectionId,
+                     selections
+                   })
+                 });
+                 if (res.ok) {
+                   setToast({ msg: "Configuration saved successfully.", type: "success" });
+                   setConfiguring(null);
+                   fetchIntegrations();
+                 } else {
+                   setToast({ msg: "Failed to save configuration.", type: "error" });
+                 }
+               }}
+             />
+          </div>
+        </div>
+      )}
 
       {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">

@@ -9,10 +9,10 @@ import { logger } from '@/lib/logger'
  */
 export async function GET() {
   try {
-    return await requireAdmin(async (supabase, { orgId, userId }) => {
+    return await requireAdmin(async (_supabase, { orgId, userId }) => {
       const context = await resolveInternalAdminContext(orgId, userId)
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('llm_keys')
         .select('id, provider, key_hint, label, is_active, last_used_at, updated_at')
         .eq('org_id', context.orgId)
@@ -50,8 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'provider and key are required' }, { status: 400 })
     }
 
-    return await requireAdmin(async (supabase, { orgId, userId }) => {
-      // Store + rotate key via SECURITY DEFINER RPC (does not rely on session GUCs)
+    return await requireAdmin(async (_supabase, { orgId, userId }) => {
       const kmsKey = process.env.KMS_KEY
       if (!kmsKey) {
         throw new Error('KMS_KEY is missing on the server; cannot encrypt BYOK keys.')
@@ -59,7 +58,9 @@ export async function POST(req: NextRequest) {
 
       const context = await resolveInternalAdminContext(orgId, userId)
 
-      const { error: storeError } = await supabase.rpc('store_llm_key', {
+      // Use supabaseAdmin to bypass RLS — session context has Clerk org ID but
+      // store_llm_key needs internal UUID; admin is already verified above.
+      const { error: storeError } = await supabaseAdmin.rpc('store_llm_key', {
         p_org_id: context.orgId,
         p_provider: provider,
         p_plaintext: key,
@@ -68,8 +69,7 @@ export async function POST(req: NextRequest) {
 
       if (storeError) throw storeError
 
-      // Return the newly-active key metadata (safe fields only)
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await supabaseAdmin
         .from('llm_keys')
         .select('id, provider, key_hint, label, is_active, last_used_at, updated_at')
         .eq('org_id', context.orgId)
@@ -82,8 +82,7 @@ export async function POST(req: NextRequest) {
       if (fetchError) throw fetchError
       if (!data) return NextResponse.json({ error: 'Key stored but could not be fetched' }, { status: 500 })
 
-      // 4. Audit Log (Issue #6)
-      await supabase.from('admin_actions').insert({
+      await supabaseAdmin.from('admin_actions').insert({
         org_id: context.orgId,
         admin_user_id: context.adminMemberId,
         action: 'add_key',
@@ -106,10 +105,10 @@ export async function PATCH(req: NextRequest) {
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-    return await requireAdmin(async (supabase, { orgId, userId }) => {
+    return await requireAdmin(async (_supabase, { orgId, userId }) => {
       const context = await resolveInternalAdminContext(orgId, userId)
 
-      const { data: oldKey, error: fetchError } = await supabase
+      const { data: oldKey, error: fetchError } = await supabaseAdmin
         .from('llm_keys')
         .select('provider, label, is_active')
         .eq('id', id)
@@ -120,7 +119,7 @@ export async function PATCH(req: NextRequest) {
       if (fetchError) throw fetchError
       if (!oldKey) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
-      const { data, error: updateError } = await supabase
+      const { data, error: updateError } = await supabaseAdmin
         .from('llm_keys')
         .update({ is_active, label })
         .eq('id', id)
@@ -131,15 +130,14 @@ export async function PATCH(req: NextRequest) {
 
       if (updateError) throw updateError
 
-      // Audit Log
-      await supabase.from('admin_actions').insert({
+      await supabaseAdmin.from('admin_actions').insert({
         org_id: context.orgId,
         admin_user_id: context.adminMemberId,
         action: 'update_key',
-        details: { 
-          key_id: id, 
+        details: {
+          key_id: id,
           provider: oldKey.provider,
-          changes: { is_active, label } 
+          changes: { is_active, label }
         }
       })
 
@@ -160,10 +158,10 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-    return await requireAdmin(async (supabase, { orgId, userId }) => {
+    return await requireAdmin(async (_supabase, { orgId, userId }) => {
       const context = await resolveInternalAdminContext(orgId, userId)
 
-      const { data: key, error: fetchError } = await supabase
+      const { data: key, error: fetchError } = await supabaseAdmin
         .from('llm_keys')
         .select('provider')
         .eq('id', id)
@@ -174,7 +172,7 @@ export async function DELETE(req: NextRequest) {
       if (fetchError) throw fetchError
       if (!key) return NextResponse.json({ error: 'Key not found' }, { status: 404 })
 
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseAdmin
         .from('llm_keys')
         .delete()
         .eq('id', id)
@@ -182,8 +180,7 @@ export async function DELETE(req: NextRequest) {
 
       if (deleteError) throw deleteError
 
-      // Audit Log
-      await supabase.from('admin_actions').insert({
+      await supabaseAdmin.from('admin_actions').insert({
         org_id: context.orgId,
         admin_user_id: context.adminMemberId,
         action: 'delete_key',

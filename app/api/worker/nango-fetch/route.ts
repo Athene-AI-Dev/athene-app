@@ -73,7 +73,6 @@ import { fetchPowerBIContent } from '@/lib/integrations/powerbi/reports-fetcher'
 
 import { getProviderMetadata } from '@/lib/integrations/base'
 import type { FetchedChunk } from '@/lib/integrations/base'
-import { supabaseAdmin } from '@/lib/supabase/server'
 
 // ---- Provider Fetcher Map ---------------------------------------
 
@@ -182,7 +181,7 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   tableau:  [fetchTableauWorkbooks],
   metabase: [fetchMetabaseContent],
   dbt:      [fetchDbtContent],
-  powerbi:  [fetchPowerBIContent],
+  powerbi:  [(cid, oid, opts) => fetchPowerBIContent(cid, oid, opts?.syncConfig)],
 
   // ── Legacy umbrella keys (backwards compatibility) ───────────
   google: [

@@ -22,6 +22,7 @@ import { githubRestFetch } from './github/client'
 import { listSnowflakeTables } from './snowflake/schema-fetcher'
 import { listBigQueryTables } from './bigquery/client'
 import { listRedshiftTables } from './redshift/client'
+import { browsePowerBI } from './powerbi/browser'
 import type { ProviderKey } from './providers'
 
 // ---- Types --------------------------------------------------
@@ -364,6 +365,7 @@ const providerBrowserMap: Partial<Record<ProviderKey, ProviderBrowser>> = {
   snowflake: browseSnowflake,
   bigquery: browseBigQuery,
   redshift: browseRedshift,
+  powerbi: browsePowerBI,
 }
 
 /**

@@ -22,9 +22,13 @@ export interface SelectedResource {
   /** Human-readable display name */
   name: string
   /** Resource kind — used by fetchers to route correctly */
-  type: 'folder' | 'file' | 'channel' | 'repo' | 'database' | 'page' | 'space' | 'project' | 'object_type'
+  type: 'folder' | 'file' | 'channel' | 'repo' | 'database' | 'page' | 'space' | 'project' | 'object_type' | 'workspace' | 'report' | 'dataset' | 'dashboard'
   /** If true, sync this container AND all its children (e.g. a folder + sub-files) */
   includeChildren: boolean
+  /** Maps to Athene's departments table — enables department-scoped RAG queries */
+  departmentId?: string
+  /** Free-text module label (e.g. "Architecture", "Compliance") for finer categorization */
+  moduleTag?: string
 }
 
 /**

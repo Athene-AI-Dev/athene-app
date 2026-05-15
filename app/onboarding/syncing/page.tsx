@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { CheckCircle2, Loader2, ArrowRight, Database, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -12,14 +11,12 @@ interface Integration {
   displayName: string;
   status: "connected" | "syncing" | "error" | string;
   totalDocs: number;
-  icon?: string;
 }
 
 const POLL_INTERVAL = 5000;
-const TIMEOUT_MS = 90000; // 90 seconds before showing "take your time" message
+const TIMEOUT_MS = 90000;
 
 export default function OnboardingSyncingPage() {
-  const router = useRouter();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [allDone, setAllDone] = useState(false);
@@ -27,40 +24,49 @@ export default function OnboardingSyncingPage() {
   const startedAt = useRef(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function fetchStatus() {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/integrations");
       if (!res.ok) return;
       const { integrations: data } = await res.json();
-      setIntegrations(data ?? []);
+      const list: Integration[] = data ?? [];
+      setIntegrations(list);
       setLoading(false);
 
-      const isSyncing = (data ?? []).some((i: Integration) => i.status === "syncing");
-      const hasAny = (data ?? []).length > 0;
-
-      if (hasAny && !isSyncing) {
+      const isSyncing = list.some((i) => i.status === "syncing");
+      if (list.length > 0 && !isSyncing) {
         setAllDone(true);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       }
     } catch {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchStatus();
     intervalRef.current = setInterval(() => {
-      fetchStatus();
       if (Date.now() - startedAt.current > TIMEOUT_MS) {
         setTimedOut(true);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        return;
       }
+      fetchStatus();
     }, POLL_INTERVAL);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [fetchStatus]);
+
+  const stillSyncing = integrations.some((i) => i.status === "syncing");
+  const canContinue = allDone || timedOut;
 
   const statusIcon = (status: string) => {
     if (status === "syncing") return <Loader2 className="w-4 h-4 text-[#66ADE4] animate-spin" />;
@@ -74,11 +80,8 @@ export default function OnboardingSyncingPage() {
     return "Ready";
   };
 
-  const canContinue = allDone || timedOut;
-
   return (
     <div className="min-h-screen bg-[#06080c] text-white flex flex-col font-['Space_Grotesk'] overflow-hidden">
-      {/* Background */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] bg-[#66ADE4]/5 blur-[160px] -z-10 rounded-full opacity-50" />
 
       {/* Progress Bar — step 3 of 4 */}
@@ -105,7 +108,7 @@ export default function OnboardingSyncingPage() {
             {allDone
               ? "All connected sources have been indexed and are ready to query."
               : timedOut
-              ? "Indexing is taking longer than usual — this is normal for large workspaces. You can continue now and indexing will finish in the background."
+              ? "Indexing is taking longer than usual — normal for large workspaces. You can continue and indexing will finish in the background."
               : "Athene is reading and indexing your connected sources. This usually takes 1–3 minutes."}
           </p>
         </div>
@@ -117,10 +120,10 @@ export default function OnboardingSyncingPage() {
               <Loader2 className="w-8 h-8 text-[#66ADE4] animate-spin" />
             </div>
           ) : integrations.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-sm">
-              No connections found.{" "}
-              <Link href="/onboarding/connections" className="text-[#66ADE4] hover:underline">
-                Go back to connect sources.
+            <div className="text-center py-10 text-slate-500 text-sm space-y-3">
+              <p>No connected sources found.</p>
+              <Link href="/onboarding/connections" className="text-[#66ADE4] hover:underline font-bold text-xs uppercase tracking-widest">
+                ← Go back and connect a source
               </Link>
             </div>
           ) : (
@@ -154,10 +157,8 @@ export default function OnboardingSyncingPage() {
                   <span
                     className={cn(
                       "text-[10px] font-black uppercase tracking-widest",
-                      integration.status === "syncing"
-                        ? "text-[#66ADE4]"
-                        : integration.status === "error"
-                        ? "text-amber-400"
+                      integration.status === "syncing" ? "text-[#66ADE4]"
+                        : integration.status === "error" ? "text-amber-400"
                         : "text-emerald-400"
                     )}
                   >
@@ -172,20 +173,27 @@ export default function OnboardingSyncingPage() {
         {/* CTA */}
         <div className="flex flex-col items-center gap-4 animate-in fade-in duration-1000 delay-300">
           {canContinue ? (
-            <Button
-              asChild
-              size="lg"
-              className="h-16 px-12 rounded-2xl bg-gradient-to-r from-[#66ADE4] to-[#7ab8e8] text-black hover:opacity-90 font-black uppercase tracking-widest text-[11px] gap-3 shadow-2xl shadow-blue-500/20 group"
-            >
-              <Link href="/onboarding/ready">
-                Continue
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </Button>
+            <>
+              {timedOut && stillSyncing && (
+                <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mb-1">
+                  Indexing still in progress — will complete in the background
+                </p>
+              )}
+              <Button
+                asChild
+                size="lg"
+                className="h-16 px-12 rounded-2xl bg-gradient-to-r from-[#66ADE4] to-[#7ab8e8] text-black hover:opacity-90 font-black uppercase tracking-widest text-[11px] gap-3 shadow-2xl shadow-blue-500/20 group"
+              >
+                <Link href="/onboarding/ready">
+                  Continue
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </Link>
+              </Button>
+            </>
           ) : (
             <div className="flex items-center gap-3 text-slate-500 text-xs font-medium">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              Checking sync status every 5 seconds…
+              Checking every 5 seconds…
             </div>
           )}
           {!canContinue && (

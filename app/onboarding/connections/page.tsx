@@ -171,7 +171,10 @@ export default function OnboardingConnectionsPage() {
            </div>
 
            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors px-6">
+              <Link
+                href={connectedCount > 0 ? "/onboarding/syncing" : "/dashboard"}
+                className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors px-6"
+              >
                 Skip for now
               </Link>
               <Button asChild size="lg" className="h-14 px-10 rounded-2xl bg-[#66ADE4] text-black hover:bg-[#599bc9] font-black uppercase tracking-widest text-[10px] gap-3 shadow-xl shadow-blue-500/20 group">

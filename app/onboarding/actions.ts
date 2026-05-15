@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { resolveUserAccess } from "@/lib/auth/rbac";
 import { qstash } from "@/lib/qstash/client";
 import { logger } from "@/lib/logger";
 
@@ -11,29 +12,25 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
  * Called from the onboarding welcome page on first load.
  * Idempotently provisions a morning_briefing automation for the user and
  * registers a QStash cron schedule (daily 7 AM UTC).
+ *
+ * Calls resolveUserAccess() first to guarantee the org and member rows exist
+ * in Supabase before any queries — prevents the race condition where the
+ * welcome page loads before middleware has provisioned the DB records.
  */
-export async function bootstrapOnboarding(): Promise<{ connectionCount: number }> {
-  const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
+export async function bootstrapOnboarding(): Promise<{ connectionCount: number; error?: string }> {
+  const { userId: clerkUserId, orgId: clerkOrgId, orgRole } = await auth();
   if (!clerkUserId || !clerkOrgId) return { connectionCount: 0 };
 
-  // Resolve internal UUIDs
-  const { data: orgData } = await supabaseAdmin
-    .from("organizations")
-    .select("id")
-    .eq("clerk_org_id", clerkOrgId)
-    .maybeSingle();
+  // Trigger auto-provisioning — creates org + member rows if this is the first request.
+  // resolveUserAccess is idempotent; safe to call multiple times.
+  const access = await resolveUserAccess(clerkUserId, clerkOrgId, orgRole);
+  const internalOrgId = access.internal_org_id;
+  const internalUserId = access.internal_user_id;
 
-  const { data: memberData } = await supabaseAdmin
-    .from("org_members")
-    .select("id")
-    .eq("clerk_user_id", clerkUserId)
-    .eq("org_id", orgData?.id ?? "")
-    .maybeSingle();
-
-  const internalOrgId = orgData?.id as string | undefined;
-  const internalUserId = memberData?.id as string | undefined;
-
-  if (!internalOrgId || !internalUserId) return { connectionCount: 0 };
+  if (!internalOrgId || !internalUserId) {
+    logger.warn({ clerkUserId, clerkOrgId }, "[bootstrap] Could not resolve internal IDs after provisioning");
+    return { connectionCount: 0, error: "provisioning_failed" };
+  }
 
   // Count existing connections
   const { count: connectionCount } = await supabaseAdmin
@@ -51,7 +48,7 @@ export async function bootstrapOnboarding(): Promise<{ connectionCount: number }
     .maybeSingle();
 
   if (!existing) {
-    const { data: automation } = await supabaseAdmin
+    const { data: automation, error: insertErr } = await supabaseAdmin
       .from("automations")
       .insert({
         org_id: internalOrgId,
@@ -64,7 +61,9 @@ export async function bootstrapOnboarding(): Promise<{ connectionCount: number }
       .select("id")
       .maybeSingle();
 
-    if (automation?.id && APP_URL) {
+    if (insertErr) {
+      logger.error({ err: insertErr.message, internalOrgId }, "[bootstrap] Failed to insert morning_briefing automation");
+    } else if (automation?.id && APP_URL) {
       try {
         const schedule = await qstash.schedules.create({
           destination: `${APP_URL}/api/worker/morning-briefing`,
@@ -75,8 +74,10 @@ export async function bootstrapOnboarding(): Promise<{ connectionCount: number }
           .from("automations")
           .update({ qstash_schedule_id: schedule.scheduleId })
           .eq("id", automation.id);
+        logger.info({ internalOrgId, scheduleId: schedule.scheduleId }, "[bootstrap] Morning briefing QStash cron registered");
       } catch (err) {
-        logger.warn({ err: err instanceof Error ? err.message : String(err) }, "[bootstrap] QStash schedule registration failed (non-fatal)");
+        // Non-fatal: DB row exists. User can activate the cron via automations settings.
+        logger.warn({ err: err instanceof Error ? err.message : String(err), internalOrgId }, "[bootstrap] QStash schedule registration failed (non-fatal)");
       }
     }
   }

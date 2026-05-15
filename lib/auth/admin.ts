@@ -33,8 +33,16 @@ export async function requireAdmin<T>(
     .limit(1)
     .maybeSingle()
 
-  // Derive per-org key (throws if KMS_KEY env is missing)
-  const orgKey = orgRow ? deriveOrgKey(getMasterKey(), orgRow.id) : getMasterKey()
+  // Require the org to be provisioned before deriving its key.
+  // Falling back to the raw master key would defeat per-org isolation — a single
+  // leaked KMS_KEY would decrypt all orgs. Throw instead so callers get a clear 500.
+  if (!orgRow) {
+    throw new Error(
+      'Organization not provisioned — cannot derive BYOK encryption key. ' +
+        'Ensure the org record exists before performing key operations.'
+    )
+  }
+  const orgKey = deriveOrgKey(getMasterKey(), orgRow.id)
 
   // Inject context and run callback
   return withRLS({

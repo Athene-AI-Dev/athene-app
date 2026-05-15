@@ -6,11 +6,15 @@ import { NextResponse } from "next/server";
 // Worker routes (/api/worker/*) authenticate via QStash signature instead of
 // Clerk session tokens — they must be reachable without a browser session so
 // that server-to-server calls (and QStash webhooks) can hit them directly.
+// Nango routes (/api/nango/*) must also be public so that Nango's server-side
+// sync-completed webhooks can reach /api/nango/webhook without a Clerk session.
+// The webhook route verifies Nango's own HMAC-SHA256 signature independently.
 const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/worker/(.*)",
+  "/api/nango/(.*)",
 ]);
 
 /**

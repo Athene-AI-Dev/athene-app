@@ -53,6 +53,13 @@ export async function GET() {
       .eq('org_id', internalOrgId),
   ]);
 
+  // Surface any DB errors — don't silently return zeros
+  const queryErrors = [docsRes.error, connectionsRes.error, threadsRes.error, briefingsRes.error, hitlRes.error]
+    .filter(Boolean);
+  if (queryErrors.length) {
+    return NextResponse.json({ error: queryErrors[0]!.message }, { status: 500 });
+  }
+
   // Docs per source_type
   const docsBySource: Record<string, number> = {};
   for (const doc of docsRes.data ?? []) {

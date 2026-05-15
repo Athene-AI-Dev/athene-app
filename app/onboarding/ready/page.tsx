@@ -76,7 +76,7 @@ export default function OnboardingReadyPage() {
           </h1>
 
           <p className="text-slate-400 max-w-xl mx-auto text-lg font-medium leading-relaxed">
-            Athene has indexed your knowledge base and scheduled your morning briefing. The neural grid is live.
+            Athene has indexed your knowledge base. Your morning briefing will arrive daily at 7 AM once your sources finish syncing.
           </p>
         </div>
 

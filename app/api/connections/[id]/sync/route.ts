@@ -76,5 +76,6 @@ export async function POST(request: Request, { params }: Params) {
     await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
   }
 
-  return NextResponse.json({ success: true, dispatched, msgId: msgId ?? null, force });
+  // success mirrors dispatched — a queued-but-not-sent job is not a success
+  return NextResponse.json({ success: dispatched, dispatched, msgId: msgId ?? null, force });
 }

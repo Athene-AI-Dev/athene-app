@@ -15,6 +15,11 @@ export async function GET(req: Request) {
     return new Response('Forbidden', { status: 403 })
   }
 
+  const internalOrgId = access.internal_org_id
+  if (!internalOrgId) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+  }
+
   const { searchParams } = new URL(req.url)
   const format = searchParams.get('format') // 'csv' | null
   const page = parseInt(searchParams.get('page') || '0')
@@ -31,7 +36,7 @@ export async function GET(req: Request) {
       admin:admin_user_id (id, display_name, email),
       target:target_user_id (id, display_name, email)
     `)
-    .eq('org_id', access.internal_org_id)
+    .eq('org_id', internalOrgId)
     .order('performed_at', { ascending: false })
 
   if (search) {

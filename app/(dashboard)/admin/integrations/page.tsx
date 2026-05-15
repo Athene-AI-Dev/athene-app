@@ -10,7 +10,6 @@ import {
   Plus,
   WifiOff,
   Search,
-  Filter,
 } from "lucide-react";
 import Nango from "@nangohq/frontend";
 import { IntegrationCard, type Integration } from "./integration-card";
@@ -360,10 +359,6 @@ export default function IntegrationsPage() {
               className="w-full h-12 pl-12 pr-4 bg-transparent outline-none text-sm font-bold placeholder:text-muted-foreground/40 text-foreground"
             />
          </div>
-         <Button variant="ghost" className="h-12 px-6 rounded-xl gap-2 text-muted-foreground font-black uppercase tracking-widest text-[10px] hover:bg-muted/50">
-            <Filter className="w-4 h-4" />
-            Categories
-         </Button>
       </div>
 
       {/* Grid Section */}

@@ -46,23 +46,45 @@ export async function POST(request: Request): Promise<Response> {
   let threadsDeleted = 0;
 
   // ── Pass 1: delete custom thread_checkpoints for stale threads ──────────
-  // Fetch thread IDs in batches to avoid large IN clauses
+  // Fetch thread IDs in batches to avoid large IN clauses.
+  // Two separate queries are used instead of a nested and() inside or() to
+  // avoid relying on PostgREST-specific string filter syntax that may not
+  // parse correctly through the supabase-js query builder.
   let offset = 0;
   while (true) {
-    const { data: staleThreads, error } = await supabaseAdmin
+    // Threads that had activity but not recently
+    const { data: staleByDate, error: errA } = await supabaseAdmin
       .from('threads')
       .select('id')
-      .or(`last_message_at.lt.${checkpointCutoff},and(last_message_at.is.null,created_at.lt.${checkpointCutoff})`)
+      .lt('last_message_at', checkpointCutoff)
       .order('id')
       .range(offset, offset + BATCH_SIZE - 1);
 
-    if (error) {
-      logger.error({ err: error.message }, '[checkpoint-prune] Failed to fetch stale threads');
+    // Threads that were created long ago and never had a message
+    const { data: staleByCreate, error: errB } = await supabaseAdmin
+      .from('threads')
+      .select('id')
+      .is('last_message_at', null)
+      .lt('created_at', checkpointCutoff)
+      .order('id')
+      .range(offset, offset + BATCH_SIZE - 1);
+
+    if (errA) {
+      logger.error({ err: errA.message }, '[checkpoint-prune] Failed to fetch stale threads (by date)');
       break;
     }
-    if (!staleThreads || staleThreads.length === 0) break;
+    if (errB) {
+      logger.error({ err: errB.message }, '[checkpoint-prune] Failed to fetch stale threads (by create)');
+      break;
+    }
 
-    const ids = staleThreads.map((t) => t.id);
+    // Merge and deduplicate IDs from both queries
+    const ids = [...new Set([
+      ...(staleByDate?.map((t) => t.id) ?? []),
+      ...(staleByCreate?.map((t) => t.id) ?? []),
+    ])];
+
+    if (ids.length === 0) break;
 
     const { count, error: delErr } = await supabaseAdmin
       .from('thread_checkpoints')
@@ -75,7 +97,11 @@ export async function POST(request: Request): Promise<Response> {
       checkpointRowsDeleted += count ?? 0;
     }
 
-    if (staleThreads.length < BATCH_SIZE) break;
+    // Stop when both sub-queries returned fewer rows than the batch limit
+    if (
+      (staleByDate?.length ?? 0) < BATCH_SIZE &&
+      (staleByCreate?.length ?? 0) < BATCH_SIZE
+    ) break;
     offset += BATCH_SIZE;
   }
 

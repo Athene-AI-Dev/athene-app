@@ -31,13 +31,15 @@ export default function AuditPage() {
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [exportingCSV, setExportingCSV] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
     const limit = 50;
 
     const handleExportCSV = async () => {
       setExportingCSV(true);
+      setExportError(null);
       try {
         const res = await fetch(`/api/admin/audit-log?format=csv&search=${encodeURIComponent(search)}`);
-        if (!res.ok) throw new Error("Export failed");
+        if (!res.ok) throw new Error("Export failed — please try again.");
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -45,8 +47,8 @@ export default function AuditPage() {
         a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
-      } catch {
-        // silent — user can retry
+      } catch (e: any) {
+        setExportError(e?.message ?? "Export failed — please try again.");
       } finally {
         setExportingCSV(false);
       }
@@ -111,16 +113,21 @@ export default function AuditPage() {
                   Transparent record of all administrative modifications and high-privilege analytical access within the organization.
                 </p>
               </div>
-              <Button
-                onClick={handleExportCSV}
-                disabled={exportingCSV}
-                variant="outline"
-                size="sm"
-                className="h-10 px-5 rounded-xl font-black uppercase tracking-widest text-[10px] border-border hover:border-primary/40 gap-2 shrink-0"
-              >
-                <Download className="w-3.5 h-3.5" />
-                {exportingCSV ? "Exporting…" : "Export CSV"}
-              </Button>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <Button
+                  onClick={handleExportCSV}
+                  disabled={exportingCSV}
+                  variant="outline"
+                  size="sm"
+                  className="h-10 px-5 rounded-xl font-black uppercase tracking-widest text-[10px] border-border hover:border-primary/40 gap-2"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {exportingCSV ? "Exporting…" : "Export CSV"}
+                </Button>
+                {exportError && (
+                  <p className="text-[10px] text-red-400 font-medium">{exportError}</p>
+                )}
+              </div>
             </div>
 
             <Tabs defaultValue="admin" className="space-y-8">

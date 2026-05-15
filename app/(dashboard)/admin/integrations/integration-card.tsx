@@ -43,14 +43,13 @@ interface IntegrationCardProps {
   onConfigure?: (integration: Integration) => void;
 }
 
-const CONFIGURABLE = new Set(["google_drive", "snowflake"]);
+const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
 
 function needsConfiguration(integration: Integration): boolean {
   const { provider, metadata } = integration;
   if (!CONFIGURABLE.has(provider)) return false;
   if (provider === "google_drive") return !metadata?.selected_folder_ids?.length;
-  if (provider === "snowflake") return !metadata?.allowlist?.length;
-  return false;
+  return !metadata?.allowlist?.length;
 }
 
 export function IntegrationCard({

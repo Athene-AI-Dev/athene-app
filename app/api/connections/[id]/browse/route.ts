@@ -4,6 +4,8 @@ import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { listDriveFiles, searchDrive } from "@/lib/integrations/google/drive-fetcher";
 import { listSnowflakeTables } from "@/lib/integrations/snowflake/schema-fetcher";
+import { listBigQueryTables } from "@/lib/integrations/bigquery/client";
+import { listRedshiftTables } from "@/lib/integrations/redshift/client";
 import { logger } from "@/lib/logger";
 
 interface Params { params: Promise<{ id: string }> }
@@ -86,6 +88,34 @@ export async function GET(request: Request, { params }: Params) {
       // Surface permission errors clearly rather than 500
       return NextResponse.json(
         { tables: [], error: err.message ?? "Snowflake table listing failed" },
+        { status: 200 }
+      );
+    }
+  }
+
+  // ── BigQuery ──────────────────────────────────────────────
+  if (browseType === "bigquery_tables" || (!browseType && provider === "bigquery")) {
+    try {
+      const tables = await listBigQueryTables(nangoConnectionId, internalOrgId);
+      return NextResponse.json({ tables });
+    } catch (err: any) {
+      logger.error({ connectionId, err: err.message }, "[browse] BigQuery table listing failed");
+      return NextResponse.json(
+        { tables: [], error: err.message ?? "BigQuery table listing failed" },
+        { status: 200 }
+      );
+    }
+  }
+
+  // ── Redshift ──────────────────────────────────────────────
+  if (browseType === "redshift_tables" || (!browseType && provider === "redshift")) {
+    try {
+      const tables = await listRedshiftTables(nangoConnectionId, internalOrgId);
+      return NextResponse.json({ tables });
+    } catch (err: any) {
+      logger.error({ connectionId, err: err.message }, "[browse] Redshift table listing failed");
+      return NextResponse.json(
+        { tables: [], error: err.message ?? "Redshift table listing failed" },
         { status: 200 }
       );
     }

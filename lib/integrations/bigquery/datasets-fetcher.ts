@@ -8,7 +8,8 @@
 // ============================================================
 
 import { bigqueryFetch, bigqueryProjectId, parseBigQueryRows } from './client'
-import { FetchedChunk } from '../base'
+import { FetchedChunk, getProviderMetadata } from '../base'
+import { logger } from '@/lib/logger'
 import {
   buildStatsChunk,
   buildSampleChunk,
@@ -27,6 +28,13 @@ const SAMPLE_LIMIT = 50
 
 export async function fetchBigQueryDatasets(connectionId: string, orgId: string): Promise<FetchedChunk[]> {
   const projectId = await bigqueryProjectId(connectionId, orgId)
+
+  // Load allowlist from Nango metadata (set via configure endpoint)
+  const meta: Record<string, any> = await getProviderMetadata(connectionId, 'bigquery', orgId).catch(() => ({}))
+  const allowlist: Set<string> | null = Array.isArray(meta.allowlist) && (meta.allowlist as string[]).length > 0
+    ? new Set(meta.allowlist as string[])
+    : null
+
   const chunks: FetchedChunk[] = []
 
   const datasetsRes = await bigqueryFetch<any>(connectionId, orgId, '/datasets')
@@ -38,8 +46,8 @@ export async function fetchBigQueryDatasets(connectionId: string, orgId: string)
     let tablesRes: any
     try {
       tablesRes = await bigqueryFetch<any>(connectionId, orgId, `/datasets/${datasetId}/tables`)
-    } catch (err) {
-      console.error(`[bigquery] Failed to list tables in ${datasetId}:`, err)
+    } catch (err: any) {
+      logger.error({ datasetId, err: err.message }, '[bigquery] Failed to list tables in dataset')
       continue
     }
 
@@ -47,6 +55,10 @@ export async function fetchBigQueryDatasets(connectionId: string, orgId: string)
 
     for (const table of tables) {
       const tableId = table.tableReference.tableId
+
+      // Skip tables not in allowlist (if one is configured)
+      if (allowlist && !allowlist.has(`${datasetId}.${tableId}`)) continue
+
       const fullTableId = `${projectId}.${datasetId}.${tableId}`
       const backtickId  = `\`${fullTableId}\``
       const sourceUrl   = `https://console.cloud.google.com/bigquery?project=${projectId}&p=${projectId}&d=${datasetId}&t=${tableId}&page=table`
@@ -89,8 +101,8 @@ export async function fetchBigQueryDatasets(connectionId: string, orgId: string)
         if (aggResults.length > 0) {
           chunks.push(buildAggregationChunk(fullTableId, aggResults, 'bigquery', sourceUrl))
         }
-      } catch (err) {
-        console.error(`[bigquery] Failed to process ${fullTableId}:`, err)
+      } catch (err: any) {
+        logger.error({ fullTableId, err: err.message }, '[bigquery] Failed to process table')
       }
     }
   }

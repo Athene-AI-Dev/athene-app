@@ -18,6 +18,8 @@ import { IntegrationCard, type Integration } from "./integration-card";
 import { AddIntegrationDialog } from "./add-integration-dialog";
 import { DrivePickerModal } from "./drive-picker-modal";
 import { SnowflakePickerModal } from "./snowflake-picker-modal";
+import { BigQueryPickerModal } from "./bigquery-picker-modal";
+import { RedshiftPickerModal } from "./redshift-picker-modal";
 import { ProviderConfig, getProvider } from "@/lib/integrations/providers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -169,7 +171,7 @@ export default function IntegrationsPage() {
               }),
             });
 
-            const CONFIGURABLE = new Set(["google_drive", "snowflake"]);
+            const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
             if (!saveRes.ok) {
               setToast({ msg: `Access granted, but metadata sync failed: ${saveRes.statusText}`, type: "error" });
             } else {
@@ -403,6 +405,22 @@ export default function IntegrationsPage() {
       )}
       {configuring?.provider === "snowflake" && (
         <SnowflakePickerModal
+          open
+          connectionId={configuring.internalConnectionId}
+          onClose={() => setConfiguring(null)}
+          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
+        />
+      )}
+      {configuring?.provider === "bigquery" && (
+        <BigQueryPickerModal
+          open
+          connectionId={configuring.internalConnectionId}
+          onClose={() => setConfiguring(null)}
+          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
+        />
+      )}
+      {configuring?.provider === "redshift" && (
+        <RedshiftPickerModal
           open
           connectionId={configuring.internalConnectionId}
           onClose={() => setConfiguring(null)}

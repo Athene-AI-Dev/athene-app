@@ -8,6 +8,7 @@
 
 import { getRedshiftCredentials, redshiftQuery } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 import {
   buildStatsChunk,
   buildSampleChunk,
@@ -80,8 +81,8 @@ export async function fetchRedshiftTables(connectionId: string, orgId: string): 
       if (aggResults.length > 0) {
         chunks.push(buildAggregationChunk(tableFullName, aggResults, 'redshift', sourceUrl))
       }
-    } catch (err) {
-      console.error(`[redshift] Failed to process ${tableFullName}:`, err)
+    } catch (err: any) {
+      logger.error({ tableFullName, err: err.message }, '[redshift] Failed to process table')
     }
   }
 

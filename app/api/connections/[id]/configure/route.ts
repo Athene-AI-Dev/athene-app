@@ -8,7 +8,9 @@ import { logger } from "@/lib/logger";
 
 interface Params { params: Promise<{ id: string }> }
 
-const TABLE_IDENT_RE = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;
+const SNOWFLAKE_IDENT_RE = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;
+const BIGQUERY_IDENT_RE  = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;        // dataset.table
+const REDSHIFT_IDENT_RE  = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?$/;     // schema.table or table
 
 /**
  * PATCH /api/connections/[id]/configure
@@ -102,7 +104,7 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "allowlist must be a non-empty array" }, { status: 400 });
     }
 
-    const invalid = allowlist.filter((t) => !TABLE_IDENT_RE.test(t));
+    const invalid = allowlist.filter((t) => !SNOWFLAKE_IDENT_RE.test(t));
     if (invalid.length > 0) {
       return NextResponse.json(
         { error: `Invalid table identifiers (must be DATABASE.SCHEMA.TABLE): ${invalid.join(", ")}` },
@@ -149,6 +151,112 @@ export async function PATCH(request: Request, { params }: Params) {
     });
 
     logger.info({ connectionId, tableCount: allowlist.length }, "[configure] Snowflake configured and sync dispatched");
+    return NextResponse.json({ success: true, dispatched });
+  }
+
+  // ── BigQuery ──────────────────────────────────────────────
+  if (provider === "bigquery") {
+    if (!Array.isArray(allowlist) || allowlist.length === 0) {
+      return NextResponse.json({ error: "allowlist must be a non-empty array" }, { status: 400 });
+    }
+
+    const invalid = allowlist.filter((t) => !BIGQUERY_IDENT_RE.test(t));
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid table identifiers (must be DATASET.TABLE): ${invalid.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const { error: updateErr } = await supabaseAdmin
+      .from("connections")
+      .update({ metadata: { ...existingMeta, allowlist } })
+      .eq("id", connectionId);
+
+    if (updateErr) {
+      logger.error({ connectionId, err: updateErr.message }, "[configure] Failed to save BigQuery allowlist");
+      return NextResponse.json({ error: "Failed to save allowlist" }, { status: 500 });
+    }
+
+    try {
+      await updateConnectionNangoMetadata(
+        conn.nango_connection_id as string,
+        "bigquery",
+        internalOrgId,
+        { allowlist }
+      );
+    } catch (nangoErr: any) {
+      logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
+    }
+
+    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
+    const { dispatched } = await dispatchThrottled({
+      orgId: internalOrgId,
+      sourceType: conn.source_type as string,
+      url: workerUrl,
+      body: {
+        orgId: internalOrgId,
+        connectionId,
+        provider: conn.provider,
+        sourceType: conn.source_type,
+        departmentId: conn.department_id ?? null,
+      },
+    });
+
+    logger.info({ connectionId, tableCount: allowlist.length }, "[configure] BigQuery configured and sync dispatched");
+    return NextResponse.json({ success: true, dispatched });
+  }
+
+  // ── Redshift ──────────────────────────────────────────────
+  if (provider === "redshift") {
+    if (!Array.isArray(allowlist) || allowlist.length === 0) {
+      return NextResponse.json({ error: "allowlist must be a non-empty array" }, { status: 400 });
+    }
+
+    const invalid = allowlist.filter((t) => !REDSHIFT_IDENT_RE.test(t));
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid table identifiers (must be SCHEMA.TABLE or TABLE): ${invalid.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const { error: updateErr } = await supabaseAdmin
+      .from("connections")
+      .update({ metadata: { ...existingMeta, allowlist } })
+      .eq("id", connectionId);
+
+    if (updateErr) {
+      logger.error({ connectionId, err: updateErr.message }, "[configure] Failed to save Redshift allowlist");
+      return NextResponse.json({ error: "Failed to save allowlist" }, { status: 500 });
+    }
+
+    try {
+      await updateConnectionNangoMetadata(
+        conn.nango_connection_id as string,
+        "redshift",
+        internalOrgId,
+        { allowlist }
+      );
+    } catch (nangoErr: any) {
+      logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
+    }
+
+    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
+    const { dispatched } = await dispatchThrottled({
+      orgId: internalOrgId,
+      sourceType: conn.source_type as string,
+      url: workerUrl,
+      body: {
+        orgId: internalOrgId,
+        connectionId,
+        provider: conn.provider,
+        sourceType: conn.source_type,
+        departmentId: conn.department_id ?? null,
+      },
+    });
+
+    logger.info({ connectionId, tableCount: allowlist.length }, "[configure] Redshift configured and sync dispatched");
     return NextResponse.json({ success: true, dispatched });
   }
 

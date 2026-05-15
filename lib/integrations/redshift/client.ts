@@ -114,3 +114,27 @@ export async function redshiftQuery(
   await redshiftDataPoll(creds, statementId)
   return redshiftDataGetResults(creds, statementId)
 }
+
+export interface RedshiftTable {
+  schema: string
+  name: string
+  fullName: string // "schema.table"
+}
+
+export async function listRedshiftTables(connectionId: string, orgId: string): Promise<RedshiftTable[]> {
+  const creds = await getRedshiftCredentials(connectionId, orgId)
+  const rows = await redshiftQuery(
+    creds,
+    `SELECT table_schema, table_name
+     FROM information_schema.tables
+     WHERE table_type = 'BASE TABLE'
+       AND table_schema NOT IN ('pg_catalog','information_schema','pg_internal','catalog_history')
+     ORDER BY table_schema, table_name
+     LIMIT 500`,
+  )
+  return rows.map((r) => ({
+    schema: String(r.table_schema),
+    name: String(r.table_name),
+    fullName: `${r.table_schema}.${r.table_name}`,
+  }))
+}

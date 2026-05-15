@@ -1,5 +1,36 @@
 import { baseFetch, getProviderToken, getProviderMetadata } from '../base'
 
+export interface BigQueryTable {
+  dataset: string
+  name: string
+  fullName: string // "dataset.table"
+}
+
+export async function listBigQueryTables(connectionId: string, orgId: string): Promise<BigQueryTable[]> {
+  const tables: BigQueryTable[] = []
+  const datasetsRes = await bigqueryFetch<any>(connectionId, orgId, '/datasets')
+  const datasets: { datasetReference: { datasetId: string } }[] = datasetsRes?.datasets ?? []
+
+  for (const ds of datasets) {
+    const datasetId = ds.datasetReference.datasetId
+    try {
+      const tablesRes = await bigqueryFetch<any>(connectionId, orgId, `/datasets/${datasetId}/tables`)
+      const tableParts: { tableReference: { tableId: string } }[] = tablesRes?.tables ?? []
+      for (const t of tableParts) {
+        tables.push({
+          dataset: datasetId,
+          name: t.tableReference.tableId,
+          fullName: `${datasetId}.${t.tableReference.tableId}`,
+        })
+      }
+    } catch {
+      // skip inaccessible datasets
+    }
+  }
+
+  return tables.sort((a, b) => a.fullName.localeCompare(b.fullName))
+}
+
 export async function bigqueryFetch<T = unknown>(
   connectionId: string,
   orgId: string,

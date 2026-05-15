@@ -1,20 +1,21 @@
 "use client";
  
 import { useState, useEffect } from "react";
-import { 
-  Activity, 
-  Search, 
-  Shield, 
-  UserCircle, 
-  History, 
-  Database, 
+import {
+  Activity,
+  Search,
+  Shield,
+  UserCircle,
+  History,
+  Database,
   Filter,
   ArrowRight,
   UserCheck,
   UserMinus,
   UserPlus,
   Settings,
-  AlertCircle
+  AlertCircle,
+  Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,27 @@ export default function AuditPage() {
     const [mounted, setMounted] = useState(false);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
+    const [exportingCSV, setExportingCSV] = useState(false);
     const limit = 50;
+
+    const handleExportCSV = async () => {
+      setExportingCSV(true);
+      try {
+        const res = await fetch(`/api/admin/audit-log?format=csv&search=${encodeURIComponent(search)}`);
+        if (!res.ok) throw new Error("Export failed");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        // silent — user can retry
+      } finally {
+        setExportingCSV(false);
+      }
+    };
 
     useEffect(() => {
         setMounted(true);
@@ -90,6 +111,16 @@ export default function AuditPage() {
                   Transparent record of all administrative modifications and high-privilege analytical access within the organization.
                 </p>
               </div>
+              <Button
+                onClick={handleExportCSV}
+                disabled={exportingCSV}
+                variant="outline"
+                size="sm"
+                className="h-10 px-5 rounded-xl font-black uppercase tracking-widest text-[10px] border-border hover:border-primary/40 gap-2 shrink-0"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {exportingCSV ? "Exporting…" : "Export CSV"}
+              </Button>
             </div>
 
             <Tabs defaultValue="admin" className="space-y-8">

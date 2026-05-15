@@ -29,6 +29,12 @@ const SYSTEM_CRONS: SystemCron[] = [
     cron: '*/30 * * * *', // every 30 minutes
     body: {},
   },
+  {
+    name: 'checkpoint-prune',
+    destination: `${APP_URL}/api/worker/checkpoint-prune`,
+    cron: '0 2 * * *', // daily at 2 AM UTC
+    body: {},
+  },
 ];
 
 export async function POST() {

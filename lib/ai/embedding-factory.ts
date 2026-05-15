@@ -16,6 +16,7 @@
 import OpenAI from "openai"
 import { supabaseAdmin } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { deriveOrgKey, getMasterKey } from "@/lib/auth/kms"
 
 // ---- Dimension constant -------------------------------------------------
 
@@ -71,16 +72,18 @@ function resolveSystemConfig(): EmbeddingConfig | null {
 type DecryptedKeyRow = { provider: string; plaintext: string }
 
 async function fetchByokEmbeddingConfig(orgId: string): Promise<EmbeddingConfig | null> {
-  const kmsKey = process.env.KMS_KEY
   if (!orgId) return null
-  if (!kmsKey) {
+  let orgKey: string;
+  try {
+    orgKey = deriveOrgKey(getMasterKey(), orgId);
+  } catch {
     logger.error({ orgId }, "[EmbeddingFactory] KMS_KEY is not set — cannot decrypt BYOK embedding key; falling back to system provider. Set KMS_KEY in environment.")
     return null
   }
 
   const { data, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
     p_org_id: orgId,
-    p_kms_key: kmsKey,
+    p_kms_key: orgKey,
   })
 
   if (error) {

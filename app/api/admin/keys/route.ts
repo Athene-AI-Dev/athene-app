@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/admin'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
+import { deriveOrgKey, getMasterKey } from '@/lib/auth/kms'
 
 /**
  * GET: List all LLM keys for the current organization.
@@ -51,12 +52,10 @@ export async function POST(req: NextRequest) {
     }
 
     return await requireAdmin(async (_supabase, { orgId, userId }) => {
-      const kmsKey = process.env.KMS_KEY
-      if (!kmsKey) {
-        throw new Error('KMS_KEY is missing on the server; cannot encrypt BYOK keys.')
-      }
-
       const context = await resolveInternalAdminContext(orgId, userId)
+      // Derive a per-org encryption key — leaked master key alone can't
+      // decrypt any org's data without the org's internal UUID.
+      const orgKey = deriveOrgKey(getMasterKey(), context.orgId)
 
       // Use supabaseAdmin to bypass RLS — session context has Clerk org ID but
       // store_llm_key needs internal UUID; admin is already verified above.
@@ -64,7 +63,7 @@ export async function POST(req: NextRequest) {
         p_org_id: context.orgId,
         p_provider: provider,
         p_plaintext: key,
-        p_kms_key: kmsKey,
+        p_kms_key: orgKey,
       })
 
       if (storeError) throw storeError

@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   BarChart3,
+  BarChart2,
   Newspaper,
   FlaskConical,
   Users,
@@ -86,6 +87,7 @@ function AppSidebar({ role, className }: { role: UserRole; className?: string })
     { icon: KeyRound, label: "BYOK Keys", href: "/admin/keys" },
     { icon: ShieldCheck, label: "BI Grants", href: "/admin/grants" },
     { icon: ClipboardList, label: "Audit Log", href: "/admin/audit" },
+    { icon: BarChart2, label: "Usage", href: "/admin/usage" },
     { icon: Database, label: "Data Sources", href: "/files" },
     { icon: Bot, label: "Automations", href: "/admin/automations" },
   ];

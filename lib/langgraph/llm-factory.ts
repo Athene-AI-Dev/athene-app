@@ -3,6 +3,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { supabaseAdmin } from "../supabase/server";
 import { logger } from "@/lib/logger";
+import { deriveOrgKey, getMasterKey } from "@/lib/auth/kms";
 
 /** LLM tier used by the agent registry to select model complexity */
 export type ModelTier = "simple" | "medium" | "complex";
@@ -45,16 +46,18 @@ export async function fetchByokPlaintext(
   orgId: string,
   provider: "openai" | "anthropic" | "google" | "deepseek"
 ): Promise<string | null> {
-  const kmsKey = process.env.KMS_KEY;
   if (!orgId) return null;
-  if (!kmsKey) {
+  let orgKey: string;
+  try {
+    orgKey = deriveOrgKey(getMasterKey(), orgId);
+  } catch {
     logger.error({ orgId }, "[LLMFactory] KMS_KEY is not set — cannot decrypt BYOK key; falling back to system provider. Set KMS_KEY in environment.");
     return null;
   }
 
   const { data, error } = await supabaseAdmin.rpc("get_decrypted_llm_key", {
     p_org_id: orgId,
-    p_kms_key: kmsKey,
+    p_kms_key: orgKey,
   });
 
   if (error) {

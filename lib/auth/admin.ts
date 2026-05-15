@@ -1,6 +1,8 @@
 import { auth } from '@clerk/nextjs/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { withRLS } from '@/lib/supabase/rls-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
+import { deriveOrgKey, getMasterKey } from '@/lib/auth/kms'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
@@ -22,11 +24,17 @@ export async function requireAdmin<T>(
     throw new Error('Forbidden')
   }
 
-  // KMS Guard (required for BYOK encryption/decryption)
-  const kmsKey = process.env.KMS_KEY
-  if (!kmsKey) {
-    throw new Error('KMS_KEY is missing on the server; BYOK key operations are disabled.')
-  }
+  // Resolve the internal org UUID so we can derive a per-org KMS key.
+  // This prevents a single leaked KMS_KEY from decrypting all org data.
+  const { data: orgRow } = await supabaseAdmin
+    .from('organizations')
+    .select('id')
+    .eq('clerk_org_id', orgId)
+    .limit(1)
+    .maybeSingle()
+
+  // Derive per-org key (throws if KMS_KEY env is missing)
+  const orgKey = orgRow ? deriveOrgKey(getMasterKey(), orgRow.id) : getMasterKey()
 
   // Inject context and run callback
   return withRLS({
@@ -35,17 +43,12 @@ export async function requireAdmin<T>(
     user_role: 'admin',
     accessible_dept_ids: [] // Admin sees everything
   }, async (supabase) => {
-    // Note: withRLS calls set_app_context RPC which now includes kms_key
-    // but withRLS doesn't know about kms_key yet. We need to set it manually 
-    // or update withRLS. Since we want to stick to the pattern, we'll call 
-    // set_app_context again with the key.
-    
     await supabase.rpc('set_app_context', {
       p_org_id: orgId,
       p_user_id: userId,
       p_dept_id: '',
       p_role: 'admin',
-      p_kms_key: kmsKey
+      p_kms_key: orgKey,
     })
 
     return callback(supabase, { orgId, userId })

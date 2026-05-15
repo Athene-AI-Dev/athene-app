@@ -1,5 +1,6 @@
 import { lookerFetch, lookerInstanceUrl } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function lookerSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const instanceUrl = await lookerInstanceUrl(connectionId, orgId)
@@ -18,7 +19,7 @@ export async function lookerSearch(connectionId: string, orgId: string, query: s
       })
     }
   } catch (err) {
-    console.error('[looker] Look search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[looker] Look search failed:')
   }
 
   try {
@@ -33,7 +34,7 @@ export async function lookerSearch(connectionId: string, orgId: string, query: s
       })
     }
   } catch (err) {
-    console.error('[looker] Dashboard search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[looker] Dashboard search failed:')
   }
 
   return chunks

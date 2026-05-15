@@ -20,7 +20,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('id, title, mime_type, metadata, created_at, external_id')
+    .select('id, title, mime_type, metadata, created_at, external_id, last_indexed_at')
     .eq('org_id', context.org_id)
     .eq('source_type', 'direct_upload')
     .order('created_at', { ascending: false })
@@ -49,13 +49,17 @@ export async function GET() {
     else if (diffDays === 1) date = 'Yesterday'
     else date = `${diffDays} days ago`
 
+    // Derive real indexing status from DB rather than assuming all docs are indexed
+    const docAny = doc as any
+    const status = docAny.last_indexed_at ? 'Indexed' : 'Indexing'
+
     return {
       id: doc.id,
       name: doc.title ?? 'Untitled',
       type: ext,
       size: meta.size ?? '—',
       date,
-      status: 'Indexed',
+      status,
       risk: 'Low',
       layer: 'Internal Wiki',
       storagePath: doc.external_id ?? undefined,

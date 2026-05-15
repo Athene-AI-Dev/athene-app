@@ -3,6 +3,7 @@ import { reportAgent } from "../langgraph/nodes/report-agent";
 import { getNeighbors } from "../knowledge-graph/query";
 import { HumanMessage } from "@langchain/core/messages";
 import type { AtheneStateType } from "../langgraph/state";
+import { logger } from "@/lib/logger";
 
 
 
@@ -74,7 +75,7 @@ export async function generateMorningBriefing(
       .maybeSingle();
 
     if (roleErr) {
-      console.error("[morning-briefing] Failed to fetch user role:", roleErr);
+      logger.warn({ err: roleErr.message, userId }, "[morning-briefing] Failed to fetch user role — defaulting to 'member'");
     }
 
     const role = member?.role ?? "member";
@@ -143,7 +144,7 @@ export async function generateMorningBriefing(
         }
       }
     } catch (err) {
-      console.warn("[morning-briefing] Failed to fetch knowledge highlights:", err);
+      logger.warn({ err: err instanceof Error ? err.message : String(err), userId }, "[morning-briefing] Failed to fetch knowledge highlights");
       // Surface failure in stored content for UI to display
       structuredContent.knowledgeError = "Knowledge highlights temporarily unavailable.";
     }
@@ -171,7 +172,7 @@ export async function generateMorningBriefing(
       briefing: briefingText,
     };
   } catch (error) {
-    console.error("[morning-briefing] Failed to generate briefing:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error), userId }, "[morning-briefing] Failed to generate briefing");
     return {
       success: false,
       userId,

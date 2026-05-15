@@ -1,5 +1,6 @@
 import { powerbiFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 interface PowerBIReport {
   id: string
@@ -58,7 +59,7 @@ export async function fetchPowerBIContent(connectionId: string, orgId: string): 
       })
     }
   } catch (err) {
-    console.error('[powerbi] Failed to fetch reports:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[powerbi] Failed to fetch reports')
   }
 
   // Fetch Datasets with schema
@@ -93,7 +94,7 @@ export async function fetchPowerBIContent(connectionId: string, orgId: string): 
       })
     }
   } catch (err) {
-    console.error('[powerbi] Failed to fetch datasets:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[powerbi] Failed to fetch datasets')
   }
 
   // Fetch Dashboards
@@ -114,7 +115,7 @@ export async function fetchPowerBIContent(connectionId: string, orgId: string): 
       })
     }
   } catch (err) {
-    console.error('[powerbi] Failed to fetch dashboards:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[powerbi] Failed to fetch dashboards')
   }
 
   return chunks

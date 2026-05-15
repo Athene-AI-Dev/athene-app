@@ -1,5 +1,6 @@
 import { dbtFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function dbtSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
@@ -24,7 +25,7 @@ export async function dbtSearch(connectionId: string, orgId: string, query: stri
       }
     }
   } catch (err) {
-    console.error('[dbt] Job search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[dbt] Job search failed:')
   }
 
   try {

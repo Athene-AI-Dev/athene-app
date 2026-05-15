@@ -119,15 +119,9 @@ export default function FilesPage() {
           )
         );
 
-        // Fix #10: advance Indexing → Indexed after 3s
-        setTimeout(() => {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === data.id ? { ...f, status: "Indexed" } : f
-            )
-          );
-        }, 3000);
-
+        // Status stays "Indexing" — the real indexed_at is set by the background
+        // worker after text extraction completes. GET /api/files returns the live
+        // status from last_indexed_at, so a page refresh will show the true state.
         toast.success(`Uploaded ${file.name}`, {
           icon: <Upload className="w-4 h-4" />,
           description: "File stored and queued for indexing.",

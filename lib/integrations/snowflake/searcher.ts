@@ -1,5 +1,6 @@
 import { snowflakeFetch } from './client'
 import { parseSnowflakeRows } from './schema-fetcher'
+import { logger } from '@/lib/logger'
 import { getConnectionMetadata } from '@/lib/nango/client'
 import { FetchedChunk } from '../base'
 
@@ -56,7 +57,7 @@ export async function snowflakeSearch(connectionId: string, orgId: string, query
         })
       }
     } catch (error) {
-      console.error(`Error searching table ${tableFullName}:`, error)
+      logger.error({ err: error instanceof Error ? error.message : String(error) }, `Error searching table ${tableFullName}:`)
     }
   }
 

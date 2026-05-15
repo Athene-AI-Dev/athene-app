@@ -43,12 +43,11 @@ export async function getCheckpointer(): Promise<PostgresSaver | MemorySaver> {
     logger.info({}, "[checkpointer] PostgresSaver initialized.");
     return saver;
   } catch (err) {
-    // Don't cache the fallback — allow retry on next cold start
-    logger.error({ err: err instanceof Error ? err.message : String(err) }, "[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver");
-    usingMemory = true;
-    const mem = new MemorySaver();
-    checkpointerInstance = mem;
-    return mem;
+    // Do NOT cache the MemorySaver — allows retry on the next request rather
+    // than permanently degrading all subsequent requests to in-memory storage.
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, "[checkpointer] Failed to initialize PostgresSaver, falling back to MemorySaver for this request only");
+    usingMemory = false; // Keep false so next request retries the DB
+    return new MemorySaver();
   }
 }
 

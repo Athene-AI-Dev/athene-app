@@ -1,5 +1,6 @@
 import { powerbiFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function powerbiSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
@@ -23,7 +24,7 @@ export async function powerbiSearch(connectionId: string, orgId: string, query: 
       }
     }
   } catch (err) {
-    console.error('[powerbi] Report search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[powerbi] Report search failed')
   }
 
   try {
@@ -41,7 +42,7 @@ export async function powerbiSearch(connectionId: string, orgId: string, query: 
       }
     }
   } catch (err) {
-    console.error('[powerbi] Dataset search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[powerbi] Dataset search failed')
   }
 
   return chunks

@@ -1,5 +1,6 @@
 import { getRedshiftCredentials, redshiftQuery } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 const TABLE_IDENT = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/
 
@@ -45,7 +46,7 @@ export async function redshiftSearch(connectionId: string, orgId: string, query:
         })
       }
     } catch (err) {
-      console.error(`[redshift] Search failed for ${tableFullName}:`, err)
+      logger.error({ err }, `[redshift] Search failed for ${tableFullName}`)
     }
   }
 

@@ -1,5 +1,6 @@
 import { tableauSignIn, tableauFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function tableauSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const session = await tableauSignIn(connectionId, orgId)
@@ -19,7 +20,7 @@ export async function tableauSearch(connectionId: string, orgId: string, query: 
       })
     }
   } catch (err) {
-    console.error('[tableau] Workbook search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[tableau] Workbook search failed:')
   }
 
   try {
@@ -35,7 +36,7 @@ export async function tableauSearch(connectionId: string, orgId: string, query: 
       })
     }
   } catch (err) {
-    console.error('[tableau] View search failed:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[tableau] View search failed:')
   }
 
   return chunks

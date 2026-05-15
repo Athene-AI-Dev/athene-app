@@ -1,5 +1,6 @@
 import { dbtFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 interface DbtModel {
   unique_id: string
@@ -53,7 +54,7 @@ export async function fetchDbtContent(connectionId: string, orgId: string): Prom
       })
     }
   } catch (err) {
-    console.error('[dbt] Failed to fetch jobs:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[dbt] Failed to fetch jobs:')
   }
 
   // Fetch recent Runs
@@ -77,7 +78,7 @@ export async function fetchDbtContent(connectionId: string, orgId: string): Prom
       })
     }
   } catch (err) {
-    console.error('[dbt] Failed to fetch runs:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[dbt] Failed to fetch runs:')
   }
 
   // Fetch Models from Discovery API (if available)

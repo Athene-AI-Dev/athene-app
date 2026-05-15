@@ -49,7 +49,9 @@ export async function GET(request: NextRequest) {
     }
 
     const values = currentState.values as any;
-    if (values.orgId !== clerkOrgId || values.userId !== clerkUserId) {
+    // Graph state stores internal Supabase UUIDs (set at agent/route.ts initialState),
+    // NOT Clerk IDs — must compare against resolved internal IDs.
+    if (values.orgId !== access.internal_org_id || values.userId !== access.internal_user_id) {
       return NextResponse.json(
         { error: "Thread not found or access denied" },
         { status: 403 }

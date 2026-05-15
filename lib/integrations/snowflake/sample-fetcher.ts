@@ -1,5 +1,6 @@
 import { snowflakeFetch } from './client'
 import { parseSnowflakeRows, fetchTableStats } from './schema-fetcher'
+import { logger } from '@/lib/logger'
 import { getConnection } from '@/lib/nango/client'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import {
@@ -61,7 +62,7 @@ export async function fetchSnowflakeSamples(connectionId: string, orgId: string)
         newTableMaxIds,
       ))
     } catch (err) {
-      console.error(`[snowflake] Failed to process ${tableFullName}:`, err)
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, `[snowflake] Failed to process ${tableFullName}:`)
     }
   }
 
@@ -79,7 +80,7 @@ export async function fetchSnowflakeSamples(connectionId: string, orgId: string)
       })
       .eq('id', connectionId)
   } catch (err) {
-    console.warn('[snowflake] Failed to write sync_cursor:', err)
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, '[snowflake] Failed to write sync_cursor:')
   }
 
   return chunks
@@ -183,7 +184,7 @@ async function fetchRowsPaginated(
       if (rows.length < limit) break  // exhausted
       offset += rows.length
     } catch (err) {
-      console.warn(`[snowflake] Pagination error at offset ${offset} for ${tableFullName}:`, err)
+      logger.warn({ err: err instanceof Error ? err.message : String(err) }, `[snowflake] Pagination error at offset ${offset} for ${tableFullName}:`)
       break
     }
   }

@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { getContextFromHeaders } from "@/lib/supabase/rls-client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { parseDocument } from "@/lib/integrations/microsoft/document-parser";
+import { indexDocument } from "@/lib/integrations/indexing";
 
 /**
  * POST /api/files/upload
@@ -12,6 +14,7 @@ import { logger } from "@/lib/logger";
  * 2. Uploads the file to Supabase Storage (`documents` bucket).
  * 3. Ensures a "direct_upload" connection row exists for the org.
  * 4. Inserts a metadata row into the `documents` table.
+ * 5. Extracts text from the buffer and indexes it immediately (embedding + graph).
  *
  * Returns the created document record.
  */
@@ -119,6 +122,46 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    // --- 4. Extract text and index immediately ------------------
+    // Run asynchronously so the response returns quickly; UI polls status.
+    // We intentionally do NOT await — a slow extraction (large PDF) should not
+    // block the 200 response that confirms the file was stored successfully.
+    (async () => {
+      try {
+        const text = await parseDocument(file.name, buffer);
+        if (text && text.trim().length > 0) {
+          await indexDocument(
+            {
+              chunk_id: storagePath,
+              title: file.name,
+              content: text,
+              source_url: storagePath,
+              metadata: {
+                provider: "direct_upload",
+                resource_type: ext.toLowerCase(),
+                author: ownerId ?? undefined,
+              },
+            },
+            orgId,
+            connId,
+            null,        // departmentId — unrestricted within org
+            "restricted",
+            ownerId,
+          );
+          // Mark document as indexed in the DB
+          await supabaseAdmin
+            .from("documents")
+            .update({ last_indexed_at: new Date().toISOString() })
+            .eq("id", doc.id);
+          logger.info({ docId: doc.id, name: file.name }, "[files/upload] Indexing complete");
+        } else {
+          logger.warn({ docId: doc.id, name: file.name }, "[files/upload] No extractable text — skipping indexing");
+        }
+      } catch (indexErr: any) {
+        logger.error({ docId: doc.id, name: file.name, err: indexErr?.message }, "[files/upload] Background indexing failed");
+      }
+    })();
 
     return NextResponse.json({
       id: doc.id,

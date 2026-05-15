@@ -1,4 +1,5 @@
 import { withRLS, type RLSContext } from "./rls-client";
+import { logger } from "@/lib/logger";
 
 export type SearchResult = {
   id: string;
@@ -26,7 +27,7 @@ export async function similaritySearch(
     });
 
     if (error) {
-      console.error("[vector] similaritySearch error:", error);
+      logger.error({ err: error?.message ?? String(error) }, "[vector] similaritySearch error");
       throw error;
     }
 

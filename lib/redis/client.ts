@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { logger } from "@/lib/logger";
 
 // Graceful fallback: if Redis env vars aren't set, use a no-op stub
 // so the app doesn't crash during local dev without Upstash.
@@ -36,7 +37,7 @@ export async function cached<T>(
       return cachedValue;
     }
   } catch (error) {
-    console.error(`[Redis] Error fetching key ${key}:`, error);
+    logger.warn({ key, err: error instanceof Error ? error.message : String(error) }, "[Redis] Error fetching key");
     // Proceed to fn() fallback if Redis fetch fails so the app doesn't crash
   }
 
@@ -45,7 +46,7 @@ export async function cached<T>(
   try {
     await redis.set(key, result, { ex: ttlSeconds });
   } catch (error) {
-    console.error(`[Redis] Error setting key ${key}:`, error);
+    logger.warn({ key, err: error instanceof Error ? error.message : String(error) }, "[Redis] Error setting key");
   }
 
   return result;
@@ -70,7 +71,7 @@ export async function incrWithExpire(
     }
     return count;
   } catch (error) {
-    console.error(`[Redis] Error incrementing key ${key}:`, error);
+    logger.error({ key, err: error instanceof Error ? error.message : String(error) }, "[Redis] Error incrementing key — dispatch will abort (fail-closed)");
     // Fail-Closed: Return null so dispatch aborts instead of flooding APIs
     return null;
   }

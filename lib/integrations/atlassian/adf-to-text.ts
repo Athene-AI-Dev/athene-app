@@ -2,6 +2,7 @@
  * Utility to convert Atlassian Document Format (ADF) JSON to plain text.
  * Used by both Jira (issue descriptions/comments) and Confluence (pages).
  */
+import { logger } from '@/lib/logger'
 
 interface ADFNode {
   type: string
@@ -61,7 +62,7 @@ export function jiraAdfToText(adf: any): string {
     if (typeof adf === 'string') return adf // Sometimes it's already text
     return extractTextFromADF(adf as ADFNode).trim()
   } catch (error) {
-    console.error('Error converting Jira ADF to text:', error)
+    logger.error({ err: error }, 'Error converting Jira ADF to text')
     return String(adf)
   }
 }

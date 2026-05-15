@@ -1,5 +1,6 @@
 import { snowflakeFetch } from './client'
 import { getConnection } from '@/lib/nango/client'
+import { logger } from '@/lib/logger'
 import {
   type ColumnSchema,
   type TableStats,
@@ -66,7 +67,7 @@ export async function discoverSchema(connectionId: string, orgId: string): Promi
 
   for (const tableFullName of allowlist) {
     if (!identifierRegex.test(tableFullName)) {
-      console.warn(`Invalid Snowflake identifier in allowlist: ${tableFullName}. Skipping.`)
+      logger.warn({ err: `Invalid Snowflake identifier in allowlist: ${tableFullName}. Skipping.` }, `Invalid Snowflake identifier in allowlist: ${tableFullName}. Skipping.`)
       continue
     }
     // Expected format: DATABASE.SCHEMA.TABLE or just TABLE if defaults set
@@ -99,7 +100,7 @@ export async function discoverSchema(connectionId: string, orgId: string): Promi
         columns
       })
     } catch (error) {
-      console.error(`Error describing table ${tableFullName}:`, error)
+      logger.error({ err: error instanceof Error ? error.message : String(error) }, `Error describing table ${tableFullName}:`)
     }
   }
 
@@ -125,7 +126,7 @@ export async function fetchTableStats(
     const rows = parseSnowflakeRows(countRes)
     rowCount = Number(rows[0]?.cnt ?? 0)
   } catch (err) {
-    console.warn(`[snowflake] Could not get row count for ${tableFullName}:`, err)
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, `[snowflake] Could not get row count for ${tableFullName}:`)
   }
 
   for (const col of schema) {

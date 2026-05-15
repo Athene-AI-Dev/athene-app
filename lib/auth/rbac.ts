@@ -268,11 +268,13 @@ export async function invalidateRBACCache(userId: string, orgId: string): Promis
  * For API routes, we'll return the role or null.
  */
 export async function assertAdminRole(userId: string, orgId: string): Promise<UserRole | null> {
+  // userId is the internal org_members.id (UUID) — set by middleware from access.internal_user_id.
+  // Must query by primary key `id`, not `clerk_user_id`, to avoid identity mismatch.
   const { data: member, error } = await supabaseAdmin
     .from("org_members")
     .select("role")
-    .eq("clerk_user_id", userId)
-    .eq("org_id", orgId) // Critical scoping fix (ATH-47 #1, #3)
+    .eq("id", userId)
+    .eq("org_id", orgId)
     .limit(1)
     .maybeSingle();
 

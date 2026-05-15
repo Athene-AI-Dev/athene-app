@@ -1,5 +1,6 @@
 import { hubspotFetch } from './client'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 import type { FetchedChunk } from '@/lib/integrations/base'
 
 async function getOrgConnection(orgId: string, provider: string) {
@@ -24,7 +25,7 @@ export async function hubspotSearch(
   const limit = args?.limit ?? 5;
   const conn = await getOrgConnection(orgId, 'hubspot')
   if (!conn) {
-    console.warn('[live-search:hubspot] no active connection for org', orgId)
+    logger.warn({ err: `no active connection for org ${orgId}` }, '[live-search:hubspot] no active connection for org')
     return []
   }
 
@@ -71,10 +72,7 @@ export async function hubspotSearch(
         })
       }
     } catch (err) {
-      console.error(
-        `[live-search:hubspot] ${objType} search failed:`,
-        err instanceof Error ? err.message : String(err)
-      )
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, `[live-search:hubspot] ${objType} search failed:`)
     }
   }
 

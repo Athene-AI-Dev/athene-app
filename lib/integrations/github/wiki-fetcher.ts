@@ -8,6 +8,7 @@
 
 import { githubRestFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 const CHUNK_MAX = 2000
 const CHUNK_OVERLAP = 200
@@ -79,11 +80,11 @@ export async function githubWikiFetcher(
           }
         })
       } catch (fileErr) {
-        console.error(`[github-wiki] Failed to fetch blob ${file.path}:`, fileErr)
+        logger.error({ err: fileErr }, `[github-wiki] Failed to fetch blob ${file.path}`)
       }
     }
   } catch (error) {
-    console.error('[github-wiki] Error fetching repository tree:', error)
+    logger.error({ err: error }, '[github-wiki] Error fetching repository tree')
   }
 
   return chunks

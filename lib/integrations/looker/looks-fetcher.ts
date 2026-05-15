@@ -1,5 +1,6 @@
 import { lookerFetch, lookerInstanceUrl } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 interface LookerLook {
   id: number
@@ -56,7 +57,7 @@ export async function fetchLookerContent(connectionId: string, orgId: string): P
       }
     }
   } catch (err) {
-    console.error('[looker] Failed to fetch looks:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[looker] Failed to fetch looks:')
   }
 
   // Fetch Dashboards
@@ -76,7 +77,7 @@ export async function fetchLookerContent(connectionId: string, orgId: string): P
       })
     }
   } catch (err) {
-    console.error('[looker] Failed to fetch dashboards:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[looker] Failed to fetch dashboards:')
   }
 
   return chunks

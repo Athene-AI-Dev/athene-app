@@ -6,6 +6,7 @@ import { registerProvider, registerSearcher } from '../registry'
 import { FetchedChunk } from '../base'
 import { microsoftSearch } from './searcher'
 import { graphFetch } from './graph-client'
+import { logger } from '@/lib/logger'
 
 // ─── Email chunking constants ────────────────────────────────────────────────
 const EMAIL_CHUNK_SIZE = 2000
@@ -90,7 +91,7 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
       for (const r of results) chunks.push(...r)
     }
   } catch (error) {
-    console.error('Error fetching Outlook emails:', error)
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[microsoft] Error fetching Outlook emails');
   }
 
   // 2. Calendar Events — enriched with attendees and organizer
@@ -129,7 +130,7 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
       }
     }
   } catch (error) {
-    console.error('Error fetching Calendar events:', error)
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[microsoft] Error fetching Calendar events');
   }
 
   // 3. OneDrive Documents
@@ -150,7 +151,7 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
       })
     }
   } catch (error) {
-    console.error('Error fetching OneDrive docs:', error)
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[microsoft] Error fetching OneDrive docs');
   }
 
   // 4. SharePoint Documents
@@ -178,11 +179,12 @@ export async function microsoftFetcher(connectionId: string, orgId: string): Pro
             })
           }
         } catch (siteError) {
-          console.error(`Error fetching docs for site ${site.id}:`, siteError)        }
+          logger.error({ siteId: site.id, err: siteError instanceof Error ? siteError.message : String(siteError) }, '[microsoft] Error fetching docs for SharePoint site');
+        }
       }
     }
   } catch (error) {
-    console.error('Error fetching SharePoint docs:', error)
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, '[microsoft] Error fetching SharePoint docs');
   }
 
   return chunks

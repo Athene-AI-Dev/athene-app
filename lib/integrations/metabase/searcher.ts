@@ -1,6 +1,7 @@
 import { metabaseFetch } from './client'
 import { FetchedChunk } from '../base'
 import { getProviderMetadata } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function metabaseSearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const meta = await getProviderMetadata(connectionId, 'metabase', orgId)
@@ -25,7 +26,7 @@ export async function metabaseSearch(connectionId: string, orgId: string, query:
       })
     }
   } catch (err) {
-    console.error('[metabase] Search failed:', err)
+    logger.error({ err }, '[metabase] Search failed')
   }
 
   return chunks

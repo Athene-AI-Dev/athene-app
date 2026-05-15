@@ -8,6 +8,7 @@
 
 import { baseFetch, getProviderToken, type BaseFetchOptions } from '@/lib/integrations/base'
 import { getConnectionMetadata } from '@/lib/nango/client'
+import { logger } from '@/lib/logger'
 
 /**
  * Make an authenticated GET request to the Salesforce REST API.
@@ -33,7 +34,7 @@ export async function salesforceFetch<T = unknown>(
       const conn = await getConnectionMetadata(connectionId, 'salesforce', orgId)
       baseUrl = conn.metadata?.instance_url || conn.credentials?.instance_url || conn.connection_config?.instance_url || 'https://login.salesforce.com'
     } catch (err) {
-      console.warn(`[salesforceFetch] Failed to fetch instance_url from Nango metadata, falling back to login.salesforce.com:`, err)
+      logger.warn({ err }, '[salesforceFetch] Failed to fetch instance_url from Nango metadata, falling back to login.salesforce.com')
       baseUrl = 'https://login.salesforce.com'
     }
   }

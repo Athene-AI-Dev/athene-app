@@ -58,7 +58,7 @@ export async function GET(request: Request) {
       .eq("org_id", orgData.id);
 
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`display_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     const { data: members, error, count } = await query

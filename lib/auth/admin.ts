@@ -45,14 +45,16 @@ export async function requireAdmin<T>(
   const orgKey = deriveOrgKey(getMasterKey(), orgRow.id)
 
   // Inject context and run callback
+  // Use internal UUIDs for both RLS context and set_app_context — policies
+  // compare against internal org_id/user_id, not Clerk-format IDs.
   return withRLS({
-    org_id: orgId,
+    org_id: orgRow.id,
     user_id: userId,
     user_role: 'admin',
     accessible_dept_ids: [] // Admin sees everything
   }, async (supabase) => {
     await supabase.rpc('set_app_context', {
-      p_org_id: orgId,
+      p_org_id: orgRow.id,
       p_user_id: userId,
       p_dept_id: '',
       p_role: 'admin',

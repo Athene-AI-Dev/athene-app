@@ -1,6 +1,7 @@
 import { salesforceFetch } from './client'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import type { FetchedChunk } from '@/lib/integrations/base'
+import { logger } from '@/lib/logger'
 
 async function getOrgConnection(orgId: string, provider: string) {
   const { data, error } = await supabaseAdmin
@@ -27,7 +28,7 @@ export async function salesforceSearch(
   const limit = args?.limit ?? 5;
   const conn = await getOrgConnection(orgId, 'salesforce')
   if (!conn) {
-    console.warn('[live-search:salesforce] no active connection for org', orgId)
+    logger.warn({ err: undefined }, `[live-search:salesforce] no active connection for org ${orgId}`)
     return []
   }
 
@@ -70,7 +71,7 @@ export async function salesforceSearch(
       };
     })
   } catch (err) {
-    console.error('[live-search:salesforce] SOSL query failed:', err instanceof Error ? err.message : String(err))
+    logger.error({ err }, '[live-search:salesforce] SOSL query failed')
     return []
   }
 }

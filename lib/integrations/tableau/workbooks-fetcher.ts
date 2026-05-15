@@ -1,5 +1,6 @@
 import { tableauSignIn, tableauFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 interface TableauWorkbook {
   id: string
@@ -24,7 +25,7 @@ export async function fetchTableauWorkbooks(connectionId: string, orgId: string)
     const res = await tableauFetch<any>(session, `/sites/${session.siteId}/workbooks?pageSize=50`)
     workbooks = res?.workbooks?.workbook ?? []
   } catch (err) {
-    console.error('[tableau] Failed to fetch workbooks:', err)
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, '[tableau] Failed to fetch workbooks:')
     return chunks
   }
 

@@ -1,5 +1,6 @@
 import { graphFetch } from './graph-client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 /**
  * Searches across Microsoft 365 (Outlook and Calendar).
@@ -45,7 +46,7 @@ export async function microsoftSearch(connectionId: string, orgId: string, query
       }
     }
   } catch (error) {
-    console.error('Error in microsoftSearch:', error)
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, 'Error in microsoftSearch:')
   }
 
   return chunks

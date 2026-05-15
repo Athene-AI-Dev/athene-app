@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { qstash } from "@/lib/qstash/client";
 import { BRIEFING_HOUR_LOCAL } from "./constants";
 import { getServerBaseUrl } from "@/lib/url/server-base-url";
+import { logger } from "@/lib/logger";
 
 
 /**
@@ -180,7 +181,7 @@ export async function scheduleMorningBriefings(now = new Date()) {
       scheduledCount: automations?.length || 0,
     };
   } catch (error) {
-    console.error("[schedule-briefings] Failed to schedule briefings:", error);
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "[schedule-briefings] Failed to schedule briefings");
 
     return {
       success: false,

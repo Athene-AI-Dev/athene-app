@@ -1,5 +1,6 @@
 import { bigqueryFetch, bigqueryProjectId, parseBigQueryRows } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 export async function bigquerySearch(connectionId: string, orgId: string, query: string): Promise<FetchedChunk[]> {
   const projectId = await bigqueryProjectId(connectionId, orgId)
@@ -57,7 +58,7 @@ export async function bigquerySearch(connectionId: string, orgId: string, query:
         }
       }
     } catch (err) {
-      console.error(`[bigquery] Search failed for dataset ${datasetId}:`, err)
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, `[bigquery] Search failed for dataset ${datasetId}:`)
     }
   }
 

@@ -1,5 +1,6 @@
 import { metabaseFetch } from './client'
 import { FetchedChunk } from '../base'
+import { logger } from '@/lib/logger'
 
 interface MetabaseCard {
   id: number
@@ -51,7 +52,7 @@ export async function fetchMetabaseContent(connectionId: string, orgId: string):
       })
     }
   } catch (err) {
-    console.error('[metabase] Failed to fetch cards:', err)
+    logger.error({ err }, '[metabase] Failed to fetch cards')
   }
 
   // Fetch Dashboards
@@ -71,7 +72,7 @@ export async function fetchMetabaseContent(connectionId: string, orgId: string):
       })
     }
   } catch (err) {
-    console.error('[metabase] Failed to fetch dashboards:', err)
+    logger.error({ err }, '[metabase] Failed to fetch dashboards')
   }
 
   return chunks

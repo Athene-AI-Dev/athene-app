@@ -9,8 +9,8 @@ import { logger } from "@/lib/logger";
 interface Params { params: Promise<{ id: string }> }
 
 const SNOWFLAKE_IDENT_RE = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;
-const BIGQUERY_IDENT_RE  = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;        // dataset.table
-const REDSHIFT_IDENT_RE  = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?$/;     // schema.table or table
+const BIGQUERY_IDENT_RE  = /^[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/;
+const REDSHIFT_IDENT_RE  = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?$/;
 
 /**
  * PATCH /api/connections/[id]/configure
@@ -64,6 +64,29 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const existingMeta = (conn.metadata as Record<string, unknown>) ?? {};
 
+  // Shared dispatch helper — sets status to 'syncing' only after a successful dispatch.
+  // If dispatch is throttled (queued), status stays as-is; the worker will update it when it runs.
+  async function dispatchSync() {
+    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
+    const { dispatched, msgId } = await dispatchThrottled({
+      orgId: internalOrgId,
+      sourceType: conn!.source_type as string,
+      url: workerUrl,
+      body: {
+        orgId: internalOrgId,
+        connectionId,
+        nangoConnectionId: conn!.nango_connection_id,
+        provider: conn!.provider,
+        sourceType: conn!.source_type,
+        departmentId: conn!.department_id ?? null,
+      },
+    });
+    if (dispatched) {
+      await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+    }
+    return { dispatched, msgId };
+  }
+
   // ── Google Drive ──────────────────────────────────────────
   if (provider === "google_drive") {
     if (!Array.isArray(selectedFolderIds) || selectedFolderIds.length === 0) {
@@ -80,24 +103,8 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Failed to save selection" }, { status: 500 });
     }
 
-    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
-
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
-    const { dispatched } = await dispatchThrottled({
-      orgId: internalOrgId,
-      sourceType: conn.source_type as string,
-      url: workerUrl,
-      body: {
-        orgId: internalOrgId,
-        connectionId,
-        nangoConnectionId: conn.nango_connection_id,
-        provider: conn.provider,
-        sourceType: conn.source_type,
-        departmentId: conn.department_id ?? null,
-      },
-    });
-
-    logger.info({ connectionId, folderCount: selectedFolderIds.length }, "[configure] Drive configured and sync dispatched");
+    const { dispatched } = await dispatchSync();
+    logger.info({ connectionId, folderCount: selectedFolderIds.length, dispatched }, "[configure] Drive configured");
     return NextResponse.json({ success: true, dispatched });
   }
 
@@ -110,12 +117,11 @@ export async function PATCH(request: Request, { params }: Params) {
     const invalid = allowlist.filter((t) => !SNOWFLAKE_IDENT_RE.test(t));
     if (invalid.length > 0) {
       return NextResponse.json(
-        { error: `Invalid table identifiers (must be DATABASE.SCHEMA.TABLE): ${invalid.join(", ")}` },
+        { error: `Invalid identifiers (expected DATABASE.SCHEMA.TABLE): ${invalid.join(", ")}` },
         { status: 400 }
       );
     }
 
-    // 1. Save to Supabase connections.metadata
     const { error: updateErr } = await supabaseAdmin
       .from("connections")
       .update({ metadata: { ...existingMeta, allowlist } })
@@ -126,37 +132,14 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Failed to save allowlist" }, { status: 500 });
     }
 
-    // 2. Update Nango metadata so the worker can read allowlist via getConnection().metadata
     try {
-      await updateConnectionNangoMetadata(
-        conn.nango_connection_id as string,
-        "snowflake",
-        internalOrgId,
-        { allowlist }
-      );
+      await updateConnectionNangoMetadata(conn.nango_connection_id as string, "snowflake", internalOrgId, { allowlist });
     } catch (nangoErr: any) {
-      // Non-fatal: Supabase save succeeded. Worker can still read from Supabase metadata.
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
 
-    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
-
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
-    const { dispatched } = await dispatchThrottled({
-      orgId: internalOrgId,
-      sourceType: conn.source_type as string,
-      url: workerUrl,
-      body: {
-        orgId: internalOrgId,
-        connectionId,
-        nangoConnectionId: conn.nango_connection_id,
-        provider: conn.provider,
-        sourceType: conn.source_type,
-        departmentId: conn.department_id ?? null,
-      },
-    });
-
-    logger.info({ connectionId, tableCount: allowlist.length }, "[configure] Snowflake configured and sync dispatched");
+    const { dispatched } = await dispatchSync();
+    logger.info({ connectionId, tableCount: allowlist.length, dispatched }, "[configure] Snowflake configured");
     return NextResponse.json({ success: true, dispatched });
   }
 
@@ -169,7 +152,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const invalid = allowlist.filter((t) => !BIGQUERY_IDENT_RE.test(t));
     if (invalid.length > 0) {
       return NextResponse.json(
-        { error: `Invalid table identifiers (must be DATASET.TABLE): ${invalid.join(", ")}` },
+        { error: `Invalid identifiers (expected DATASET.TABLE): ${invalid.join(", ")}` },
         { status: 400 }
       );
     }
@@ -185,34 +168,13 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     try {
-      await updateConnectionNangoMetadata(
-        conn.nango_connection_id as string,
-        "bigquery",
-        internalOrgId,
-        { allowlist }
-      );
+      await updateConnectionNangoMetadata(conn.nango_connection_id as string, "bigquery", internalOrgId, { allowlist });
     } catch (nangoErr: any) {
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
 
-    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
-
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
-    const { dispatched } = await dispatchThrottled({
-      orgId: internalOrgId,
-      sourceType: conn.source_type as string,
-      url: workerUrl,
-      body: {
-        orgId: internalOrgId,
-        connectionId,
-        nangoConnectionId: conn.nango_connection_id,
-        provider: conn.provider,
-        sourceType: conn.source_type,
-        departmentId: conn.department_id ?? null,
-      },
-    });
-
-    logger.info({ connectionId, tableCount: allowlist.length }, "[configure] BigQuery configured and sync dispatched");
+    const { dispatched } = await dispatchSync();
+    logger.info({ connectionId, tableCount: allowlist.length, dispatched }, "[configure] BigQuery configured");
     return NextResponse.json({ success: true, dispatched });
   }
 
@@ -225,7 +187,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const invalid = allowlist.filter((t) => !REDSHIFT_IDENT_RE.test(t));
     if (invalid.length > 0) {
       return NextResponse.json(
-        { error: `Invalid table identifiers (must be SCHEMA.TABLE or TABLE): ${invalid.join(", ")}` },
+        { error: `Invalid identifiers (expected SCHEMA.TABLE or TABLE): ${invalid.join(", ")}` },
         { status: 400 }
       );
     }
@@ -241,34 +203,13 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     try {
-      await updateConnectionNangoMetadata(
-        conn.nango_connection_id as string,
-        "redshift",
-        internalOrgId,
-        { allowlist }
-      );
+      await updateConnectionNangoMetadata(conn.nango_connection_id as string, "redshift", internalOrgId, { allowlist });
     } catch (nangoErr: any) {
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
 
-    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
-
-    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
-    const { dispatched } = await dispatchThrottled({
-      orgId: internalOrgId,
-      sourceType: conn.source_type as string,
-      url: workerUrl,
-      body: {
-        orgId: internalOrgId,
-        connectionId,
-        nangoConnectionId: conn.nango_connection_id,
-        provider: conn.provider,
-        sourceType: conn.source_type,
-        departmentId: conn.department_id ?? null,
-      },
-    });
-
-    logger.info({ connectionId, tableCount: allowlist.length }, "[configure] Redshift configured and sync dispatched");
+    const { dispatched } = await dispatchSync();
+    logger.info({ connectionId, tableCount: allowlist.length, dispatched }, "[configure] Redshift configured");
     return NextResponse.json({ success: true, dispatched });
   }
 

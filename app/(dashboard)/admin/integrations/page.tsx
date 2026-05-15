@@ -140,7 +140,7 @@ export default function IntegrationsPage() {
     const next = pendingConfigureQueue.current[0];
     const found = integrations.find(
       (i) => i.provider === next.provider && i.internalConnectionId === next.internalConnectionId
-    ) ?? integrations.find((i) => i.provider === next.provider);
+    );
     if (found) {
       pendingConfigureQueue.current.shift();
       setConfiguring(found);

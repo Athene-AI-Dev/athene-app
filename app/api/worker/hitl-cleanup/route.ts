@@ -12,11 +12,12 @@ export const dynamic = 'force-dynamic';
 //
 // Flow:
 //   1. Verify QStash signature
-//   2. Find threads updated in last 7 days (scope to recent activity)
+//   2. Page through threads updated in last 7 days (50 at a time)
 //   3. For each thread, load LangGraph checkpoint state
 //   4. If awaiting_approval=true and requested_at >24h ago:
-//      a. Audit-log the auto-reject in hitl_decisions
-//      b. Clear awaiting_approval + pending_write_action from state
+//      a. Clear awaiting_approval + pending_write_action from state
+//      b. Audit-log the auto-reject AFTER the state update succeeds
+//         (ordering prevents duplicate audit rows on partial failure)
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -26,78 +27,85 @@ import { getAgentGraph } from '@/lib/langgraph/graph';
 import { logHitlDecision } from '@/lib/graph/interrupts';
 import { logger } from '@/lib/logger';
 
-const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STALE_MS = 24 * 60 * 60 * 1000;
 const LOOK_BACK_DAYS = 7;
+const PAGE_SIZE = 50;
 
 export async function POST(request: Request): Promise<Response> {
   const isValid = await verifyQStashSignature(request);
   if (!isValid) return new Response('Invalid QStash signature', { status: 401 });
 
   const since = new Date(Date.now() - LOOK_BACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-  const { data: threads, error: threadsErr } = await supabaseAdmin
-    .from('threads')
-    .select('id, org_id, user_id')
-    .gte('updated_at', since);
-
-  if (threadsErr) {
-    logger.error({ err: threadsErr.message }, '[hitl-cleanup] Failed to load threads');
-    return NextResponse.json({ error: threadsErr.message }, { status: 500 });
-  }
-
-  if (!threads || threads.length === 0) {
-    return NextResponse.json({ cleaned: 0, checked: 0 });
-  }
-
   const graph = await getAgentGraph();
+
   let checked = 0;
   let cleaned = 0;
+  let offset = 0;
 
-  for (const thread of threads) {
-    checked++;
-    try {
-      const state = await graph.getState({ configurable: { thread_id: thread.id } });
-      if (!state?.values?.awaiting_approval) continue;
+  while (true) {
+    const { data: threads, error: threadsErr } = await supabaseAdmin
+      .from('threads')
+      .select('id, org_id, user_id')
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
 
-      const pendingAction = state.values.pending_write_action as {
-        tool?: string;
-        payload?: Record<string, unknown>;
-        requested_at?: string;
-      } | null;
-
-      const requestedAt = pendingAction?.requested_at
-        ? new Date(pendingAction.requested_at)
-        : null;
-
-      if (!requestedAt || Date.now() - requestedAt.getTime() <= STALE_MS) continue;
-
-      // Audit log the auto-reject so the hitl_decisions trail stays complete
-      try {
-        await logHitlDecision({
-          orgId: thread.org_id,
-          threadId: thread.id,
-          userId: thread.user_id,
-          actionType: pendingAction?.tool ?? 'unknown',
-          decision: 'reject',
-          originalPayload: pendingAction?.payload ?? {},
-          editedPayload: null,
-        });
-      } catch (auditErr) {
-        // Non-fatal — still clear the lock so the thread becomes usable
-        logger.warn({ threadId: thread.id, err: auditErr }, '[hitl-cleanup] Audit log failed (non-fatal)');
-      }
-
-      // Clear the stale lock from the checkpoint state
-      await graph.updateState(
-        { configurable: { thread_id: thread.id } },
-        { awaiting_approval: false, pending_write_action: null }
-      );
-
-      cleaned++;
-      logger.info({ threadId: thread.id, requestedAt }, '[hitl-cleanup] Auto-rejected stale HITL approval');
-    } catch (err) {
-      logger.error({ threadId: thread.id, err: err instanceof Error ? err.message : String(err) }, '[hitl-cleanup] Error processing thread');
+    if (threadsErr) {
+      logger.error({ err: threadsErr.message }, '[hitl-cleanup] Failed to load threads');
+      return NextResponse.json({ error: threadsErr.message }, { status: 500 });
     }
+
+    if (!threads || threads.length === 0) break;
+
+    for (const thread of threads) {
+      checked++;
+      try {
+        const state = await graph.getState({ configurable: { thread_id: thread.id } });
+        if (!state?.values?.awaiting_approval) continue;
+
+        const pendingAction = state.values.pending_write_action as {
+          tool?: string;
+          payload?: Record<string, unknown>;
+          requested_at?: string;
+        } | null;
+
+        const rawDate = pendingAction?.requested_at;
+        if (!rawDate) continue;
+        const requestedAt = new Date(rawDate);
+        if (isNaN(requestedAt.getTime())) continue;
+        if (Date.now() - requestedAt.getTime() <= STALE_MS) continue;
+
+        // Clear the lock first — audit log is secondary.
+        // If state update succeeds but audit fails, the thread is unblocked (good outcome).
+        // If state update fails, we skip the audit to avoid phantom records.
+        await graph.updateState(
+          { configurable: { thread_id: thread.id } },
+          { awaiting_approval: false, pending_write_action: null }
+        );
+
+        try {
+          await logHitlDecision({
+            orgId: thread.org_id,
+            threadId: thread.id,
+            userId: thread.user_id,
+            actionType: pendingAction?.tool ?? 'unknown',
+            decision: 'reject',
+            originalPayload: pendingAction?.payload ?? {},
+            editedPayload: null,
+          });
+        } catch (auditErr) {
+          logger.warn({ threadId: thread.id, err: auditErr }, '[hitl-cleanup] Audit log failed (state already cleared)');
+        }
+
+        cleaned++;
+        logger.info({ threadId: thread.id, requestedAt: rawDate }, '[hitl-cleanup] Auto-rejected stale HITL approval');
+      } catch (err) {
+        logger.error({ threadId: thread.id, err: err instanceof Error ? err.message : String(err) }, '[hitl-cleanup] Error processing thread');
+      }
+    }
+
+    if (threads.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
   logger.info({ checked, cleaned }, '[hitl-cleanup] Run complete');

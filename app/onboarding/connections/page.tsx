@@ -8,7 +8,8 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
-  Cloud
+  Cloud,
+  AlertCircle
 } from "lucide-react";
 import Link from "next/link";
 import Nango from "@nangohq/frontend";
@@ -24,12 +25,14 @@ const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
 export default function OnboardingConnectionsPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [connectedCount, setConnectedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const handleConnect = useCallback(async (provider: ProviderConfig) => {
     setConnecting(provider.key);
+    setError(null);
     try {
       const sessionRes = await fetch("/api/nango/session", { method: "POST" });
-      if (!sessionRes.ok) throw new Error("Failed to secure Nango session");
+      if (!sessionRes.ok) throw new Error("Failed to create a secure session. Please try again.");
       const { token } = await sessionRes.json();
 
       const nango = new Nango({ connectSessionToken: token });
@@ -37,7 +40,6 @@ export default function OnboardingConnectionsPage() {
       nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "connect") {
-            // Map Nango key → internal key; fall back to clicked provider key
             const nangoKey = event.payload.providerConfigKey;
             const internalKey = NANGO_KEY_MAP[nangoKey] ?? provider.key;
 
@@ -52,8 +54,9 @@ export default function OnboardingConnectionsPage() {
 
             if (saveRes.ok) {
               setConnectedCount(prev => prev + 1);
+            } else {
+              setError("Connection authenticated but failed to save. Please try again.");
             }
-            // Don't close — user can connect more providers in the same session
             setConnecting(null);
           }
           if (event.type === "close") {
@@ -63,6 +66,7 @@ export default function OnboardingConnectionsPage() {
       });
     } catch (e: any) {
       setConnecting(null);
+      setError(e?.message ?? "Something went wrong. Please try again.");
     }
   }, []);
 
@@ -85,14 +89,14 @@ export default function OnboardingConnectionsPage() {
       </div>
 
       <main className="flex-1 container max-w-5xl mx-auto flex flex-col items-center justify-center p-6 pt-20">
-        
+
         <div className="w-full text-center space-y-6 mb-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
            <div className="flex items-center justify-center gap-4 mb-4">
               <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
                  <Blocks className="w-6 h-6 text-[#66ADE4]" />
               </div>
            </div>
-           
+
            <h1 className="text-4xl md:text-5xl font-black tracking-tighter">
              Connect your <span className="text-gradient">Neural Grid</span>
            </h1>
@@ -106,12 +110,19 @@ export default function OnboardingConnectionsPage() {
                 <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">{connectedCount} Sources Synthesized</span>
              </div>
            )}
+
+           {error && (
+             <div className="flex items-center justify-center gap-2 animate-in zoom-in duration-300">
+               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+               <span className="text-xs font-medium text-red-400">{error}</span>
+             </div>
+           )}
         </div>
 
         {/* Integration Grid */}
         <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-20 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-150">
            {topProviders.map((provider) => (
-              <div 
+              <div
                 key={provider.key}
                 className="group relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-8 flex flex-col items-center text-center transition-all duration-500 hover:border-[#66ADE4]/30 hover:bg-white/10"
               >
@@ -122,12 +133,12 @@ export default function OnboardingConnectionsPage() {
                  <p className="text-[10px] text-slate-500 mb-6 line-clamp-2 leading-relaxed">
                    {provider.description}
                  </p>
-                 <Button 
+                 <Button
                    onClick={() => handleConnect(provider)}
-                   disabled={connecting === provider.key}
+                   disabled={connecting !== null}
                    className={cn(
                      "w-full h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all",
-                     connecting === provider.key ? "bg-white/10 text-slate-400" : "bg-white text-black hover:bg-white/90"
+                     connecting !== null ? "bg-white/10 text-slate-400" : "bg-white text-black hover:bg-white/90"
                    )}
                  >
                     {connecting === provider.key ? (

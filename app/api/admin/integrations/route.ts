@@ -37,6 +37,11 @@ export async function GET(_req: NextRequest) {
       .maybeSingle()
     const internalOrgId = orgData?.id as string | undefined
 
+    if (!internalOrgId) {
+      // Org not yet synced to Supabase — return empty list rather than crashing
+      return NextResponse.json({ integrations: [] })
+    }
+
     // Batch-count documents and load metadata per nango connection.
     // connections.org_id stores internal UUIDs — use internalOrgId for correct filtering.
     const { data: connRows } = internalOrgId

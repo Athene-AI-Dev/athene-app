@@ -55,8 +55,6 @@ export async function POST(request: Request, { params }: Params) {
       .eq("id", connectionId);
   }
 
-  await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
-
   const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
   const { dispatched, msgId } = await dispatchThrottled({
     orgId: internalOrgId,
@@ -71,6 +69,12 @@ export async function POST(request: Request, { params }: Params) {
       departmentId: conn.department_id ?? null,
     },
   });
+
+  // Only mark syncing after a confirmed dispatch — avoids status getting stuck
+  // when QStash is down. Queued (throttled) jobs update status when they run.
+  if (dispatched) {
+    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+  }
 
   return NextResponse.json({ success: true, dispatched, msgId: msgId ?? null, force });
 }

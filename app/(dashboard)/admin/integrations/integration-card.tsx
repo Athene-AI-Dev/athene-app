@@ -97,8 +97,15 @@ export function IntegrationCard({
   const config = statusConfig[integration.status];
   const needsConfig = needsConfiguration(integration);
 
+  const isError = integration.status === "error";
+
   return (
-    <div className="group relative rounded-[2.5rem] bg-card border border-white/5 p-8 transition-all duration-500 hover:scale-[1.02] hover:border-white/10 hover:shadow-2xl hover:shadow-[#D96FAB]/5">
+    <div className={cn(
+      "group relative rounded-[2.5rem] bg-card border p-8 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl",
+      isError
+        ? "border-amber-400/25 hover:border-amber-400/40 hover:shadow-amber-500/5"
+        : "border-white/5 hover:border-white/10 hover:shadow-[#D96FAB]/5"
+    )}>
       <div className="absolute top-0 right-0 p-8 flex flex-col items-end gap-2">
         <Badge className={cn("rounded-full px-3 py-1 font-black text-[9px] uppercase tracking-widest border", config.color)}>
            <div className="flex items-center gap-1.5">
@@ -158,10 +165,15 @@ export function IntegrationCard({
             onClick={handleIndex}
             disabled={indexing || integration.status === 'syncing'}
             variant="ghost"
-            className="h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-foreground hover:bg-[#7AADCF]/10 hover:text-[#7AADCF] transition-all gap-2"
+            className={cn(
+              "h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all gap-2",
+              isError
+                ? "text-amber-400 hover:bg-amber-400/10"
+                : "text-foreground hover:bg-[#7AADCF]/10 hover:text-[#7AADCF]"
+            )}
           >
             {indexing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            Force Sync
+            {isError ? "Retry Sync" : "Force Sync"}
           </Button>
 
           {CONFIGURABLE.has(integration.provider) && onConfigure && (

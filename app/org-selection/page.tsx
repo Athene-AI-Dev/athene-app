@@ -37,7 +37,7 @@ export default async function OrgSelectionPage() {
           <OrganizationList 
             hidePersonal={true}
             afterSelectOrganizationUrl="/dashboard"
-            afterCreateOrganizationUrl="/dashboard"
+            afterCreateOrganizationUrl="/onboarding/welcome"
             appearance={{
               elements: {
                 rootBox: "w-full",

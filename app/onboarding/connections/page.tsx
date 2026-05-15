@@ -83,9 +83,9 @@ export default function OnboardingConnectionsPage() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] bg-[#66ADE4]/5 blur-[160px] -z-10 rounded-full opacity-50" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#D96FAB]/5 blur-[120px] -z-10 rounded-full" />
 
-      {/* Progress Bar */}
+      {/* Progress Bar — step 2 of 4 */}
       <div className="h-1.5 w-full bg-white/5 fixed top-0 left-0 z-50">
-         <div className="h-full bg-gradient-to-r from-[#D96FAB] to-[#66ADE4] transition-all duration-1000" style={{ width: '75%' }} />
+         <div className="h-full bg-gradient-to-r from-[#D96FAB] to-[#66ADE4] transition-all duration-1000" style={{ width: '50%' }} />
       </div>
 
       <main className="flex-1 container max-w-5xl mx-auto flex flex-col items-center justify-center p-6 pt-20">
@@ -97,6 +97,9 @@ export default function OnboardingConnectionsPage() {
               </div>
            </div>
 
+           <div className="flex items-center justify-center gap-2 mb-2">
+             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#66ADE4]">Step 2 of 4 — Connect Sources</span>
+           </div>
            <h1 className="text-4xl md:text-5xl font-black tracking-tighter">
              Connect your <span className="text-gradient">Neural Grid</span>
            </h1>
@@ -172,8 +175,8 @@ export default function OnboardingConnectionsPage() {
                 Skip for now
               </Link>
               <Button asChild size="lg" className="h-14 px-10 rounded-2xl bg-[#66ADE4] text-black hover:bg-[#599bc9] font-black uppercase tracking-widest text-[10px] gap-3 shadow-xl shadow-blue-500/20 group">
-                <Link href="/dashboard">
-                  Initialize Athene
+                <Link href={connectedCount > 0 ? "/onboarding/syncing" : "/dashboard"}>
+                  {connectedCount > 0 ? "Watch Sync Progress" : "Initialize Athene"}
                   <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                 </Link>
               </Button>

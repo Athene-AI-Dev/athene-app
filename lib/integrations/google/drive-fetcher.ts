@@ -1,6 +1,8 @@
 import { googleFetch, googleFetchRaw } from './api-client'
 import type { FetchedChunk } from '@/lib/integrations/base'
 import { assertSafeMetadata } from '@/lib/integrations/base'
+import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,7 +190,7 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
     if (!text) return '[PDF contains no extractable text (image-only?)]'
     return text
   } catch (err) {
-    console.warn('[drive-fetcher] PDF extraction failed:', err)
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] PDF extraction failed')
     return '[PDF text extraction failed]'
   }
 }
@@ -206,7 +208,7 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
     if (!text) return '[DOCX contains no extractable text]'
     return text
   } catch (err) {
-    console.warn('[drive-fetcher] DOCX extraction failed:', err)
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] DOCX extraction failed')
     return '[DOCX text extraction failed]'
   }
 }
@@ -241,39 +243,97 @@ export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk
 }
 
 /**
- * Full indexing pipeline entry point for Drive.
- * Lists all files, fetches content for each, and returns FetchedChunk[].
- * Skips folders and files that fail extraction (logs warnings instead of throwing).
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param folderId - Optional folder to scope the listing to.
- * @returns Array of FetchedChunks ready for indexDocument.
+ * Recursively fetches all files within a single Drive folder, up to maxDepth levels.
  */
-export async function fetchDriveChunks(
+async function fetchFolderRecursive(
   connectionId: string,
   orgId: string,
-  folderId?: string,
+  folderId: string,
+  depth = 0,
+  maxDepth = 5,
 ): Promise<FetchedChunk[]> {
+  if (depth > maxDepth) return []
   const chunks: FetchedChunk[] = []
   let pageToken: string | undefined
 
   do {
     const listing = await listDriveFiles(connectionId, orgId, folderId, pageToken)
+    for (const file of listing.files) {
+      if (file.mimeType === GOOGLE_FOLDER_MIME) {
+        // Recurse into sub-folder
+        const sub = await fetchFolderRecursive(connectionId, orgId, file.id, depth + 1, maxDepth)
+        chunks.push(...sub)
+        continue
+      }
+      try {
+        const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
+        if (content.startsWith('[Unsupported binary format:')) continue
+        chunks.push(driveFileToChunk(file, content))
+      } catch (err) {
+        logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
+      }
+    }
+    pageToken = listing.nextPageToken
+  } while (pageToken)
+
+  return chunks
+}
+
+/**
+ * Full indexing pipeline entry point for Drive.
+ *
+ * If selectedFolderIds is provided, only files within those folders are fetched
+ * (recursively, up to 5 levels deep). If omitted, reads selected_folder_ids from
+ * connections.metadata in Supabase. Falls back to listing the entire Drive if no
+ * selection is configured — preserving backward compatibility.
+ *
+ * @param connectionId - Nango connection ID.
+ * @param orgId - Organization ID for ownership verification.
+ * @param selectedFolderIds - Folders to sync. If undefined, self-loads from DB.
+ */
+export async function fetchDriveChunks(
+  connectionId: string,
+  orgId: string,
+  selectedFolderIds?: string[],
+): Promise<FetchedChunk[]> {
+  // Self-load from Supabase if not passed explicitly
+  let folderIds = selectedFolderIds
+  if (folderIds === undefined) {
+    const { data: conn } = await supabaseAdmin
+      .from('connections')
+      .select('metadata')
+      .eq('nango_connection_id', connectionId)
+      .maybeSingle()
+    const stored = (conn?.metadata as any)?.selected_folder_ids as string[] | undefined
+    folderIds = stored?.length ? stored : undefined
+  }
+
+  // If specific folders are selected, fetch each recursively
+  if (folderIds?.length) {
+    const all: FetchedChunk[] = []
+    for (const folderId of folderIds) {
+      const folderChunks = await fetchFolderRecursive(connectionId, orgId, folderId)
+      all.push(...folderChunks)
+    }
+    return all
+  }
+
+  // Fallback: list entire Drive root (backward-compatible)
+  const chunks: FetchedChunk[] = []
+  let pageToken: string | undefined
+
+  do {
+    const listing = await listDriveFiles(connectionId, orgId, undefined, pageToken)
 
     for (const file of listing.files) {
-      // Skip folders — they have no content
       if (file.mimeType === GOOGLE_FOLDER_MIME) continue
 
       try {
         const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
-
-        // Skip stubs that indicate extraction failure
         if (content.startsWith('[Unsupported binary format:')) continue
-
         chunks.push(driveFileToChunk(file, content))
       } catch (err) {
-        console.warn(`[drive-fetcher] Skipping file ${file.id} (${file.name}):`, err)
+        logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
       }
     }
 

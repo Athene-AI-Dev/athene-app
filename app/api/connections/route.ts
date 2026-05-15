@@ -82,19 +82,28 @@ export async function POST(request: Request) {
   // Invalidate the cached extraction prompt — active modules may have changed
   void invalidatePromptCache(internalOrgId);
 
-  // Immediately dispatch indexing job — pass internalOrgId so the worker queries connections correctly
-  const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
-  const { dispatched } = await dispatchThrottled({
-    orgId: internalOrgId,
-    sourceType,
-    url: workerUrl,
-    body: { orgId: internalOrgId, connectionId: conn.id, provider, sourceType, departmentId: departmentId ?? null },
-  });
+  // Providers that require user file/table selection before first sync
+  const CONFIGURABLE_PROVIDERS = new Set(['google_drive', 'snowflake', 'bigquery', 'redshift']);
+  const requiresConfiguration = CONFIGURABLE_PROVIDERS.has(provider.toLowerCase());
+
+  let dispatched = false;
+  if (!requiresConfiguration) {
+    // Auto-dispatch only for providers that don't need upfront configuration
+    const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
+    ({ dispatched } = await dispatchThrottled({
+      orgId: internalOrgId,
+      sourceType,
+      url: workerUrl,
+      body: { orgId: internalOrgId, connectionId: conn.id, provider, sourceType, departmentId: departmentId ?? null },
+    }));
+  }
 
   return NextResponse.json({
     success: true,
     connectionId: conn.id,
+    internalConnectionId: conn.id,
     indexing: dispatched,
+    requiresConfiguration,
   });
 }
 

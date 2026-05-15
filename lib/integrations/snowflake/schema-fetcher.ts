@@ -10,6 +10,38 @@ import {
   type SyncConfig,
 } from '../bi-chunking'
 
+export interface SnowflakeTable {
+  database: string
+  schema: string
+  name: string
+  fullName: string
+}
+
+/**
+ * Lists available base tables from Snowflake INFORMATION_SCHEMA.
+ * Capped at 200 results. Returns [] if the role lacks USAGE on INFORMATION_SCHEMA.
+ */
+export async function listSnowflakeTables(
+  connectionId: string,
+  orgId: string,
+): Promise<SnowflakeTable[]> {
+  const sql = `
+    SELECT TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME
+    FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_TYPE = 'BASE TABLE'
+    ORDER BY TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME
+    LIMIT 200
+  `
+  const res = await snowflakeFetch(connectionId, orgId, sql)
+  const rows = parseSnowflakeRows(res)
+  return rows.map((r: any) => {
+    const database = String(r.table_catalog ?? '')
+    const schema = String(r.table_schema ?? '')
+    const name = String(r.table_name ?? '')
+    return { database, schema, name, fullName: `${database}.${schema}.${name}` }
+  })
+}
+
 export interface TableSchema {
   database: string
   schema: string

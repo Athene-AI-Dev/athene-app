@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { 
-  CheckCircle2, 
-  RefreshCw, 
-  AlertCircle, 
-  Trash2, 
-  Blocks,
+import {
+  CheckCircle2,
+  RefreshCw,
+  AlertCircle,
+  Trash2,
   Loader2,
   Calendar,
-  Database
+  Database,
+  Settings2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 export interface Integration {
   connectionId: string;
+  internalConnectionId: string;
   provider: string;
   displayName: string;
   category: string;
@@ -26,6 +27,11 @@ export interface Integration {
   lastSyncedAt: string | null;
   totalDocs: number;
   createdAt: string | null;
+  metadata?: {
+    selected_folder_ids?: string[];
+    allowlist?: string[];
+    [key: string]: unknown;
+  };
 }
 
 interface IntegrationCardProps {
@@ -34,14 +40,26 @@ interface IntegrationCardProps {
   description: string;
   onDisconnect: (integration: Integration) => void;
   onIndex: (integration: Integration) => Promise<void>;
+  onConfigure?: (integration: Integration) => void;
 }
 
-export function IntegrationCard({ 
-  integration, 
-  icon, 
-  description, 
+const CONFIGURABLE = new Set(["google_drive", "snowflake"]);
+
+function needsConfiguration(integration: Integration): boolean {
+  const { provider, metadata } = integration;
+  if (!CONFIGURABLE.has(provider)) return false;
+  if (provider === "google_drive") return !metadata?.selected_folder_ids?.length;
+  if (provider === "snowflake") return !metadata?.allowlist?.length;
+  return false;
+}
+
+export function IntegrationCard({
+  integration,
+  icon,
+  description,
   onDisconnect,
-  onIndex 
+  onIndex,
+  onConfigure,
 }: IntegrationCardProps) {
   const [indexing, setIndexing] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -49,8 +67,6 @@ export function IntegrationCard({
   useEffect(() => {
     setMounted(true);
   }, []);
-
-
 
   const handleIndex = async () => {
     setIndexing(true);
@@ -80,16 +96,23 @@ export function IntegrationCard({
   };
 
   const config = statusConfig[integration.status];
+  const needsConfig = needsConfiguration(integration);
 
   return (
     <div className="group relative rounded-[2.5rem] bg-card border border-white/5 p-8 transition-all duration-500 hover:scale-[1.02] hover:border-white/10 hover:shadow-2xl hover:shadow-[#D96FAB]/5">
-      <div className="absolute top-0 right-0 p-8">
+      <div className="absolute top-0 right-0 p-8 flex flex-col items-end gap-2">
         <Badge className={cn("rounded-full px-3 py-1 font-black text-[9px] uppercase tracking-widest border", config.color)}>
            <div className="flex items-center gap-1.5">
              {config.icon}
              {config.label}
            </div>
         </Badge>
+        {needsConfig && (
+          <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 border border-amber-400/20 bg-amber-400/10 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+            <AlertCircle className="w-2.5 h-2.5" />
+            Setup Required
+          </span>
+        )}
       </div>
 
       <div className="flex items-start gap-5 mb-8">
@@ -127,21 +150,38 @@ export function IntegrationCard({
             <span className="text-sm font-black text-foreground">
               {integration.lastSyncedAt && mounted ? new Date(integration.lastSyncedAt).toLocaleDateString() : 'Pending'}
             </span>
-
          </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 pt-6 border-t border-white/5">
-        <Button
-          onClick={handleIndex}
-          disabled={indexing || integration.status === 'syncing'}
-          variant="ghost"
-          className="h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-foreground hover:bg-[#7AADCF]/10 hover:text-[#7AADCF] transition-all gap-2"
-        >
-          {indexing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          Force Sync
-        </Button>
-        
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleIndex}
+            disabled={indexing || integration.status === 'syncing'}
+            variant="ghost"
+            className="h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest text-foreground hover:bg-[#7AADCF]/10 hover:text-[#7AADCF] transition-all gap-2"
+          >
+            {indexing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Force Sync
+          </Button>
+
+          {CONFIGURABLE.has(integration.provider) && onConfigure && (
+            <Button
+              onClick={() => onConfigure(integration)}
+              variant="ghost"
+              className={cn(
+                "h-10 px-4 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all gap-2",
+                needsConfig
+                  ? "text-amber-400 hover:bg-amber-400/10"
+                  : "text-foreground hover:bg-[#D96FAB]/10 hover:text-[#D96FAB]"
+              )}
+            >
+              <Settings2 className="w-3 h-3" />
+              {needsConfig ? "Configure" : "Reconfigure"}
+            </Button>
+          )}
+        </div>
+
         <Button
           variant="ghost"
           size="icon"

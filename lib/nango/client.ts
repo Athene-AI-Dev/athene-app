@@ -255,6 +255,41 @@ export async function saveConnectionMapping(
 }
 
 /**
+ * Partially updates Nango connection metadata (merges into existing).
+ * Uses updateMetadata so existing keys (e.g. account_identifier) are preserved.
+ * 🔒 Verifies org ownership before updating.
+ */
+export async function updateConnectionNangoMetadata(
+  connectionId: string,
+  providerConfigKey: string,
+  orgId: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  if (!orgId) throw new Error('orgId is required');
+
+  const nango = getNango();
+
+  const { data: mapping, error: supabaseError } = await supabaseAdmin
+    .from('nango_connections')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('connection_id', connectionId)
+    .eq('provider_config_key', providerConfigKey)
+    .maybeSingle();
+
+  if (supabaseError) throw new Error(`Supabase verification failed: ${supabaseError.message}`);
+  if (!mapping) {
+    const notFound = new Error('Connection not found for this organization');
+    (notFound as any).status = 404;
+    throw notFound;
+  }
+
+  const config = getProvider(providerConfigKey as any);
+  const nangoKey = config?.nangoIntegrationId ?? providerConfigKey;
+  await nango.updateMetadata(nangoKey, connectionId, metadata);
+}
+
+/**
  * Securely deletes a Nango connection and its Supabase mapping.
  * 🔒 Strictly verifies ownership before deletion.
  */

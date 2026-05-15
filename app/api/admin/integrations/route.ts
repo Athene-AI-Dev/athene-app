@@ -29,32 +29,49 @@ export async function GET(_req: NextRequest) {
     const { orgId } = await ensureAdmin()
     const connections = await listConnections(orgId)
 
-    // Batch-count documents per nango connection for the whole org in one query.
-    // Schema: nango_connection_id (text) → connections.id (uuid) → documents.connection_id
-    const { data: docCounts } = await supabaseAdmin
-      .from('connections')
-      .select('nango_connection_id, documents(count)')
-      .eq('org_id', orgId)
+    // Resolve Clerk orgId → internal UUID to query connections table correctly
+    const { data: orgData } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('clerk_org_id', orgId)
+      .maybeSingle()
+    const internalOrgId = orgData?.id as string | undefined
 
-    const countByNangoId: Record<string, number> = {}
-    for (const row of docCounts ?? []) {
+    // Batch-count documents and load metadata per nango connection.
+    // connections.org_id stores internal UUIDs — use internalOrgId for correct filtering.
+    const { data: connRows } = internalOrgId
+      ? await supabaseAdmin
+          .from('connections')
+          .select('id, nango_connection_id, metadata, documents(count)')
+          .eq('org_id', internalOrgId)
+      : { data: null }
+
+    const metaByNangoId: Record<string, { id: string; metadata: Record<string, unknown>; docCount: number }> = {}
+    for (const row of connRows ?? []) {
       const count = Array.isArray(row.documents) ? (row.documents[0] as any)?.count ?? 0 : 0
-      countByNangoId[row.nango_connection_id] = Number(count)
+      metaByNangoId[row.nango_connection_id] = {
+        id: row.id,
+        metadata: (row.metadata as Record<string, unknown>) ?? {},
+        docCount: Number(count),
+      }
     }
 
     const integrations = (connections as any[]).map((conn) => {
       const providerKey = (conn.provider_config_key ?? conn.provider) as string
       const nangoConnId = conn.connection_id ?? conn.id
       const config = PROVIDER_REGISTRY[providerKey as keyof typeof PROVIDER_REGISTRY]
+      const meta = metaByNangoId[nangoConnId]
       return {
         connectionId: nangoConnId,
+        internalConnectionId: meta?.id ?? '',
         provider: providerKey,
         displayName: config?.displayName ?? providerKey,
         category: config?.category ?? 'other',
         resources: config?.resources ?? [],
         status: conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
         lastSyncedAt: conn.last_synced_at ?? null,
-        totalDocs: countByNangoId[nangoConnId] ?? 0,
+        totalDocs: meta?.docCount ?? 0,
+        metadata: meta?.metadata ?? {},
         createdAt: conn.created_at ?? null,
       }
     })

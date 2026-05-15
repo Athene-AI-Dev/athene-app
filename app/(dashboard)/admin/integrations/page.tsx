@@ -16,6 +16,8 @@ import {
 import Nango from "@nangohq/frontend";
 import { IntegrationCard, type Integration } from "./integration-card";
 import { AddIntegrationDialog } from "./add-integration-dialog";
+import { DrivePickerModal } from "./drive-picker-modal";
+import { SnowflakePickerModal } from "./snowflake-picker-modal";
 import { ProviderConfig, getProvider } from "@/lib/integrations/providers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +91,7 @@ export default function IntegrationsPage() {
   const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [configuring, setConfiguring] = useState<Integration | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -166,12 +169,27 @@ export default function IntegrationsPage() {
               }),
             });
 
+            const CONFIGURABLE = new Set(["google_drive", "snowflake"]);
             if (!saveRes.ok) {
               setToast({ msg: `Access granted, but metadata sync failed: ${saveRes.statusText}`, type: "error" });
             } else {
               setToast({ msg: `${provider.displayName} integrated successfully.`, type: "success" });
-              fetchIntegrations();
               setShowAddDialog(false);
+              if (CONFIGURABLE.has(provider.key)) {
+                const saveData = await saveRes.json().catch(() => ({}));
+                const updated = await fetch("/api/admin/integrations").then(r => r.json()).catch(() => ({ integrations: [] }));
+                const newIntegration = (updated.integrations ?? []).find(
+                  (i: Integration) => i.provider === provider.key && i.internalConnectionId === (saveData.internalConnectionId ?? "")
+                ) ?? (updated.integrations ?? []).find((i: Integration) => i.provider === provider.key);
+                if (newIntegration) {
+                  setIntegrations(updated.integrations ?? []);
+                  setConfiguring(newIntegration);
+                } else {
+                  fetchIntegrations();
+                }
+              } else {
+                fetchIntegrations();
+              }
             }
             setConnecting(null);
           }
@@ -367,11 +385,30 @@ export default function IntegrationsPage() {
                 description={meta?.description ?? "Connected enterprise system."}
                 onDisconnect={(i) => setDisconnecting(i)}
                 onIndex={handleIndex}
+                onConfigure={(i) => setConfiguring(i)}
               />
             );
           })
         )}
       </div>
+
+      {/* Data source picker modals */}
+      {configuring?.provider === "google_drive" && (
+        <DrivePickerModal
+          open
+          connectionId={configuring.internalConnectionId}
+          onClose={() => setConfiguring(null)}
+          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
+        />
+      )}
+      {configuring?.provider === "snowflake" && (
+        <SnowflakePickerModal
+          open
+          connectionId={configuring.internalConnectionId}
+          onClose={() => setConfiguring(null)}
+          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
+        />
+      )}
 
       {/* Knowledge Modules — active based on connected integrations */}
       <div className="space-y-6">

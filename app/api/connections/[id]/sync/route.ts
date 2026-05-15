@@ -55,6 +55,8 @@ export async function POST(request: Request, { params }: Params) {
       .eq("id", connectionId);
   }
 
+  await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+
   const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
   const { dispatched, msgId } = await dispatchThrottled({
     orgId: internalOrgId,

@@ -71,6 +71,7 @@ import { fetchPowerBIContent } from '@/lib/integrations/powerbi/reports-fetcher'
 
 import { getProviderMetadata } from '@/lib/integrations/base'
 import type { FetchedChunk } from '@/lib/integrations/base'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 // ---- Provider Fetcher Map ---------------------------------------
 
@@ -277,6 +278,14 @@ export async function POST(request: Request): Promise<Response> {
     // Without this, the slot counter increments forever and future jobs queue up
     // in pending_background_jobs but never dispatch.
     try { await releaseSlot(orgId, sourceType || provider) } catch { /* best-effort */ }
+
+    // Reset connection status so the admin UI reflects final state
+    try {
+      await supabaseAdmin
+        .from('connections')
+        .update({ status: workerErr ? 'error' : 'active' })
+        .eq('id', connectionId)
+    } catch { /* best-effort */ }
   }
 
   if (workerErr) {

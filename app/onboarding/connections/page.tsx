@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { 
-  Blocks, 
-  ArrowRight, 
-  Plus, 
-  CheckCircle2, 
+import {
+  Blocks,
+  ArrowRight,
+  Plus,
+  CheckCircle2,
   Loader2,
   Sparkles,
   Cloud
@@ -13,9 +13,13 @@ import {
 import Link from "next/link";
 import Nango from "@nangohq/frontend";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ProviderConfig, getProvider, PROVIDERS } from "@/lib/integrations/providers";
+import { ProviderConfig, getProvider, PROVIDER_REGISTRY } from "@/lib/integrations/providers";
 import { cn } from "@/lib/utils";
+
+// Reverse map: Nango integration ID → internal provider key
+const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
+  Object.values(PROVIDER_REGISTRY).map((p) => [p.nangoIntegrationId, p.key])
+);
 
 export default function OnboardingConnectionsPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -30,21 +34,27 @@ export default function OnboardingConnectionsPage() {
 
       const nango = new Nango({ connectSessionToken: token });
 
-      await nango.openConnectUI({
+      nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "connect") {
+            // Map Nango key → internal key; fall back to clicked provider key
+            const nangoKey = event.payload.providerConfigKey;
+            const internalKey = NANGO_KEY_MAP[nangoKey] ?? provider.key;
+
             const saveRes = await fetch("/api/admin/integrations", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                connectionId: (event as any).connectionId,
-                provider: provider.key,
+                connectionId: event.payload.connectionId,
+                provider: internalKey,
               }),
             });
 
             if (saveRes.ok) {
               setConnectedCount(prev => prev + 1);
             }
+            // Don't close — user can connect more providers in the same session
+            setConnecting(null);
           }
           if (event.type === "close") {
             setConnecting(null);
@@ -52,7 +62,6 @@ export default function OnboardingConnectionsPage() {
         },
       });
     } catch (e: any) {
-      console.error("Integration failed:", e.message);
       setConnecting(null);
     }
   }, []);

@@ -42,16 +42,17 @@ export async function GET(_req: NextRequest) {
     const { data: connRows } = internalOrgId
       ? await supabaseAdmin
           .from('connections')
-          .select('id, nango_connection_id, metadata, documents(count)')
+          .select('id, nango_connection_id, metadata, status, documents(count)')
           .eq('org_id', internalOrgId)
       : { data: null }
 
-    const metaByNangoId: Record<string, { id: string; metadata: Record<string, unknown>; docCount: number }> = {}
+    const metaByNangoId: Record<string, { id: string; metadata: Record<string, unknown>; status: string | null; docCount: number }> = {}
     for (const row of connRows ?? []) {
       const count = Array.isArray(row.documents) ? (row.documents[0] as any)?.count ?? 0 : 0
       metaByNangoId[row.nango_connection_id] = {
         id: row.id,
         metadata: (row.metadata as Record<string, unknown>) ?? {},
+        status: (row as any).status ?? null,
         docCount: Number(count),
       }
     }
@@ -68,7 +69,7 @@ export async function GET(_req: NextRequest) {
         displayName: config?.displayName ?? providerKey,
         category: config?.category ?? 'other',
         resources: config?.resources ?? [],
-        status: conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
+        status: meta?.status || conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
         lastSyncedAt: conn.last_synced_at ?? null,
         totalDocs: meta?.docCount ?? 0,
         metadata: meta?.metadata ?? {},

@@ -80,6 +80,8 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Failed to save selection" }, { status: 500 });
     }
 
+    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+
     const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
     const { dispatched } = await dispatchThrottled({
       orgId: internalOrgId,
@@ -137,6 +139,8 @@ export async function PATCH(request: Request, { params }: Params) {
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
 
+    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+
     const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
     const { dispatched } = await dispatchThrottled({
       orgId: internalOrgId,
@@ -191,6 +195,8 @@ export async function PATCH(request: Request, { params }: Params) {
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
 
+    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
+
     const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
     const { dispatched } = await dispatchThrottled({
       orgId: internalOrgId,
@@ -244,6 +250,8 @@ export async function PATCH(request: Request, { params }: Params) {
     } catch (nangoErr: any) {
       logger.warn({ connectionId, err: nangoErr.message }, "[configure] Nango metadata update failed (non-fatal)");
     }
+
+    await supabaseAdmin.from("connections").update({ status: "syncing" }).eq("id", connectionId);
 
     const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
     const { dispatched } = await dispatchThrottled({

@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Blocks,
   CheckCircle2,
   AlertCircle,
   X,
-  Wifi,
   Loader2,
   Plus,
   WifiOff,
@@ -20,12 +19,19 @@ import { DrivePickerModal } from "./drive-picker-modal";
 import { SnowflakePickerModal } from "./snowflake-picker-modal";
 import { BigQueryPickerModal } from "./bigquery-picker-modal";
 import { RedshiftPickerModal } from "./redshift-picker-modal";
-import { ProviderConfig, getProvider } from "@/lib/integrations/providers";
+import { ProviderConfig, getProvider, PROVIDER_REGISTRY } from "@/lib/integrations/providers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { VERTICAL_MODULES } from "@/lib/knowledge-graph/modules/registry";
+
+// Reverse map: Nango integration ID (e.g. "google-drive") → internal key (e.g. "google_drive")
+const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
+  Object.values(PROVIDER_REGISTRY).map((p) => [p.nangoIntegrationId, p.key])
+);
+
+const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
 
 function ConfirmDialog({
   open,
@@ -95,9 +101,9 @@ export default function IntegrationsPage() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<Integration | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Queue of configurable providers connected during a single Nango session.
+  // Processed in a useEffect after integrations refresh so we have the full Integration object.
+  const pendingConfigureQueue = useRef<Array<{ internalConnectionId: string; provider: string }>>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -127,6 +133,20 @@ export default function IntegrationsPage() {
     return () => clearInterval(interval);
   }, [fetchIntegrations]);
 
+  // After integrations refresh, open the picker for any configurable provider that was
+  // just connected. Works off a ref-queue so it survives the Nango ConnectUI closure.
+  useEffect(() => {
+    if (pendingConfigureQueue.current.length === 0 || integrations.length === 0) return;
+    const next = pendingConfigureQueue.current[0];
+    const found = integrations.find(
+      (i) => i.provider === next.provider && i.internalConnectionId === next.internalConnectionId
+    ) ?? integrations.find((i) => i.provider === next.provider);
+    if (found) {
+      pendingConfigureQueue.current.shift();
+      setConfiguring(found);
+    }
+  }, [integrations]);
+
   const handleConnect = useCallback(async (provider: ProviderConfig) => {
     setConnecting(provider.key);
     try {
@@ -137,7 +157,6 @@ export default function IntegrationsPage() {
       });
 
       if (!sessionRes.ok) {
-        // Differentiate between "not configured" (503) and generic errors
         const errBody = await sessionRes.json().catch(() => ({}));
         if (sessionRes.status === 503 && errBody?.error === 'not_configured') {
           setToast({
@@ -159,40 +178,44 @@ export default function IntegrationsPage() {
       nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "close") {
+            // ConnectUI closed — reset connecting state, close dialog, refresh list.
+            // The pendingConfigureQueue useEffect will open pickers once integrations reload.
             setConnecting(null);
+            setShowAddDialog(false);
+            fetchIntegrations();
           }
+
           if (event.type === "connect") {
+            // Resolve Nango key (e.g. "google-drive") → internal key (e.g. "google_drive")
+            const nangoKey = event.payload.providerConfigKey;
+            const internalKey = NANGO_KEY_MAP[nangoKey] ?? nangoKey;
+            const displayName = PROVIDER_REGISTRY[internalKey as keyof typeof PROVIDER_REGISTRY]?.displayName ?? internalKey;
+
             const saveRes = await fetch("/api/admin/integrations", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 connectionId: event.payload.connectionId,
-                provider: event.payload.providerConfigKey ?? provider.key,
+                provider: internalKey,
               }),
             });
 
-            const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
             if (!saveRes.ok) {
-              setToast({ msg: `Access granted, but metadata sync failed: ${saveRes.statusText}`, type: "error" });
+              setToast({ msg: `Access granted but save failed: ${saveRes.statusText}`, type: "error" });
             } else {
-              setToast({ msg: `${provider.displayName} integrated successfully.`, type: "success" });
-              setShowAddDialog(false);
-              if (CONFIGURABLE.has(provider.key)) {
-                const saveData = await saveRes.json().catch(() => ({}));
-                const updated = await fetch("/api/admin/integrations").then(r => r.json()).catch(() => ({ integrations: [] }));
-                const newIntegration = (updated.integrations ?? []).find(
-                  (i: Integration) => i.provider === provider.key && i.internalConnectionId === (saveData.internalConnectionId ?? "")
-                ) ?? (updated.integrations ?? []).find((i: Integration) => i.provider === provider.key);
-                if (newIntegration) {
-                  setIntegrations(updated.integrations ?? []);
-                  setConfiguring(newIntegration);
-                } else {
-                  fetchIntegrations();
-                }
-              } else {
-                fetchIntegrations();
+              setToast({ msg: `${displayName} connected successfully.`, type: "success" });
+              const saveData = await saveRes.json().catch(() => ({}));
+
+              if (CONFIGURABLE.has(internalKey) && saveData.internalConnectionId) {
+                // Queue picker to open after ConnectUI closes (via the integrations useEffect).
+                // This keeps ConnectUI open so the user can connect more providers first.
+                pendingConfigureQueue.current.push({
+                  internalConnectionId: saveData.internalConnectionId,
+                  provider: internalKey,
+                });
               }
             }
+            // Reset so the dialog button becomes active again for the next provider
             setConnecting(null);
           }
         },

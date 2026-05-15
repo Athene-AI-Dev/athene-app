@@ -27,14 +27,16 @@ export default clerkMiddleware(
   // 1. Enforce Authentication for non-public routes
   const { userId, orgId, orgRole } = await auth.protect();
 
-  // 2. Resolve RBAC context
+  // 2. Resolve RBAC context (resolves internal UUIDs from Clerk IDs)
   const access = await resolveUserAccess(userId, orgId ?? "", orgRole);
 
   const requestHeaders = new Headers(request.headers);
 
-  // 3. Inject headers with safe defaults (matching ATH-23 spec)
-  requestHeaders.set("x-current-org-id", orgId ?? "");
-  requestHeaders.set("x-current-user-id", access.internal_user_id ?? "");
+  // 3. Inject internal UUIDs — routes query DB with these, not Clerk IDs.
+  //    Fall back to Clerk IDs only if RBAC resolution failed (e.g. first visit
+  //    before auto-provision completes), so routes can still attempt to work.
+  requestHeaders.set("x-current-org-id", access.internal_org_id ?? orgId ?? "");
+  requestHeaders.set("x-current-user-id", access.internal_user_id ?? userId ?? "");
   requestHeaders.set("x-current-user-role", access.role ?? "member");
   requestHeaders.set("x-current-user-dept-id", access.dept_id ?? "");
   requestHeaders.set("x-current-accessible-depts", JSON.stringify(access.accessible_dept_ids ?? []));

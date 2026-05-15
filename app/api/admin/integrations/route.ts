@@ -100,10 +100,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'connectionId and provider are required' }, { status: 400 })
     }
 
-    // ✅ Fix ATH-32: Persist connection to Supabase after OAuth
-    await saveConnectionMapping(orgId, connectionId, provider)
-    
-    return NextResponse.json({ success: true })
+    // Resolve Clerk orgId → internal UUID (required for connections table FK)
+    const { data: orgData } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('clerk_org_id', orgId)
+      .maybeSingle()
+
+    const internalOrgId = orgData?.id as string | undefined
+
+    // Save Nango connection mapping (use internal UUID when available)
+    await saveConnectionMapping(internalOrgId ?? orgId, connectionId, provider)
+
+    // Upsert into connections table so browse/configure routes can find this connection
+    let internalConnectionId: string | undefined
+    if (internalOrgId) {
+      // Find existing row first (avoid duplicate on reconnect)
+      const { data: existing } = await supabaseAdmin
+        .from('connections')
+        .select('id')
+        .eq('org_id', internalOrgId)
+        .eq('nango_connection_id', connectionId)
+        .maybeSingle()
+
+      if (existing) {
+        internalConnectionId = existing.id
+      } else {
+        const { data: newConn } = await supabaseAdmin
+          .from('connections')
+          .insert({
+            org_id: internalOrgId,
+            nango_connection_id: connectionId,
+            provider: provider.toLowerCase(),
+            source_type: provider.toLowerCase(),
+            scope: 'org',
+            status: 'active',
+            metadata: {},
+          })
+          .select('id')
+          .maybeSingle()
+        internalConnectionId = newConn?.id
+      }
+    }
+
+    return NextResponse.json({ success: true, internalConnectionId })
   } catch (err: any) {
     if (err.message === 'Unauthorized') return new NextResponse('Unauthorized', { status: 401 })
     if (err.message === 'Forbidden') return new NextResponse('Forbidden', { status: 403 })

@@ -91,7 +91,7 @@ export async function listWorkspaces(
   // Try admin endpoint first for full tenant visibility
   try {
     const adminRes = await powerbiFetch<{ value: PowerBIWorkspace[] }>(
-      connectionId, orgId, '/admin/groups?$top=5000'
+      connectionId, orgId, '/admin/groups?$top=5000', { admin: true }
     )
     if (adminRes?.value?.length) return adminRes.value
   } catch {

@@ -12,7 +12,6 @@
 // and stored as separate chunks with resource_type: 'powerbi_measure'.
 // ============================================================
 import { logger } from '@/lib/logger'
-
 import {
   powerbiFetch,
   powerbiFetchScoped,
@@ -24,9 +23,11 @@ import {
 } from './client'
 import type { FetchedChunk } from '../base'
 import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '../sync-config'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * Fetches Power BI content from one or more workspaces.
+ * Respects selective sync configuration and sets department_id.
  *
  * @param connectionId - Nango connection string
  * @param orgId        - Internal org UUID
@@ -38,6 +39,14 @@ export async function fetchPowerBIContent(
   syncConfig?: SyncConfig
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
+
+  // Load connection and department ID from Supabase
+  const { data: conn } = await supabaseAdmin
+    .from('connections')
+    .select('department_id')
+    .eq('nango_connection_id', connectionId)
+    .maybeSingle()
+  const departmentId = conn?.department_id as string | undefined
 
   // Determine which workspaces to fetch from
   const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
@@ -68,14 +77,14 @@ export async function fetchPowerBIContent(
   // Process each workspace
   for (const ws of workspaces) {
     const wsChunks = await fetchWorkspaceContent(
-      connectionId, orgId, ws.id, ws.name, selectedIds, excludedIds
+      connectionId, orgId, ws.id, ws.name, selectedIds, excludedIds, departmentId
     )
     chunks.push(...wsChunks)
   }
 
   // Fallback: if no workspaces found (e.g. no admin scope), try legacy /myorg endpoints
   if (workspaces.length === 0) {
-    const legacyChunks = await fetchLegacyContent(connectionId, orgId)
+    const legacyChunks = await fetchLegacyContent(connectionId, orgId, departmentId)
     chunks.push(...legacyChunks)
   }
 
@@ -91,7 +100,8 @@ async function fetchWorkspaceContent(
   groupId: string,
   workspaceName: string,
   selectedIds: Set<string> | null,
-  excludedIds: Set<string>
+  excludedIds: Set<string>,
+  departmentId?: string
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
 
@@ -115,8 +125,18 @@ async function fetchWorkspaceContent(
         // Non-fatal
       }
 
+      const chunkMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'report',
+        report_id: report.id,
+        dataset_id: report.datasetId,
+        workspace_id: groupId,
+        workspace_name: workspaceName,
+      }
+      if (departmentId) chunkMetadata.department_id = departmentId
+
       chunks.push({
-        chunk_id: `powerbi_report_${report.id}`,
+        chunk_id: `powerbi_report_${report.id}_ws_${groupId}`,
         title: `Power BI Report: ${report.name}`,
         content: [
           report.description,
@@ -124,14 +144,7 @@ async function fetchWorkspaceContent(
           `Workspace: ${workspaceName}`,
         ].filter(Boolean).join('\n') || report.name,
         source_url: report.webUrl,
-        metadata: {
-          provider: 'powerbi',
-          resource_type: 'report',
-          report_id: report.id,
-          dataset_id: report.datasetId,
-          workspace_id: groupId,
-          workspace_name: workspaceName,
-        },
+        metadata: chunkMetadata as any,
       })
     }
   } catch (err) {
@@ -158,26 +171,29 @@ async function fetchWorkspaceContent(
         schemaContent = tables.map((t) => {
           const cols = (t.columns ?? []).map((c) => `${c.name} (${c.dataType})`).join(', ')
           return `Table ${t.name}: ${cols}`
-        }).join('\n')
+        }).join('\n\n')
       } catch {
         // Non-fatal — some datasets don't expose table metadata
       }
 
+      const datasetMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'dataset',
+        dataset_id: ds.id,
+        workspace_id: groupId,
+        workspace_name: workspaceName,
+        is_refreshable: String(ds.isRefreshable),
+      }
+      if (departmentId) datasetMetadata.department_id = departmentId
+
       chunks.push({
-        chunk_id: `powerbi_dataset_${ds.id}`,
+        chunk_id: `powerbi_dataset_${ds.id}_ws_${groupId}`,
         title: `Power BI Dataset: ${ds.name}`,
         content: schemaContent
           ? `Dataset: ${ds.name}\nWorkspace: ${workspaceName}\n\n${schemaContent}`
           : `Dataset: ${ds.name}\nWorkspace: ${workspaceName}`,
         source_url: `https://app.powerbi.com/groups/${groupId}/datasets/${ds.id}`,
-        metadata: {
-          provider: 'powerbi',
-          resource_type: 'dataset',
-          dataset_id: ds.id,
-          is_refreshable: String(ds.isRefreshable),
-          workspace_id: groupId,
-          workspace_name: workspaceName,
-        },
+        metadata: datasetMetadata as any,
       })
 
       // ── DAX Measures extraction ─────────────────────────────────
@@ -187,6 +203,16 @@ async function fetchWorkspaceContent(
         )
         const measures = measuresRes?.value ?? []
         for (const measure of measures) {
+          const measureMetadata: Record<string, any> = {
+            provider: 'powerbi',
+            resource_type: 'powerbi_measure',
+            dataset_id: ds.id,
+            measure_name: measure.name,
+            workspace_id: groupId,
+            workspace_name: workspaceName,
+          }
+          if (departmentId) measureMetadata.department_id = departmentId
+
           chunks.push({
             chunk_id: `powerbi_measure_${ds.id}_${measure.name.replace(/\s+/g, '_')}`,
             title: `Power BI Measure: ${measure.name} (${ds.name})`,
@@ -198,14 +224,7 @@ async function fetchWorkspaceContent(
               `DAX Expression: ${measure.expression}`,
             ].filter(Boolean).join('\n'),
             source_url: `https://app.powerbi.com/groups/${groupId}/datasets/${ds.id}`,
-            metadata: {
-              provider: 'powerbi',
-              resource_type: 'powerbi_measure',
-              dataset_id: ds.id,
-              measure_name: measure.name,
-              workspace_id: groupId,
-              workspace_name: workspaceName,
-            },
+            metadata: measureMetadata as any,
           })
         }
       } catch {
@@ -227,18 +246,21 @@ async function fetchWorkspaceContent(
       .filter((d) => !selectedIds || selectedIds.has(d.id) || selectedIds.has(groupId))
 
     for (const dash of dashboards) {
+      const dashboardMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'dashboard',
+        dashboard_id: dash.id,
+        workspace_id: groupId,
+        workspace_name: workspaceName,
+      }
+      if (departmentId) dashboardMetadata.department_id = departmentId
+
       chunks.push({
-        chunk_id: `powerbi_dashboard_${dash.id}`,
+        chunk_id: `powerbi_dashboard_${dash.id}_ws_${groupId}`,
         title: `Power BI Dashboard: ${dash.displayName}`,
         content: `Dashboard: ${dash.displayName}\nWorkspace: ${workspaceName}`,
         source_url: dash.webUrl,
-        metadata: {
-          provider: 'powerbi',
-          resource_type: 'dashboard',
-          dashboard_id: dash.id,
-          workspace_id: groupId,
-          workspace_name: workspaceName,
-        },
+        metadata: dashboardMetadata as any,
       })
     }
   } catch (err) {
@@ -254,19 +276,27 @@ async function fetchWorkspaceContent(
  */
 async function fetchLegacyContent(
   connectionId: string,
-  orgId: string
+  orgId: string,
+  departmentId?: string
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
 
   try {
     const reportsRes = await powerbiFetch<{ value: PowerBIReport[] }>(connectionId, orgId, '/reports')
     for (const report of reportsRes?.value ?? []) {
+      const reportMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'report',
+        report_id: report.id,
+      }
+      if (departmentId) reportMetadata.department_id = departmentId
+
       chunks.push({
         chunk_id: `powerbi_report_${report.id}`,
         title: `Power BI Report: ${report.name}`,
         content: report.description ?? report.name,
         source_url: report.webUrl,
-        metadata: { provider: 'powerbi', resource_type: 'report', report_id: report.id },
+        metadata: reportMetadata as any,
       })
     }
   } catch (err) {
@@ -276,12 +306,19 @@ async function fetchLegacyContent(
   try {
     const datasetsRes = await powerbiFetch<{ value: PowerBIDataset[] }>(connectionId, orgId, '/datasets')
     for (const ds of datasetsRes?.value ?? []) {
+      const datasetMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'dataset',
+        dataset_id: ds.id,
+      }
+      if (departmentId) datasetMetadata.department_id = departmentId
+
       chunks.push({
         chunk_id: `powerbi_dataset_${ds.id}`,
         title: `Power BI Dataset: ${ds.name}`,
         content: `Dataset: ${ds.name}`,
         source_url: `https://app.powerbi.com/datasets/${ds.id}`,
-        metadata: { provider: 'powerbi', resource_type: 'dataset', dataset_id: ds.id },
+        metadata: datasetMetadata as any,
       })
     }
   } catch (err) {
@@ -291,12 +328,19 @@ async function fetchLegacyContent(
   try {
     const dashRes = await powerbiFetch<{ value: PowerBIDashboard[] }>(connectionId, orgId, '/dashboards')
     for (const dash of dashRes?.value ?? []) {
+      const dashboardMetadata: Record<string, any> = {
+        provider: 'powerbi',
+        resource_type: 'dashboard',
+        dashboard_id: dash.id,
+      }
+      if (departmentId) dashboardMetadata.department_id = departmentId
+
       chunks.push({
         chunk_id: `powerbi_dashboard_${dash.id}`,
         title: `Power BI Dashboard: ${dash.displayName}`,
         content: `Dashboard: ${dash.displayName}`,
         source_url: dash.webUrl,
-        metadata: { provider: 'powerbi', resource_type: 'dashboard', dashboard_id: dash.id },
+        metadata: dashboardMetadata as any,
       })
     }
   } catch (err) {

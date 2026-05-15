@@ -88,6 +88,7 @@ export async function PATCH(request: Request, { params }: Params) {
       body: {
         orgId: internalOrgId,
         connectionId,
+        nangoConnectionId: conn.nango_connection_id,
         provider: conn.provider,
         sourceType: conn.source_type,
         departmentId: conn.department_id ?? null,
@@ -144,6 +145,7 @@ export async function PATCH(request: Request, { params }: Params) {
       body: {
         orgId: internalOrgId,
         connectionId,
+        nangoConnectionId: conn.nango_connection_id,
         provider: conn.provider,
         sourceType: conn.source_type,
         departmentId: conn.department_id ?? null,
@@ -197,6 +199,7 @@ export async function PATCH(request: Request, { params }: Params) {
       body: {
         orgId: internalOrgId,
         connectionId,
+        nangoConnectionId: conn.nango_connection_id,
         provider: conn.provider,
         sourceType: conn.source_type,
         departmentId: conn.department_id ?? null,
@@ -250,6 +253,7 @@ export async function PATCH(request: Request, { params }: Params) {
       body: {
         orgId: internalOrgId,
         connectionId,
+        nangoConnectionId: conn.nango_connection_id,
         provider: conn.provider,
         sourceType: conn.source_type,
         departmentId: conn.department_id ?? null,

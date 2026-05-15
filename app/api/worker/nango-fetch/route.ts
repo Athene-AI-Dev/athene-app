@@ -200,7 +200,8 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
 
 interface NangoFetchJobBody {
   orgId: string
-  connectionId: string
+  connectionId: string       // Supabase connections.id UUID — used for indexDocuments FK
+  nangoConnectionId?: string // Nango connection string — used for all Nango API calls
   provider: string
   sourceType: string
   departmentId?: string | null
@@ -220,7 +221,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { orgId, connectionId, provider, sourceType, departmentId, since } = body
+  const { orgId, connectionId, nangoConnectionId, provider, sourceType, departmentId, since } = body
 
   if (!orgId || !connectionId || !provider) {
     return NextResponse.json(
@@ -228,6 +229,10 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 }
     )
   }
+
+  // Fetchers need the Nango connection string to call Nango APIs.
+  // connectionId is the Supabase UUID used only for indexDocuments (FK).
+  const fetcherConnectionId = nangoConnectionId ?? connectionId
 
   const fetchers = providerFetcherMap[provider]
   if (!fetchers) {
@@ -243,7 +248,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     for (const fetcher of fetchers) {
-      const chunks = await fetcher(connectionId, orgId, { since })
+      const chunks = await fetcher(fetcherConnectionId, orgId, { since })
       allChunks.push(...chunks)
     }
 

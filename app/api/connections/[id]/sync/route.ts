@@ -25,12 +25,22 @@ export async function POST(request: Request, { params }: Params) {
     force = !!body?.force;
   } catch { /* body optional */ }
 
-  // Load connection to verify org ownership
+  // Resolve Clerk orgId → internal UUID (connections.org_id is internal UUID FK)
+  const { data: orgData } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("clerk_org_id", orgId)
+    .maybeSingle();
+
+  if (!orgData) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+  const internalOrgId = orgData.id as string;
+
+  // Load connection and verify org ownership using internal UUID
   const { data: conn, error } = await supabaseAdmin
     .from("connections")
-    .select("id, org_id, provider, source_type, department_id")
+    .select("id, org_id, provider, source_type, department_id, nango_connection_id")
     .eq("id", connectionId)
-    .eq("org_id", orgId)
+    .eq("org_id", internalOrgId)
     .single();
 
   if (error || !conn) {
@@ -47,12 +57,13 @@ export async function POST(request: Request, { params }: Params) {
 
   const workerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/worker/nango-fetch`;
   const { dispatched, msgId } = await dispatchThrottled({
-    orgId,
+    orgId: internalOrgId,
     sourceType: conn.source_type,
     url: workerUrl,
     body: {
-      orgId,
+      orgId: internalOrgId,
       connectionId,
+      nangoConnectionId: conn.nango_connection_id,
       provider: conn.provider,
       sourceType: conn.source_type,
       departmentId: conn.department_id ?? null,

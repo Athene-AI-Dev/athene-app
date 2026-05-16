@@ -17,7 +17,7 @@
 import { vectorSearchTool } from "../tools/registry";
 import { graphQueryTool } from "../tools/graph-query";
 import { AtheneStateType } from "../state";
-import { HumanMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { logger } from "@/lib/logger";
 
 // ---- Constants ----------------------------------------------
@@ -207,7 +207,15 @@ export async function retrievalAgent(
     "[retrieval] retrieval complete"
   );
 
+  // Add a summary message so the supervisor can see retrieval results and
+  // route to synthesis instead of looping back to retrieval.
+  const summaryParts = [`[Retrieval complete] Found ${vectorChunks.length} vector chunk(s)`];
+  if (graphResult) summaryParts.push("+ knowledge graph context");
+  summaryParts.push(`for query: "${query.slice(0, 100)}"`);
+  const retrievalSummary = new AIMessage({ content: summaryParts.join(" ") });
+
   return {
+    messages: [retrievalSummary],
     retrieved_chunks: mergedResults,
   };
 }

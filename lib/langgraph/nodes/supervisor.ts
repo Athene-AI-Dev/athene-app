@@ -55,6 +55,20 @@ export async function supervisor(state: AtheneStateType) {
     };
   }
 
+  // ── Retrieval-complete guard: if we already have chunks, synthesize ──
+  // The LLM-based routing cannot see retrieved_chunks in state, so it loops.
+  // This guard short-circuits to synthesis once any retrieval produces results.
+  if ((state.retrieved_chunks?.length ?? 0) > 0 && hopCount > 0) {
+    return {
+      next_node: "synthesis",
+      task_type: "synthesis",
+      complexity: state.complexity ?? "standard",
+      reasoning: `[Guard] ${state.retrieved_chunks!.length} chunk(s) retrieved → routing to synthesis`,
+      hop_count: hopCount + 1,
+      is_cross_dept_query: state.is_cross_dept_query ?? false,
+    };
+  }
+
   const userRole = state.role ?? "member";
   const hopsLeft = MAX_HOPS - hopCount;
 
@@ -69,9 +83,11 @@ export async function supervisor(state: AtheneStateType) {
     .replace("{user_role}", String(userRole))
     .replace("{hops_left}", String(hopsLeft));
 
+  // Use functionCalling method — DeepSeek supports tool calls but not json_schema
+  // response_format, which is what the default withStructuredOutput sends.
   const structuredModel = (
     await resolveModelClient("medium", state.orgId)
-  ).withStructuredOutput(responseSchema);
+  ).withStructuredOutput(responseSchema, { method: "functionCalling" });
 
   const response = await structuredModel.invoke([
     { role: "system", content: systemContent },

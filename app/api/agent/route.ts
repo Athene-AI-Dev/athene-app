@@ -218,6 +218,12 @@ export async function POST(req: NextRequest) {
 
     let firstTokenSent = false;
     const firstTokenTime = Date.now();
+    // Track how many tokens have been streamed to the client.
+    // When tokenCount > 0, the client is already accumulating content via token frames.
+    // Sending `content` in a values frame at that point would overwrite the accumulated
+    // text with whatever partial/intermediate state LangGraph happens to hold at that
+    // node boundary — causing long responses to appear, shrink, or disappear entirely.
+    let tokenCount = 0;
 
     (async () => {
       // Release the thread lock once the stream is initialised — the race-condition
@@ -246,6 +252,7 @@ export async function POST(req: NextRequest) {
                 logger.info({ latencyMs: Date.now() - firstTokenTime }, "[agent] First token latency");
               }
               if (token) {
+                tokenCount++;
                 const data = JSON.stringify({ token });
                 await withSSEFrameSpan("llm_token", async () => {
                   await writer.write(encoder.encode(`data: ${data}\n\n`));
@@ -255,18 +262,32 @@ export async function POST(req: NextRequest) {
           } else if (mode === "values") {
             const messages = chunk.messages as any[] | undefined;
             const lastMessage = messages?.[messages.length - 1];
-            if (lastMessage) {
-              const data = JSON.stringify({
-                content: lastMessage.content,
-                final_answer: chunk.final_answer ?? null,
-                cited_sources: chunk.cited_sources ?? [],
-                awaiting_approval: chunk.awaiting_approval ?? false,
-                active_agent: chunk.next ?? null,
-              });
-              await withSSEFrameSpan("agent_chunk", async () => {
-                await writer.write(encoder.encode(`data: ${data}\n\n`));
-              });
+
+            // Always emit metadata (cited_sources, awaiting_approval, active_agent).
+            // Only include `content` when NO tokens have been streamed yet — i.e. this
+            // is a non-streaming response path (tool-only reply, routing message, etc.).
+            // Once tokens are streaming the client accumulates text via token frames;
+            // injecting `content` from an intermediate graph-node state would overwrite
+            // the accumulated text with whatever the last LangGraph message happens to
+            // be at that boundary (often a ToolMessage or partial AIMessage).
+            const frame: Record<string, unknown> = {
+              cited_sources: chunk.cited_sources ?? [],
+              awaiting_approval: chunk.awaiting_approval ?? false,
+              active_agent: chunk.next ?? null,
+            };
+
+            if (tokenCount === 0 && lastMessage) {
+              // Non-streaming path: surface the full message content to the client.
+              // Only include if the last message carries actual text (not a tool call).
+              const contentStr = typeof lastMessage.content === "string"
+                ? lastMessage.content
+                : "";
+              if (contentStr) frame.content = contentStr;
             }
+
+            await withSSEFrameSpan("agent_chunk", async () => {
+              await writer.write(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+            });
           }
         }
         await writer.close();

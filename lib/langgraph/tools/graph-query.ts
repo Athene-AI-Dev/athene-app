@@ -10,7 +10,7 @@
 //   format readable string → return to agent
 //
 // Security:
-//   - Non-BI users only see visibility='public' nodes.
+//   - Non-BI users only see visibility='org_wide' nodes.
 //   - bi_analysts see public + department nodes.
 //   - Edges referencing inaccessible nodes are silently omitted.
 //   - boundary_reached is surfaced in output when traversal stops.
@@ -103,7 +103,7 @@ async function findNodes(
 
   // Non-BI analysts only see public nodes
   if (role !== 'bi_analyst') {
-    query = query.eq('visibility', 'public')
+    query = query.eq('visibility', 'org_wide')
   }
 
   if (entityTypes && entityTypes.length > 0) {
@@ -175,7 +175,7 @@ async function traverseFromNode(
     if (!nodeRow) continue
 
     // Visibility gate
-    if (role !== 'bi_analyst' && nodeRow.visibility !== 'public') {
+    if (role !== 'bi_analyst' && nodeRow.visibility !== 'org_wide') {
       boundaryReached = true
       continue
     }

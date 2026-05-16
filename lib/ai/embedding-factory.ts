@@ -118,6 +118,36 @@ async function fetchByokEmbeddingConfig(orgId: string): Promise<EmbeddingConfig 
   return null
 }
 
+// ---- Local (Xenova/Transformers.js) provider ---------------------------
+
+// Cached pipeline instance — loaded once, reused across calls.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _localPipeline: any = null
+
+async function getLocalPipeline() {
+  if (_localPipeline) return _localPipeline
+  // Dynamic import keeps this out of the client bundle entirely.
+  const { pipeline, env } = await import("@xenova/transformers")
+  // Disable GPU (not available in Node.js server) and remote model fetching warnings
+  env.useBrowserCache = false
+  env.allowLocalModels = false
+  // BGE-base-en-v1.5 — 768-dim, ~270 MB, good semantic quality
+  _localPipeline = await pipeline("feature-extraction", "Xenova/bge-base-en-v1.5", {
+    quantized: true, // ~68 MB quantized int8 version
+  })
+  return _localPipeline
+}
+
+async function embedWithLocal(texts: string[]): Promise<number[][]> {
+  const extractor = await getLocalPipeline()
+  const results: number[][] = []
+  for (const text of texts) {
+    const output = await extractor(text, { pooling: "mean", normalize: true })
+    results.push(Array.from(output.data) as number[])
+  }
+  return results
+}
+
 // ---- Provider implementations ------------------------------------------
 
 async function embedWithOpenAI(
@@ -234,13 +264,7 @@ async function embedTexts(
     }
   }
 
-  if (candidates.length === 0) {
-    throw new Error(
-      "[EmbeddingFactory] No embedding provider configured. Set JINA_API_KEY, TOGETHER_API_KEY, or NOMIC_API_KEY in environment."
-    )
-  }
-
-  // 3. Try each provider in order, falling back on failure
+  // 3. Try each API provider in order, falling back on failure
   let lastErr: unknown
   for (const config of candidates) {
     try {
@@ -254,8 +278,16 @@ async function embedTexts(
     }
   }
 
+  // 4. Final fallback: local Xenova/BGE inference (no API key needed, ~68 MB model)
+  logger.warn({}, "[EmbeddingFactory] All API providers failed — falling back to local Xenova/bge-base-en-v1.5 model")
+  try {
+    return await embedWithLocal(texts)
+  } catch (localErr) {
+    lastErr = localErr
+  }
+
   throw new Error(
-    `[EmbeddingFactory] All embedding providers exhausted. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+    `[EmbeddingFactory] All embedding providers (including local) exhausted. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
   )
 }
 

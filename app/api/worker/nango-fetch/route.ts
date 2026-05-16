@@ -253,7 +253,11 @@ export async function POST(request: Request): Promise<Response> {
       allChunks.push(...chunks)
     }
 
-    const indexResult = await indexDocuments(allChunks, orgId, connectionId, departmentId ?? null)
+    // Use 'org_wide' visibility — integration documents are org-scoped by default.
+    // Without a department, 'department' visibility makes docs invisible to all users
+    // since vector_search filters require either org_wide or dept match.
+    const visibility = departmentId ? 'department' : 'org_wide'
+    const indexResult = await indexDocuments(allChunks, orgId, connectionId, departmentId ?? null, visibility as any)
     fetchResult = indexResult
 
     if (indexResult.indexed > 0 && indexResult.documentIds.length > 0) {

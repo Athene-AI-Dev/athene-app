@@ -87,10 +87,10 @@ async function handleSyncCompleted(connectionId: string, providerConfigKey: stri
     return;
   }
 
-  // Resolve internal org UUID and source_type from the connections table
+  // Resolve internal org UUID, source_type, provider, and Supabase UUID
   const { data: conn, error } = await supabaseAdmin
     .from("connections")
-    .select("org_id, source_type")
+    .select("id, org_id, source_type, provider")
     .eq("nango_connection_id", connectionId)
     .maybeSingle();
 
@@ -111,17 +111,21 @@ async function handleSyncCompleted(connectionId: string, providerConfigKey: stri
     .eq("connection_id", connectionId)
     .eq("provider_config_key", providerConfigKey);
 
-  // Dispatch re-index job via QStash (throttled per org × source_type)
-  const url = `${APP_URL}/api/worker/index`;
+  // Dispatch full-fetch job via QStash (throttled per org × source_type).
+  // Target: nango-fetch worker which calls the provider API and indexes content.
+  // conn.id = Supabase connections.id UUID (FK for documents table)
+  // connectionId = Nango connection string (used to call Nango/provider APIs)
+  const url = `${APP_URL}/api/worker/nango-fetch`;
   const { dispatched, msgId } = await dispatchThrottled({
     orgId: conn.org_id,
     sourceType: conn.source_type,
     url,
     body: {
-      org_id: conn.org_id,
-      connection_id: connectionId,
-      source_type: conn.source_type,
-      trigger: "nango_sync",
+      orgId: conn.org_id,
+      connectionId: conn.id,
+      nangoConnectionId: connectionId,
+      provider: conn.provider,
+      sourceType: conn.source_type,
     },
   });
 

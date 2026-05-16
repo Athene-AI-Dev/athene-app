@@ -43,10 +43,20 @@ export async function verifyQStashSignature(req: Request): Promise<boolean> {
     // prevent the downstream route logic from parsing JSON later.
     const body = await req.clone().text();
 
+    // QStash signs the JWT `sub` field with the public URL it was told to call
+    // (e.g. https://xxx.trycloudflare.com/api/worker/nango-fetch). When the
+    // request arrives at the Next.js server it has req.url = http://localhost:3000/...
+    // which doesn't match the signed subject and verification fails.
+    // Fix: reconstruct the public URL from NEXT_PUBLIC_APP_URL so the subject matches.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const verifyUrl = appUrl
+      ? appUrl.replace(/\/$/, '') + new URL(req.url).pathname
+      : req.url;
+
     const isValid = await receiver.verify({
       signature,
       body,
-      url: req.url,
+      url: verifyUrl,
     });
 
     return isValid;

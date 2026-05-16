@@ -93,15 +93,15 @@ export async function GET(req: NextRequest) {
     if (access.role === "member") {
       // Members see public + their department's team nodes + their own private nodes
       query = query.or(
-        `visibility.eq.public,` +
-        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.public`)
+        `visibility.eq.org_wide,` +
+        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.org_wide`)
       );
     } else if (access.role === "super_user") {
       // Super users see public + team nodes from accessible departments
       const deptIds = access.accessible_dept_ids ?? [];
       if (deptIds.length > 0) {
         const deptFilter = deptIds.map((id) => `department_ids.cs.{${id}}`).join(",");
-        query = query.or(`visibility.eq.public,${deptFilter}`);
+        query = query.or(`visibility.eq.org_wide,${deptFilter}`);
       } else {
         query = query.eq("visibility", "public");
       }
@@ -126,14 +126,14 @@ export async function GET(req: NextRequest) {
 
     if (access.role === "member") {
       commQuery = commQuery.or(
-        `visibility.eq.public,` +
-        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.public`)
+        `visibility.eq.org_wide,` +
+        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.org_wide`)
       );
     } else if (access.role === "super_user") {
       const deptIds = access.accessible_dept_ids ?? [];
       if (deptIds.length > 0) {
         const deptFilter = deptIds.map((id) => `department_ids.cs.{${id}}`).join(",");
-        commQuery = commQuery.or(`visibility.eq.public,${deptFilter}`);
+        commQuery = commQuery.or(`visibility.eq.org_wide,${deptFilter}`);
       } else {
         commQuery = commQuery.eq("visibility", "public");
       }

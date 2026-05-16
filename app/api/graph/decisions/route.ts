@@ -47,14 +47,14 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from("kg_nodes")
-      .select("id, label, description, temporal_metadata, department_ids, created_at, updated_at")
+      .select("id, label, description, metadata, department_ids, created_at, updated_at")
       .eq("org_id", orgData.id)
       .eq("entity_type", "decision")
-      .order("temporal_metadata->occurred_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
       .limit(limit);
 
     if (since) {
-      query = query.gte("temporal_metadata->>occurred_at", since);
+      query = query.gte("metadata->>occurred_at", since);
     }
     if (dept) {
       query = query.contains("department_ids", [dept]);
@@ -64,18 +64,19 @@ export async function GET(req: NextRequest) {
     }
 
     // RLS visibility filter — mirrors the pattern in /api/graph/nodes
+    // NOTE: valid enum values are 'org_wide' | 'department' | 'bi_accessible' | 'confidential'
     if (access.role === "member") {
       query = query.or(
-        `visibility.eq.public,` +
-        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.public`)
+        `visibility.eq.org_wide,` +
+        (access.dept_id ? `department_ids.cs.{${access.dept_id}}` : `visibility.eq.org_wide`)
       );
     } else if (access.role === "super_user") {
       const deptIds = access.accessible_dept_ids ?? [];
       if (deptIds.length > 0) {
         const deptFilter = deptIds.map((id) => `department_ids.cs.{${id}}`).join(",");
-        query = query.or(`visibility.eq.public,${deptFilter}`);
+        query = query.or(`visibility.eq.org_wide,${deptFilter}`);
       } else {
-        query = query.eq("visibility", "public");
+        query = query.eq("visibility", "org_wide");
       }
     }
     // Admins see everything — no additional filter

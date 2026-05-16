@@ -27,9 +27,9 @@ async function ensureAdmin() {
 export async function GET(_req: NextRequest) {
   try {
     const { orgId } = await ensureAdmin()
-    const connections = await listConnections(orgId)
 
-    // Resolve Clerk orgId → internal UUID to query connections table correctly
+    // Resolve Clerk orgId → internal UUID first — nango_connections.org_id stores
+    // the internal UUID, so listConnections must be called with it (not the Clerk ID).
     const { data: orgData } = await supabaseAdmin
       .from('organizations')
       .select('id')
@@ -41,6 +41,8 @@ export async function GET(_req: NextRequest) {
       // Org not yet synced to Supabase — return empty list rather than crashing
       return NextResponse.json({ integrations: [] })
     }
+
+    const connections = await listConnections(internalOrgId)
 
     // Batch-count documents and load metadata per nango connection.
     // connections.org_id stores internal UUIDs — use internalOrgId for correct filtering.

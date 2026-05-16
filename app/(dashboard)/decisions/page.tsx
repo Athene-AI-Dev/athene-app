@@ -29,7 +29,8 @@ type Decision = {
   id: string;
   label: string;
   description?: string | null;
-  temporal_metadata?: TemporalMetadata | null;
+  metadata?: TemporalMetadata | null;
+  temporal_metadata?: TemporalMetadata | null; // alias kept for backward compat
   department_ids?: string[] | null;
   created_at: string;
 };
@@ -56,7 +57,7 @@ function formatDate(isoString?: string): string {
 }
 
 function DecisionCard({ decision }: { decision: Decision }) {
-  const tm = decision.temporal_metadata;
+  const tm = decision.metadata ?? decision.temporal_metadata;
   return (
     <Card className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-2xl space-y-4 hover:border-white/20 transition-all">
       <div className="flex items-start justify-between gap-4">

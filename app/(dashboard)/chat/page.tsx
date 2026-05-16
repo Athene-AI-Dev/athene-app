@@ -205,18 +205,30 @@ export default function ChatPage() {
                       : m
                   )
                 );
-              } else if (payload.content) {
+              } else if (
+                payload.content ||
+                payload.cited_sources !== undefined ||
+                payload.awaiting_approval !== undefined
+              ) {
+                // Values frame — carries metadata (cited_sources, awaiting_approval)
+                // and optionally content for non-streaming responses.
+                // Safety rule: never overwrite accumulated token content with a shorter
+                // string. The backend already omits `content` when tokens are streaming,
+                // but this guard protects against any edge-case ordering issues.
                 setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? {
-                          ...m,
-                          content: payload.content,
-                          cited_sources: payload.cited_sources || m.cited_sources,
-                          awaiting_approval: payload.awaiting_approval
-                        }
-                      : m
-                  )
+                  prev.map((m) => {
+                    if (m.id !== assistantId) return m;
+                    const newContent =
+                      payload.content && payload.content.length > m.content.length
+                        ? payload.content
+                        : m.content;
+                    return {
+                      ...m,
+                      content: newContent,
+                      cited_sources: payload.cited_sources || m.cited_sources,
+                      awaiting_approval: payload.awaiting_approval ?? m.awaiting_approval,
+                    };
+                  })
                 );
 
                 if (payload.awaiting_approval && payload.pending_write_action) {

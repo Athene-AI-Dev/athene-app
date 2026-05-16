@@ -76,13 +76,14 @@ export async function getConnectionToken(
   const nango = getNango();
 
   try {
-    // 🛡️ Verify connection ownership in Supabase
+    // 🛡️ Verify connection ownership — org_id + connection_id pair uniquely
+    // prevents cross-org token access without needing provider_config_key,
+    // which may differ between our internal key and what Nango stores.
     const { data: mapping, error: supabaseError } = await supabaseAdmin
       .from('nango_connections')
-      .select('id')
+      .select('id, provider_config_key')
       .eq('org_id', orgId)
       .eq('connection_id', connectionId)
-      .eq('provider_config_key', providerConfigKey)
       .maybeSingle()
 
     if (supabaseError) {
@@ -96,9 +97,11 @@ export async function getConnectionToken(
       throw notFound;
     }
 
-    // 🔒 If verification passed, proceed to fetch token
-    const config = getProvider(providerConfigKey as any)
-    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    // Use the stored provider_config_key to determine the Nango integration key,
+    // falling back to the passed providerConfigKey if needed.
+    const storedKey = (mapping as any).provider_config_key ?? providerConfigKey;
+    const config = getProvider(storedKey as any) ?? getProvider(providerConfigKey as any);
+    const nangoKey = config?.nangoIntegrationId ?? storedKey;
     return await nango.getToken(nangoKey, connectionId) as any;
 
 
@@ -126,13 +129,13 @@ export async function getConnection(
 
   const nango = getNango();
 
-  // Verify ownership in Supabase first
+  // Verify ownership in Supabase — org_id + connection_id uniquely prevents
+  // cross-org access without relying on provider_config_key key format matching.
   const { data: mapping, error: supabaseError } = await supabaseAdmin
     .from('nango_connections')
-    .select('id')
+    .select('id, provider_config_key')
     .eq('org_id', orgId)
     .eq('connection_id', connectionId)
-    .eq('provider_config_key', providerConfigKey)
     .maybeSingle();
 
   if (supabaseError) {
@@ -147,8 +150,9 @@ export async function getConnection(
   }
 
   try {
-    const config = getProvider(providerConfigKey as any)
-    const nangoKey = config?.nangoIntegrationId ?? providerConfigKey
+    const storedKey = (mapping as any).provider_config_key ?? providerConfigKey;
+    const config = getProvider(storedKey as any) ?? getProvider(providerConfigKey as any);
+    const nangoKey = config?.nangoIntegrationId ?? storedKey;
     return await nango.getConnection(nangoKey, connectionId);
   } catch (error: unknown) {
     return handleNangoError(error, 'getConnection');

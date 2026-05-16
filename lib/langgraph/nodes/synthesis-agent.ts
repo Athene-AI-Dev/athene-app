@@ -130,7 +130,7 @@ export async function synthesisAgentNode(
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);
 
-  const chatModel = await resolveModelClient("gpt-4o", orgId, 0);
+  const chatModel = await resolveModelClient("complex", orgId, 0);
   const response = await chatModel.invoke([
     new SystemMessage(systemPrompt),
     ...messages,

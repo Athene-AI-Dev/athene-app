@@ -76,7 +76,13 @@ export async function GET(_req: NextRequest) {
         displayName: config?.displayName ?? providerKey,
         category: config?.category ?? 'other',
         resources: config?.resources ?? [],
-        status: meta?.status || conn.sync_status || (conn.errors?.length ? 'error' : 'connected'),
+        status: (() => {
+          const raw = meta?.status || conn.sync_status || (conn.errors?.length ? 'error' : 'connected')
+          if (raw === 'active' || raw === 'connected') return 'connected'
+          if (raw === 'syncing') return 'syncing'
+          if (raw === 'error' || raw === 'failed') return 'error'
+          return 'connected'
+        })(),
         lastSyncedAt: conn.last_synced_at ?? null,
         totalDocs: meta?.docCount ?? 0,
         metadata: meta?.metadata ?? {},

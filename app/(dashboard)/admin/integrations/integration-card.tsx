@@ -94,7 +94,7 @@ export function IntegrationCard({
     },
   };
 
-  const config = statusConfig[integration.status];
+  const config = statusConfig[integration.status] ?? statusConfig['connected'];
   const needsConfig = needsConfiguration(integration);
 
   const isError = integration.status === "error";

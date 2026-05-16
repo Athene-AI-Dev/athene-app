@@ -17,6 +17,7 @@ import { withRLS, type RLSContext } from "@/lib/supabase/rls-client";
 import type { KGEdge, KGNode, KGProvenance } from "./types";
 import { strongerProvenance, unionStrings, nodeKey, edgeKey } from "./utils";
 import { logger } from "@/lib/logger";
+import { embedBatch } from "@/lib/ai/embedder";
 
 // ---- Node upsert ----------------------------------------------
 
@@ -150,9 +151,46 @@ async function _upsertNodesWithClient(
         }
       }
 
+      // ── Entity linking: embed new labels, find canonical root nodes ──────
+      // Best-effort — failure just means the node is inserted without an
+      // embedding and won't participate in dedup until next re-extraction.
+      const insertArray = Array.from(uniqueToInsert.values());
+      try {
+        const labels = insertArray.map((n: any) => n.label as string);
+        const embeddings = await embedBatch(labels, ctx.org_id);
+
+        // Resolve canonical ID for each node in parallel
+        const canonicalIds = await Promise.all(
+          insertArray.map(async (node: any, i: number) => {
+            try {
+              const { data } = await supabase.rpc("find_canonical_node", {
+                p_org_id: ctx.org_id,
+                p_embedding: embeddings[i],
+                p_entity_type: node.entity_type,
+                p_threshold: 0.92,
+              });
+              return data ?? null;
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        // Attach embedding and canonical_id to each insert row
+        for (let i = 0; i < insertArray.length; i++) {
+          insertArray[i].label_embedding = embeddings[i];
+          insertArray[i].canonical_id = canonicalIds[i];
+        }
+      } catch (embErr) {
+        logger.warn(
+          { orgId: ctx.org_id, err: embErr instanceof Error ? embErr.message : String(embErr) },
+          "[storage] Entity linking embedding failed — inserting nodes without label_embedding"
+        );
+      }
+
       const { data, error } = await supabase
         .from("kg_nodes")
-        .insert(Array.from(uniqueToInsert.values()))
+        .insert(insertArray)
         .select("id, label, entity_type");
       if (error) throw new Error(`kg_nodes insert failed: ${error.message}`);
       insertedRows = data ?? [];

@@ -129,15 +129,21 @@ async function traverseFromNode(
   maxHops: number,
   role: string,
   visited: Set<string>,
+  minConfidence = 0.5,
 ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[]; boundaryReached: boolean }> {
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
   let boundaryReached = false
 
-  const queue: Array<{ id: string; hop: number }> = [{ id: startId, hop: 0 }]
+  // Priority queue: highest accumulated confidence score explored first
+  const queue: Array<{ id: string; hop: number; score: number }> = [
+    { id: startId, hop: 0, score: 1.0 },
+  ]
 
   while (queue.length > 0) {
-    const { id, hop } = queue.shift()!
+    // Sort descending by score so highest-confidence paths run first
+    queue.sort((a, b) => b.score - a.score)
+    const { id, hop, score: currentScore } = queue.shift()!
     if (visited.has(id)) continue
     if (hop >= maxHops) {
       boundaryReached = true
@@ -156,11 +162,14 @@ async function traverseFromNode(
     if (edgeErr) continue
 
     for (const edge of edgeRows ?? []) {
+      const edgeConf = (edge as any).confidence ?? 1.0
+      // Skip low-confidence edges to keep traversal focused on reliable paths
+      if (edgeConf < minConfidence) continue
       edges.push(edge as GraphEdge)
       const nextId =
         edge.source_node === id ? edge.target_node : edge.source_node
       if (!visited.has(nextId)) {
-        queue.push({ id: nextId, hop: hop + 1 })
+        queue.push({ id: nextId, hop: hop + 1, score: currentScore * edgeConf })
       }
     }
 
@@ -195,39 +204,29 @@ function formatResult(
 ): string {
   if (nodes.length === 0) return 'No knowledge graph data available yet.'
 
-  const lines: string[] = []
-  lines.push(
-    `Entities found: ${nodes
-      .map((n) => `${n.label} (${n.entity_type})`)
-      .join(', ')}`,
-  )
-
-  if (edges.length > 0) {
-    const labelMap = new Map(nodes.map((n) => [n.id, n.label]))
-    lines.push('Relationships:')
-    for (const e of edges) {
-      const src = labelMap.get(e.source_node) ?? e.source_node
-      const tgt = labelMap.get(e.target_node) ?? e.target_node
-      lines.push(
-        `  ${src} → ${e.relation} → ${tgt} [${e.provenance}, ${e.confidence.toFixed(2)}]`,
-      )
-    }
+  const nodeMap: Record<string, { label: string; type: string; confidence: number }> = {}
+  for (const n of nodes) {
+    nodeMap[n.id] = { label: n.label, type: n.entity_type, confidence: 1.0 }
   }
 
-  if (boundaryReached) {
-    lines.push(
-      'Note: boundary reached — some related nodes are not accessible to you.',
-    )
-  }
+  const edgeList = edges.map((e) => ({
+    from: e.source_node,
+    to: e.target_node,
+    from_label: nodes.find((n) => n.id === e.source_node)?.label ?? e.source_node,
+    to_label: nodes.find((n) => n.id === e.target_node)?.label ?? e.target_node,
+    relation: e.relation,
+    confidence: e.confidence,
+    provenance: e.provenance,
+  }))
 
-  const sourceDocs = [
-    ...new Set(nodes.flatMap((n) => n.department_ids ?? [])),
-  ]
-  if (sourceDocs.length > 0) {
-    lines.push(`Source departments: ${sourceDocs.join(', ')}`)
-  }
-
-  return lines.join('\n')
+  return JSON.stringify({
+    center: nodes[0]?.label ?? '',
+    nodeCount: nodes.length,
+    nodes: Object.values(nodeMap),
+    edges: edgeList,
+    boundaryReached,
+    departments: [...new Set(nodes.flatMap((n) => n.department_ids ?? []))],
+  })
 }
 
 // ---- Tool definition ----------------------------------------

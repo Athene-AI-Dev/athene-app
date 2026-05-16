@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 const MAX_HOPS = 6;
 
 const ALL_AGENTS = [
+  "planner",
   "retrieval",
   "cross_dept_retrieval",
   "email_agent",
@@ -23,6 +24,7 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 
 ## Available Agents
 
+- planner: Decompose a complex multi-department query into sequential retrieval steps. Use ONLY on the first hop when the question clearly spans 2+ departments (e.g. "How does the AWS incident affect Q2 revenue and our SLA with Acme?").
 - retrieval: Search documents within the user's organization (Jira, Confluence, Slack, SharePoint, etc.)
 - cross_dept_retrieval: Cross-department BI analysis — revenue insights, multi-team trends. **Restricted: super_user and admin roles only.**
 - email_agent: Read, draft, or send emails.
@@ -38,7 +40,8 @@ const supervisorPrompt = `You are the supervisor of an AI assistant. Route the c
 2. **Hop guard**: If hops_left <= 1, route to synthesis or END to avoid hitting the hop limit.
 3. **Synthesis trigger**: Route to synthesis when enough information has been gathered.
 4. **END condition**: Route to END only after the final answer has already been delivered.
-5. **Agent specificity**: Choose the most targeted agent; avoid unnecessary retrieval hops.`;
+5. **Agent specificity**: Choose the most targeted agent; avoid unnecessary retrieval hops.
+6. **Planner guard**: Only route to planner on the very first hop (hops_remaining = MAX) and only when the question clearly spans 2+ departments. Never re-route to planner on subsequent hops.`;
 
 /**
  * Supervisor node that routes queries to the appropriate specialist.
@@ -105,6 +108,12 @@ export async function supervisor(state: AtheneStateType) {
     taskType = "document_search";
     isCrossDeptQuery = false;
     reasoning = `[Guard] member role blocked from cross_dept_retrieval → routed to retrieval. (${reasoning})`;
+  }
+
+  // ── Planner guard: only allow planner on first hop, never loop back ──
+  if (nextAgent === "planner" && hopCount > 0) {
+    nextAgent = "retrieval";
+    reasoning = `[Guard] Planner only runs on first hop — routing to retrieval. (${reasoning})`;
   }
 
   // ── Hop-left guard: force synthesis/END when nearly out of hops ──

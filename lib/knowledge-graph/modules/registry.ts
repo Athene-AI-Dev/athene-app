@@ -18,6 +18,8 @@ export interface VerticalModule {
   relation_types: string[];
   /** Appended to the base EXTRACTION_PROMPT when this module is active */
   extraction_prompt_addendum: string;
+  /** Injected into the synthesis prompt when this department's chunks dominate retrieved context */
+  synthesis_prompt_addendum: string;
 }
 
 export const VERTICAL_MODULES: VerticalModule[] = [
@@ -45,6 +47,7 @@ export const VERTICAL_MODULES: VerticalModule[] = [
       "CHURNED_FROM",
       "INFLUENCED_BY",
     ],
+    synthesis_prompt_addendum: "Focus on pipeline metrics, ARR impact, conversion rates, and revenue forecasting. Quantify business impact in $ terms where data allows. Surface win/loss patterns and competitive intelligence.",
     extraction_prompt_addendum: `
 ## Revenue Operations domain extensions
 
@@ -92,6 +95,7 @@ Additional relation types:
       "DEPRECATED_BY",
       "ONCALL_FOR",
     ],
+    synthesis_prompt_addendum: "Focus on incident severity (P0/P1/P2), MTTR, deployment frequency, and blast radius. Link technical decisions to business outcomes. Surface on-call patterns and recurring failure modes.",
     extraction_prompt_addendum: `
 ## Engineering Intelligence domain extensions
 
@@ -136,6 +140,7 @@ Additional relation types:
       "IMPACTS_RENEWAL",
       "TIED_TO_ACCOUNT",
     ],
+    synthesis_prompt_addendum: "Focus on CSAT scores, ticket resolution times, churn risk signals, and account health. Surface early warning indicators. Distinguish between one-off issues and systemic patterns affecting multiple accounts.",
     extraction_prompt_addendum: `
 ## Customer Success domain extensions
 
@@ -179,6 +184,7 @@ Additional relation types:
       "BREACHES",
       "RISKS",
     ],
+    synthesis_prompt_addendum: "Focus on SLA obligations, compliance gaps, policy effective dates, and risk exposure level (HIGH/MEDIUM/LOW). Always cite the source document title and section number. Flag any time-sensitive obligations or upcoming deadlines explicitly.",
     extraction_prompt_addendum: `
 ## Legal & Compliance domain extensions
 

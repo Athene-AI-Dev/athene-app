@@ -9,10 +9,13 @@ import { SystemMessage } from "@langchain/core/messages";
 import type { MessageContentComplex } from "@langchain/core/messages";
 import type { AtheneState, AtheneStateUpdate, CitedSource, RetrievedChunk } from "../state";
 import { resolveModelClient } from "../llm-factory";
+import { VERTICAL_MODULES } from "@/lib/knowledge-graph/modules/registry";
 
 const SYNTHESIS_PROMPT = `You are an AI assistant synthesizing retrieved information into a clear, cited answer.
 
 MODE: {{MODE}}
+
+{{DEPT_GUIDANCE}}
 
 CONTEXT (retrieved chunks):
 {{CONTEXT}}
@@ -35,6 +38,19 @@ interface GraphResult {
   raw: string;
   relationships: string[];
   boundaryReached: boolean;
+}
+
+/**
+ * Returns the department_id that appears most frequently in retrieved chunks.
+ * Used to inject domain-specific synthesis guidance from the vertical module registry.
+ */
+function detectDominantDept(chunks: RetrievedChunk[]): string | null {
+  const counts: Record<string, number> = {};
+  for (const c of chunks) {
+    if (c.department_id) counts[c.department_id] = (counts[c.department_id] ?? 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] ?? null;
 }
 
 function isGraphResult(item: unknown): item is GraphResult {
@@ -105,6 +121,21 @@ export async function synthesisAgentNode(
   const isBIMode = task_type === "analytical" || is_cross_dept_query === true;
   const mode = isBIMode ? "BI (BUSINESS INTELLIGENCE) MODE" : "STANDARD MODE";
 
+  // Detect dominant department to inject domain-specific synthesis guidance
+  const dominantDeptId = detectDominantDept(vectorChunks);
+  const verticalModule = dominantDeptId
+    ? VERTICAL_MODULES.find((m) => m.id === dominantDeptId || m.activating_sources.some(() => false))
+    : null;
+  // Match by department_id stored on chunks against modules by any activating_source presence
+  // Fallback: match module by dept UUID via a direct lookup on chunks source_type
+  const chunkSourceTypes = [...new Set(vectorChunks.map((c) => (c as any).source_type).filter(Boolean))];
+  const matchedModule = VERTICAL_MODULES.find((m) =>
+    m.activating_sources.some((s) => chunkSourceTypes.includes(s))
+  );
+  const deptGuidance = (matchedModule ?? verticalModule)?.synthesis_prompt_addendum
+    ? `DOMAIN GUIDANCE:\n${(matchedModule ?? verticalModule)!.synthesis_prompt_addendum}`
+    : "";
+
   // Build vector context
   const context =
     vectorChunks.length > 0
@@ -126,6 +157,7 @@ export async function synthesisAgentNode(
 
   const systemPrompt = SYNTHESIS_PROMPT
     .replace("{{MODE}}", mode)
+    .replace("{{DEPT_GUIDANCE}}", deptGuidance)
     .replace("{{CONTEXT}}", context)
     .replace("{{GRAPH_CONTEXT}}", graphContext)
     .replace("{{BOUNDARY_NOTE}}", boundaryNote);

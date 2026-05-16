@@ -93,6 +93,11 @@ export const AtheneState = Annotation.Root({
     reducer: (_x, y) => y,
     default: () => null,
   }),
+  // Multi-step query plan from plannerAgent (4C)
+  planning_steps: Annotation<Array<{ id: string; query: string; department: string; depends_on: string[] }> | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
 });
 
 export type AtheneStateType = typeof AtheneState.State;

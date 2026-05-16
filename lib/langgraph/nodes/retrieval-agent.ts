@@ -16,9 +16,12 @@
 
 import { vectorSearchTool } from "../tools/registry";
 import { graphQueryTool } from "../tools/graph-query";
+import { graphTraversalTool, findNodesTool } from "../tools/graph-traversal";
+import { causalChainTool } from "../tools/causal-chain";
 import { AtheneStateType } from "../state";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { logger } from "@/lib/logger";
+import { rerankChunks } from "@/lib/ai/reranker";
 
 // ---- Constants ----------------------------------------------
 
@@ -91,11 +94,14 @@ function parseVectorResults(
 
 /**
  * Parses the graph query tool output into a structured object.
+ * Handles both the new JSON format (IW-2) and legacy text format.
  * Returns null if the output is a sentinel (empty graph).
  */
 function parseGraphResults(raw: string): {
   type: "graph";
   raw: string;
+  nodes?: any[];
+  edges?: any[];
   relationships: string[];
   boundaryReached: boolean;
 } | null {
@@ -103,6 +109,29 @@ function parseGraphResults(raw: string): {
     return null;
   }
 
+  // Try new JSON format first (IW-2: graph-query.ts now returns JSON)
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.nodes !== undefined && parsed.edges !== undefined) {
+      const relationships = (parsed.edges ?? []).map((e: any) => {
+        const from = e.from_label ?? e.from ?? e.source_node ?? "?";
+        const to = e.to_label ?? e.to ?? e.target_node ?? "?";
+        return `${from} → ${e.relation} → ${to}`;
+      });
+      return {
+        type: "graph",
+        raw,
+        nodes: parsed.nodes,
+        edges: parsed.edges,
+        relationships,
+        boundaryReached: parsed.boundaryReached ?? parsed.boundary_reached ?? false,
+      };
+    }
+  } catch {
+    // Fall through to legacy text parsing
+  }
+
+  // Legacy text format fallback
   const lines = raw.split("\n");
   const relationships: string[] = [];
   let boundaryReached = false;
@@ -112,7 +141,6 @@ function parseGraphResults(raw: string): {
     if (trimmed.startsWith("Note: boundary reached")) {
       boundaryReached = true;
     } else if (trimmed.includes("→") && line.startsWith(" ")) {
-      // Relationship line: "  PaymentService → depends_on → AWS EKS [...]"
       relationships.push(trimmed);
     }
   }
@@ -152,6 +180,7 @@ export async function retrievalAgent(
   // Build the security context for tool calls — deptId is required for
   // RLS department filtering in vector_search(); without it only org_wide
   // documents are returned and department-scoped content is invisible.
+  // user_role is required by graphTraversalTool's RLS context extractor.
   const toolConfig = {
     configurable: {
       ...(config?.configurable ?? {}),
@@ -165,6 +194,7 @@ export async function retrievalAgent(
       orgId,
       userId,
       role,
+      user_role: role,
       deptId: deptId ?? null,
     },
   };
@@ -176,8 +206,8 @@ export async function retrievalAgent(
   const isBiQuery = (state as any).route === "cross_dept_retrieval";
   const topK = isBiQuery ? 30 : (topKMap[(state as any).complexity ?? "standard"] ?? 15);
 
-  // ── Run both lookups in parallel ──────────────────────────
-  const [vectorRaw, graphRaw] = await Promise.all([
+  // ── Run vector search + graph lookup + entity find in parallel ────────
+  const [vectorRaw, graphRaw, findNodesRaw] = await Promise.all([
     // Vector search — always runs
     vectorSearchTool
       .invoke({ query, topK }, toolConfig)
@@ -186,17 +216,79 @@ export async function retrievalAgent(
         return JSON.stringify({ results: [] });
       }),
 
-    // Graph traversal — graceful fallback on failure or empty graph
+    // Graph query — graceful fallback on failure or empty graph
     graphQueryTool
       .invoke({ question: query, maxHops: 2 }, toolConfig)
       .catch((err: unknown) => {
         logger.error({ err: err instanceof Error ? err.message : String(err) }, "[retrieval] Graph query failed (continuing vector-only)");
         return "No knowledge graph data available yet.";
       }),
+
+    // Entity node lookup (RLS-aware) — finds specific graph nodes by label
+    findNodesTool
+      .invoke({ query, limit: 5 }, toolConfig)
+      .catch((): null => null),
   ]);
 
+  // ── Deep traversal on top entities found (IW-1: graphTraversalTool) ────
+  let deepTraversalResults: any[] = [];
+  try {
+    if (findNodesRaw) {
+      const findParsed = JSON.parse(findNodesRaw as string);
+      const topNodes = (findParsed.nodes ?? []).slice(0, 2);
+      if (topNodes.length > 0) {
+        const traversals = await Promise.all(
+          topNodes.map((node: any) =>
+            graphTraversalTool
+              .invoke({ nodeId: node.id, maxHops: 2 }, toolConfig)
+              .catch((): null => null)
+          )
+        );
+        for (const t of traversals) {
+          if (!t) continue;
+          try {
+            const parsed = JSON.parse(t as string);
+            if ((parsed.nodes?.length ?? 0) > 0) {
+              deepTraversalResults.push({
+                type: "graph",
+                raw: t as string,
+                nodes: parsed.nodes,
+                edges: parsed.edges,
+                relationships: (parsed.edges ?? []).map((e: any) =>
+                  `${e.source_node} → ${e.relation} → ${e.target_node}`
+                ),
+                boundaryReached: parsed.boundary_reached ?? false,
+              });
+            }
+          } catch { /* ignore malformed traversal */ }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal — continue without deep traversal
+  }
+
+  // ── Causal chain lookup for timeline/history queries ─────────
+  const CAUSAL_KEYWORDS = /\b(history|timeline|happened|when did|trace|events|incident chain|causal|chronolog|sequence of|what led)\b/i;
+  let causalChainResult: any = null;
+  if (CAUSAL_KEYWORDS.test(query)) {
+    try {
+      const causalRaw = await causalChainTool.invoke({ entityLabel: query.slice(0, 80) }, toolConfig);
+      const parsed = typeof causalRaw === "string" ? JSON.parse(causalRaw) : causalRaw;
+      if ((parsed.count ?? 0) > 0) {
+        causalChainResult = { type: "causal_chain", ...parsed };
+      }
+    } catch {
+      // Non-fatal — continue without causal chain
+    }
+  }
+
   // ── Parse results ─────────────────────────────────────────
-  const vectorChunks = parseVectorResults(vectorRaw as string);
+  const rawVectorChunks = parseVectorResults(vectorRaw as string);
+
+  // Cross-encoder reranking: improves relevance ordering before synthesis
+  const vectorChunks = await rerankChunks(query, rawVectorChunks, Math.min(topK, 15));
+
   const graphResult = parseGraphResults(graphRaw as string);
 
   // ── Merge into unified retrieved_chunks ────────────────────
@@ -206,8 +298,24 @@ export async function retrievalAgent(
     mergedResults.push(graphResult);
   }
 
+  // Include RLS-aware deep traversal results from graphTraversalTool
+  for (const traversal of deepTraversalResults) {
+    mergedResults.push(traversal);
+  }
+
+  if (causalChainResult) {
+    mergedResults.push(causalChainResult);
+  }
+
   logger.info(
-    { query: query.slice(0, 80), vectorChunks: vectorChunks.length, graphAvailable: !!graphResult, boundaryReached: graphResult?.boundaryReached ?? false },
+    {
+      query: query.slice(0, 80),
+      vectorChunks: vectorChunks.length,
+      graphAvailable: !!graphResult,
+      deepTraversals: deepTraversalResults.length,
+      causalEvents: causalChainResult?.count ?? 0,
+      boundaryReached: graphResult?.boundaryReached ?? false,
+    },
     "[retrieval] retrieval complete"
   );
 
@@ -215,6 +323,8 @@ export async function retrievalAgent(
   // route to synthesis instead of looping back to retrieval.
   const summaryParts = [`[Retrieval complete] Found ${vectorChunks.length} vector chunk(s)`];
   if (graphResult) summaryParts.push("+ knowledge graph context");
+  if (deepTraversalResults.length > 0) summaryParts.push(`+ ${deepTraversalResults.length} deep traversal(s)`);
+  if (causalChainResult) summaryParts.push(`+ causal chain (${causalChainResult.count} events)`);
   summaryParts.push(`for query: "${query.slice(0, 100)}"`);
   const retrievalSummary = new AIMessage({ content: summaryParts.join(" ") });
 

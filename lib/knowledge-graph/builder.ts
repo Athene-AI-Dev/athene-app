@@ -17,6 +17,7 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { extractEntitiesAndRelations } from './extractor'
 import { upsertGraph, deleteByDocument } from './storage'
 import { detectCommunities } from './community'
+import { extractAndUpsertEvents } from './event-extractor'
 import type { RLSContext } from '@/lib/supabase/rls-client'
 import { logger } from '@/lib/logger'
 
@@ -201,8 +202,9 @@ async function processDocument(
     // upsertGraph shares a single withRLS connection for both writes.
     // If edges fail after nodes succeed we run a compensating deleteByDocument
     // so the next extraction run starts from a clean slate for this document.
+    let nodeIdMap: Map<string, string> = new Map()
     try {
-      await upsertGraph(ctx, nodes, edges)
+      nodeIdMap = await upsertGraph(ctx, nodes, edges)
     } catch (upsertErr: any) {
       logger.error(
         { err: upsertErr.message, docId, orgId },
@@ -220,6 +222,11 @@ async function processDocument(
 
     result.totalNodes += nodes.length
     result.totalEdges += edges.length
+
+    // 7b. Event extraction — fire-and-forget; never blocks the build job
+    extractAndUpsertEvents(extractorChunks, orgId, docId, nodeIdMap).catch((err: any) =>
+      logger.warn({ err: err?.message, docId }, "[builder] Event extraction failed")
+    )
   }
 
   // 8. Mark document as extracted

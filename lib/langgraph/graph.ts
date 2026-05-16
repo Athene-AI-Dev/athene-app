@@ -8,6 +8,7 @@ import { calendarAgentNode } from "./nodes/calendar-agent";
 import { synthesisAgentNode } from "./nodes/synthesis-agent";
 import { actionExecutorNode } from "./nodes/action-executor";
 import { reportAgent } from "./nodes/report-agent";
+import { plannerAgent } from "./nodes/planner-agent";
 import { getCheckpointer } from "./checkpointer";
 
 // Shared compilation promise to prevent race conditions during cold starts
@@ -23,6 +24,8 @@ export async function getAgentGraph(): Promise<any> {
       const workflow = new StateGraph(AtheneState)
         // Router
         .addNode("supervisor", supervisor)
+        // Multi-step query planner (Sprint 4C) — decomposes complex cross-dept queries
+        .addNode("planner", plannerAgent)
         // Worker nodes
         .addNode("retrieval", retrievalAgent)
         .addNode("cross_dept_retrieval", crossDeptRetrievalAgent)
@@ -36,6 +39,9 @@ export async function getAgentGraph(): Promise<any> {
       // Edges
       workflow.addEdge(START, "supervisor");
 
+      // Planner outputs planning_steps then hands off to retrieval
+      workflow.addEdge("planner", "retrieval");
+
       // Workers always return to the supervisor after completion
       workflow.addEdge("retrieval", "supervisor");
       workflow.addEdge("cross_dept_retrieval", "supervisor");
@@ -47,11 +53,12 @@ export async function getAgentGraph(): Promise<any> {
       // Synthesis is the terminal node for answers
       workflow.addEdge("synthesis", END);
 
-      // The supervisor routes to a worker, synthesis, or END
+      // The supervisor routes to a worker, planner, synthesis, or END
       workflow.addConditionalEdges(
         "supervisor",
         (state) => state.next_node || "END",
         {
+          planner: "planner",
           retrieval: "retrieval",
           cross_dept_retrieval: "cross_dept_retrieval",
           email_agent: "email_agent",

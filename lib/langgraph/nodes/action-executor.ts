@@ -16,6 +16,7 @@ import { createCalendarEvent as createGoogleEvent } from "@/lib/integrations/goo
 import type { EventDraft as GoogleEventDraft } from "@/lib/integrations/google/calendar-fetcher";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { recordHitlApprovalDuration, incrementHitlDecision } from "@/lib/telemetry/metrics";
 
 const MS_PROVIDER_KEY = "microsoft";
 const GOOGLE_PROVIDER_KEY = "google";
@@ -231,11 +232,19 @@ export async function actionExecutorNode(
   const action = state.pending_write_action as PendingWriteAction | null;
 
   if (!action) {
-    return { 
+    return {
       run_status: "running",
       awaiting_approval: false,
     };
   }
+
+  // Record HITL approval metrics
+  const requestedAt = action.requested_at;
+  if (requestedAt) {
+    const pendingMs = Date.now() - new Date(requestedAt).getTime();
+    recordHitlApprovalDuration(pendingMs, { tool: action.tool });
+  }
+  incrementHitlDecision({ decision: "approved", tool: action.tool });
 
   try {
     let result: unknown;

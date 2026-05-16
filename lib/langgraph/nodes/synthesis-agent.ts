@@ -98,6 +98,23 @@ function buildGraphContext(graphResults: GraphResult[]): string {
 
 // ---- Main ---------------------------------------------------
 
+/**
+ * Synthesis agent node — generates a cited final answer from retrieved context.
+ *
+ * Separates retrieved_chunks into vector chunks and graph results, then
+ * constructs a system prompt with context, graph relationships, and optional
+ * domain guidance from the vertical module registry. Invokes the LLM once
+ * and extracts document citations from the response text.
+ *
+ * State contract:
+ *   IN:  state.retrieved_chunks, state.messages, state.task_type,
+ *        state.is_cross_dept_query, state.orgId
+ *   OUT: state.final_answer (string), state.cited_sources (CitedSource[]),
+ *        state.retrieved_chunks (cleared)
+ *
+ * @param state - Current LangGraph thread state
+ * @returns State update with final_answer and cited_sources
+ */
 export async function synthesisAgentNode(
   state: AtheneState,
 ): Promise<AtheneStateUpdate> {

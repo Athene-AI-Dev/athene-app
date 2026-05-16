@@ -39,6 +39,22 @@ Rules:
 - "cross" department means search across all departments
 - depends_on should only reference step ids that come before this step`;
 
+/**
+ * Planner agent node — decomposes complex cross-department queries into steps.
+ *
+ * Short queries (< 15 words) and follow-up hops (hop_count > 0) bypass
+ * planning and return null immediately. Queries without cross-department
+ * signals also bypass planning. Only long, cross-department queries trigger
+ * the LLM decomposition call.
+ *
+ * State contract:
+ *   IN:  state.messages (last HumanMessage), state.hop_count
+ *   OUT: state.planning_steps (array of step objects, or null for passthrough)
+ *
+ * @param state  - Current LangGraph thread state
+ * @param config - LangGraph runtime config (unused but required by interface)
+ * @returns Partial state with planning_steps
+ */
 export async function plannerAgent(
   state: AtheneStateType,
   config: any

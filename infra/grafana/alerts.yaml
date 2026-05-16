@@ -1,0 +1,122 @@
+# Grafana alerting rules for Athene AI Agent Platform
+# Import via Grafana UI: Alerting → Alert rules → Import, or via Grafana API.
+#
+# Prerequisites:
+#   - Prometheus / OTLP metrics data source configured (uid: DS_PROMETHEUS)
+#   - Contact points defined for "pagerduty-oncall" and "slack-alerts"
+#   - Notification policies routing by severity label
+#
+# Metric naming note: metrics are emitted from lib/telemetry/metrics.ts using
+# underscore-separated names (e.g. athene_hitl_approval_pending_duration_ms).
+# OTLP → Prometheus scraping appends _sum/_count/_bucket for histograms.
+# The expressions below use these Prometheus-style names, not the OTel dot-notation.
+
+apiVersion: 1
+
+groups:
+  - name: athene-agent-alerts
+    folder: Athene AI
+    interval: 1m
+    rules:
+
+      # ── Agent error rate ──────────────────────────────────────
+      - uid: athene-high-error-rate
+        title: High Agent Error Rate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: sum(rate(athene_agent_run_error_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { params: [0.05], type: gt }
+                  query: { params: [A] }
+                  reducer: { type: last }
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: Agent error rate exceeds 5% sustained for 5 minutes
+          description: >
+            The agent error rate is {{ $values.A.Value | printf "%.3f" }} errors/s.
+            Check /api/agent error logs and node_name label for the failing node.
+        notificationSettings:
+          receiver: pagerduty-oncall
+
+      # ── HITL long pending ─────────────────────────────────────
+      - uid: athene-hitl-long-pending
+        title: HITL Approval Pending > 24 Hours
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 86400, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: >
+                sum(rate(athene_hitl_approval_pending_duration_ms_sum[1h])) by (tool)
+                / sum(rate(athene_hitl_approval_pending_duration_ms_count[1h])) by (tool)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { params: [86400000], type: gt }
+                  query: { params: [A] }
+                  reducer: { type: last }
+        noDataState: OK
+        execErrState: OK
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: HITL action has been pending approval for more than 24 hours
+          description: >
+            A {{ $labels.tool }} action is awaiting human approval for over 24 hours.
+            Users may be blocked. Check the HITL queue in the admin dashboard.
+        notificationSettings:
+          receiver: slack-alerts
+
+      # ── Indexer errors ────────────────────────────────────────
+      - uid: athene-indexer-errors
+        title: High Indexer Error Count
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: >
+                increase(athene_agent_run_error_total{node_name="indexer"}[10m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator: { params: [10], type: gt }
+                  query: { params: [A] }
+                  reducer: { type: last }
+        noDataState: OK
+        execErrState: Alerting
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: More than 10 indexer errors in the last 10 minutes
+          description: >
+            The indexer is failing for {{ $values.A.Value | printf "%.0f" }} documents.
+            This may block new content from being searchable. Check QStash worker logs.
+        notificationSettings:
+          receiver: slack-alerts

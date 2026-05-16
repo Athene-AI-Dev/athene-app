@@ -6,6 +6,8 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { resourceFromAttributes } from "@opentelemetry/resources";
@@ -14,7 +16,10 @@ import {
   SEMRESATTRS_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 
-const OTEL_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+// Supports a unified endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) or separate trace/metric endpoints.
+const OTLP_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+const OTEL_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? (OTLP_ENDPOINT ? `${OTLP_ENDPOINT}/v1/traces` : undefined);
+const METRICS_ENDPOINT = process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ?? (OTLP_ENDPOINT ? `${OTLP_ENDPOINT}/v1/metrics` : undefined);
 const OTEL_ENABLED = !!OTEL_ENDPOINT;
 
 let _tracer: Tracer | null = null;
@@ -36,6 +41,12 @@ export function initTelemetry() {
     traceExporter: new OTLPTraceExporter({
       url: OTEL_ENDPOINT,
     }),
+    metricReader: METRICS_ENDPOINT
+      ? new PeriodicExportingMetricReader({
+          exporter: new OTLPMetricExporter({ url: METRICS_ENDPOINT }),
+          exportIntervalMillis: 30_000,
+        })
+      : undefined,
     instrumentations: [
       getNodeAutoInstrumentations({
         // Disable instrumentations that cause noise

@@ -151,7 +151,19 @@ class LLMFactory {
 
   /**
    * Resolves the chat model for agent nodes.
-   * Priority: org BYOK openai → org BYOK deepseek → system env (openai or deepseek).
+   *
+   * Resolution priority:
+   *   1. Org BYOK OpenAI key (decrypted via KMS RPC)
+   *   2. Org BYOK DeepSeek key (decrypted via KMS RPC)
+   *   3. System environment: OpenAI (OPENAI_API_KEY) or DeepSeek (DEEPSEEK_API_KEY)
+   *
+   * Model instances are cached per (orgId, model, temperature) to avoid
+   * repeated KMS decryption on every agent node invocation.
+   *
+   * @param tierOrName  - Complexity tier ("simple"|"medium"|"complex") or explicit model name
+   * @param orgId       - Org UUID for BYOK lookup; omit to use system env keys
+   * @param temperature - LLM sampling temperature (0 = deterministic)
+   * @returns A configured LangChain chat model instance
    */
   static async resolveModelClient(
     tierOrName: ModelTier | string = "medium",

@@ -26,6 +26,7 @@ import type { ExtractorChunk, Visibility } from "@/lib/knowledge-graph/types";
 import { chunk as chunkText, countTokens } from "./chunker";
 import { embed, EMBEDDING_CONFIG } from "./embedder";
 import { logger } from "@/lib/logger";
+import { incrementIndexedDocCount } from "@/lib/telemetry/metrics";
 
 export type IndexDocumentInput = {
   orgId: string;
@@ -229,13 +230,16 @@ export async function indexDocument(
       }
     }
 
-    return {
-      chunksTotal: chunks.length,
-      chunksEmbedded: newTexts.length,
-      chunksSkippedByHash: chunks.length - newTexts.length,
-      nodesUpserted,
-      edgesUpserted,
-    };
+  // ---- 7a. Metrics (only on full success) ------------------
+  incrementIndexedDocCount({ integrationType: sourceType, orgId });
+
+  return {
+    chunksTotal: chunks.length,
+    chunksEmbedded: newTexts.length,
+    chunksSkippedByHash: chunks.length - newTexts.length,
+    nodesUpserted,
+    edgesUpserted,
+  };
   } finally {
     // ---- 9. Release Lock -------------------------------------
     if (locked) {

@@ -176,8 +176,8 @@ function queryBuilder(table: string) {
 }
 
 // ---- Import AFTER mocks ---------------------------------------
-import { deleteByDocument, upsertEdges, upsertNodes } from "@/lib/knowledge-graph/storage";
-import type { KGEdge, KGNode } from "@/lib/knowledge-graph/types";
+import { deleteByDocument, upsertEdges, upsertNodes } from "../../knowledge-graph/storage";
+import type { KGEdge, KGNode } from "../../knowledge-graph/types";
 
 const ctx = {
   org_id: "org-1",

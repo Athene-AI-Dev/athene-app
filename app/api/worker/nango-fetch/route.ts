@@ -24,6 +24,8 @@ import { verifyQStashSignature } from '@/lib/qstash/verify'
 import { releaseSlot, qstash } from '@/lib/qstash/client'
 import { indexDocuments } from '@/lib/integrations/indexing'
 import { logger } from '@/lib/logger'
+import { parseSyncConfig, type SyncConfig } from '@/lib/integrations/sync-config'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 // --- Google ---
 import { fetchCalendarChunks } from '@/lib/integrations/google/calendar-fetcher'
@@ -71,14 +73,13 @@ import { fetchPowerBIContent } from '@/lib/integrations/powerbi/reports-fetcher'
 
 import { getProviderMetadata } from '@/lib/integrations/base'
 import type { FetchedChunk } from '@/lib/integrations/base'
-import { supabaseAdmin } from '@/lib/supabase/server'
 
 // ---- Provider Fetcher Map ---------------------------------------
 
 type FetcherFn = (
   connectionId: string,
   orgId: string,
-  options?: { since?: string; limit?: number }
+  options?: { since?: string; limit?: number; syncConfig?: SyncConfig }
 ) => Promise<FetchedChunk[]>
 
 /**
@@ -88,7 +89,7 @@ type FetcherFn = (
  */
 const providerFetcherMap: Record<string, FetcherFn[]> = {
   // ── Google Workspace ─────────────────────────────────────────
-  google_drive:     [(cid, oid) => fetchDriveChunks(cid, oid)],
+  google_drive:     [(cid, oid, opts) => fetchDriveChunks(cid, oid, undefined, opts?.syncConfig)],
   // Use indexEmailChunks (full body, chunked) for background indexing — NOT searchEmailChunks
   gmail:            [(cid, oid, opts) => indexEmailChunks(cid, oid, { limit: opts?.limit ?? 200 })],
   google_calendar:  [(cid, oid) => {
@@ -105,10 +106,10 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   ms_calendar:  [microsoftFetcher],
 
   // ── Communication ────────────────────────────────────────────
-  slack: [fetchSlackMessages],
+  slack: [(cid, oid, opts) => fetchSlackMessages(cid, oid, opts?.syncConfig)],
 
   // ── Productivity ─────────────────────────────────────────────
-  notion: [fetchAllDatabases, fetchAllPages],
+  notion: [(cid, oid, opts) => fetchAllDatabases(cid, oid, opts?.syncConfig), (cid, oid, opts) => fetchAllPages(cid, oid, opts?.syncConfig)],
 
   // ── CRM ──────────────────────────────────────────────────────
   hubspot: [
@@ -180,11 +181,11 @@ const providerFetcherMap: Record<string, FetcherFn[]> = {
   tableau:  [fetchTableauWorkbooks],
   metabase: [fetchMetabaseContent],
   dbt:      [fetchDbtContent],
-  powerbi:  [fetchPowerBIContent],
+  powerbi:  [(cid, oid, opts) => fetchPowerBIContent(cid, oid, opts?.syncConfig)],
 
   // ── Legacy umbrella keys (backwards compatibility) ───────────
   google: [
-    (cid, oid) => fetchDriveChunks(cid, oid),
+    (cid, oid, opts) => fetchDriveChunks(cid, oid, undefined, opts?.syncConfig),
     (cid, oid, opts) => indexEmailChunks(cid, oid, { limit: opts?.limit ?? 200 }),
     (cid, oid) => {
       const now = new Date()
@@ -247,9 +248,27 @@ export async function POST(request: Request): Promise<Response> {
   let allChunks: FetchedChunk[] = []
   let workerErr: unknown = null
 
+  // ---- Read sync_config from the connections table ----
+  let syncConfig: SyncConfig = { mode: 'all' }
+  try {
+    const { data: conn } = await supabaseAdmin
+      .from('connections')
+      .select('sync_config')
+      .eq('id', connectionId)
+      .single()
+    if (conn?.sync_config) {
+      syncConfig = parseSyncConfig(conn.sync_config)
+    }
+  } catch (configErr) {
+    logger.warn(
+      { connectionId, err: configErr instanceof Error ? configErr.message : String(configErr) },
+      '[nango-fetch] Failed to read sync_config — falling back to full sync'
+    )
+  }
+
   try {
     for (const fetcher of fetchers) {
-      const chunks = await fetcher(fetcherConnectionId, orgId, { since })
+      const chunks = await fetcher(fetcherConnectionId, orgId, { since, syncConfig })
       allChunks.push(...chunks)
     }
 

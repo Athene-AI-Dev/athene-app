@@ -110,7 +110,7 @@ function thenable<T>(builder: T, exec: () => Promise<unknown>): T {
 }
 
 // ---- Import AFTER mocks ---------------------------------------
-import { indexDocument, sha256 } from "@/lib/langgraph/tools/indexer";
+import { indexDocument, sha256 } from "../indexer";
 
 beforeEach(() => {
   embeddingStore.length = 0;

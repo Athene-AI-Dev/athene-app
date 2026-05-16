@@ -3,6 +3,7 @@ import type { FetchedChunk } from '@/lib/integrations/base'
 import { assertSafeMetadata } from '@/lib/integrations/base'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
+import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '@/lib/integrations/sync-config'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,12 +49,6 @@ const EXTRACTABLE_BINARY: Record<string, 'pdf' | 'docx'> = {
 
 /**
  * Lists files in a user's Google Drive.
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param folderId - Optional folder to scope the listing to.
- * @param pageToken - Optional pagination token from a previous response.
- * @param pageSize - Number of results per page (default 50, max 1000).
  */
 export async function listDriveFiles(
   connectionId: string,
@@ -79,11 +74,6 @@ export async function listDriveFiles(
 
 /**
  * Full-text search across a user's Google Drive.
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param query - The search string.
- * @param pageToken - Optional pagination token.
  */
 export async function searchDrive(
   connectionId: string,
@@ -109,19 +99,6 @@ export async function searchDrive(
 
 /**
  * Fetches the text content of a Google Drive file.
- * Routes to the correct endpoint based on MIME type:
- * - Google Docs → exported as text/plain
- * - Google Sheets → exported as CSV
- * - Google Slides → exported as text/plain
- * - PDF → downloaded via alt=media, extracted with pdf-parse
- * - DOCX → downloaded via alt=media, extracted with mammoth
- * - Other text/* → downloaded via alt=media, decoded as UTF-8
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param fileId - The Drive file ID.
- * @param mimeType - The file's MIME type from the listing response.
- * @returns The extracted text content as a string.
  */
 export async function fetchDriveFileContent(
   connectionId: string,
@@ -151,36 +128,27 @@ export async function fetchDriveFileContent(
     return '[Google Drive Folder — no content to extract]'
   }
 
-  // Regular files (PDF, DOCX, TXT, etc.) → download raw bytes
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
   const res = await googleFetchRaw(connectionId, orgId, url)
   const buffer = await res.arrayBuffer()
 
-  // Plain text files can be returned directly
   if (mimeType.startsWith('text/')) {
     return new TextDecoder().decode(buffer)
   }
 
-  // PDF → extract text with pdf-parse
   if (EXTRACTABLE_BINARY[mimeType] === 'pdf') {
     return extractPdfText(Buffer.from(buffer))
   }
 
-  // DOCX → extract text with mammoth
   if (EXTRACTABLE_BINARY[mimeType] === 'docx') {
     return extractDocxText(Buffer.from(buffer))
   }
 
-  // Unsupported binary — return a stub (images, videos, etc.)
   return `[Unsupported binary format: ${mimeType}] (${buffer.byteLength} bytes)`
 }
 
 // ─── Binary Text Extraction ─────────────────────────────────────────────────
 
-/**
- * Extracts text from a PDF buffer using pdf-parse.
- * Falls back gracefully if the PDF is image-only or corrupted.
- */
 async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -195,10 +163,6 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   }
 }
 
-/**
- * Extracts text from a DOCX buffer using mammoth.
- * Falls back gracefully if the document is corrupted.
- */
 async function extractDocxText(buffer: Buffer): Promise<string> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -215,14 +179,6 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
 
 // ─── FetchedChunk Builders ──────────────────────────────────────────────────
 
-/**
- * Converts a DriveFile + its extracted content into a FetchedChunk
- * ready for the indexing pipeline (indexDocument).
- *
- * @param file - The DriveFile metadata from the listing.
- * @param content - The extracted text content from fetchDriveFileContent.
- * @returns A FetchedChunk that can be passed to indexDocument.
- */
 export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk {
   const metadata: FetchedChunk['metadata'] = {
     provider: 'google',
@@ -242,26 +198,52 @@ export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk
   }
 }
 
+// ─── Full Pipeline ──────────────────────────────────────────────────────────
+
 /**
- * Recursively fetches all files within a single Drive folder, up to maxDepth levels.
+ * Full indexing pipeline entry point for Drive.
  */
-async function fetchFolderRecursive(
+export async function fetchDriveChunks(
   connectionId: string,
   orgId: string,
-  folderId: string,
-  depth = 0,
-  maxDepth = 5,
+  _folderId?: string,
+  syncConfig?: SyncConfig,
 ): Promise<FetchedChunk[]> {
-  if (depth > maxDepth) return []
+  const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
+  const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
+
+  if (selectedIds && selectedIds.size > 0) {
+    const chunks: FetchedChunk[] = []
+    for (const resourceId of selectedIds) {
+      if (excludedIds.has(resourceId)) continue
+      const folderChunks = await fetchDriveFolder(connectionId, orgId, resourceId, excludedIds)
+      chunks.push(...folderChunks)
+    }
+    return chunks
+  }
+
+  return fetchDriveFolder(connectionId, orgId, undefined, excludedIds)
+}
+
+/**
+ * Fetches all files from a single Drive folder, recursively including sub-folders.
+ */
+async function fetchDriveFolder(
+  connectionId: string,
+  orgId: string,
+  folderId: string | undefined,
+  excludedIds: Set<string>,
+): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
   let pageToken: string | undefined
 
   do {
     const listing = await listDriveFiles(connectionId, orgId, folderId, pageToken)
     for (const file of listing.files) {
+      if (excludedIds.has(file.id)) continue
       if (file.mimeType === GOOGLE_FOLDER_MIME) {
-        // Recurse into sub-folder
-        const sub = await fetchFolderRecursive(connectionId, orgId, file.id, depth + 1, maxDepth)
+        // Recursive fetch for sub-folders
+        const sub = await fetchDriveFolder(connectionId, orgId, file.id, excludedIds)
         chunks.push(...sub)
         continue
       }
@@ -279,98 +261,19 @@ async function fetchFolderRecursive(
   return chunks
 }
 
-/**
- * Full indexing pipeline entry point for Drive.
- *
- * If selectedFolderIds is provided, only files within those folders are fetched
- * (recursively, up to 5 levels deep). If omitted, reads selected_folder_ids from
- * connections.metadata in Supabase. Falls back to listing the entire Drive if no
- * selection is configured — preserving backward compatibility.
- *
- * @param connectionId - Nango connection ID.
- * @param orgId - Organization ID for ownership verification.
- * @param selectedFolderIds - Folders to sync. If undefined, self-loads from DB.
- */
-export async function fetchDriveChunks(
-  connectionId: string,
-  orgId: string,
-  selectedFolderIds?: string[],
-): Promise<FetchedChunk[]> {
-  // Self-load from Supabase if not passed explicitly
-  let folderIds = selectedFolderIds
-  if (folderIds === undefined) {
-    const { data: conn } = await supabaseAdmin
-      .from('connections')
-      .select('metadata')
-      .eq('nango_connection_id', connectionId)
-      .maybeSingle()
-    const stored = (conn?.metadata as any)?.selected_folder_ids as string[] | undefined
-    folderIds = stored?.length ? stored : undefined
-  }
-
-  // If specific folders are selected, fetch each recursively
-  if (folderIds?.length) {
-    const all: FetchedChunk[] = []
-    for (const folderId of folderIds) {
-      const folderChunks = await fetchFolderRecursive(connectionId, orgId, folderId)
-      all.push(...folderChunks)
-    }
-    return all
-  }
-
-  // Fallback: list entire Drive root (backward-compatible)
-  const chunks: FetchedChunk[] = []
-  let pageToken: string | undefined
-
-  do {
-    const listing = await listDriveFiles(connectionId, orgId, undefined, pageToken)
-
-    for (const file of listing.files) {
-      if (file.mimeType === GOOGLE_FOLDER_MIME) continue
-
-      try {
-        const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
-        if (content.startsWith('[Unsupported binary format:')) continue
-        chunks.push(driveFileToChunk(file, content))
-      } catch (err) {
-        logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
-      }
-    }
-
-    pageToken = listing.nextPageToken
-  } while (pageToken)
-
-  return chunks
-}
-
 // ─── Delta Sync (Changes API) ────────────────────────────────────────────────
 
-/**
- * Retrieves a start page token for Google Drive's Changes API.
- */
-export async function getStartPageToken(
-  connectionId: string,
-  orgId: string
-): Promise<string> {
+export async function getStartPageToken(connectionId: string, orgId: string): Promise<string> {
   const url = 'https://www.googleapis.com/drive/v3/changes/startPageToken'
   const res = await googleFetch<{ startPageToken: string }>(connectionId, orgId, url)
   return res.startPageToken
 }
 
-/**
- * Fetches changes since the given page token.
- * Returns only modified/removed files and a new token for the next poll cycle.
- */
-export async function fetchChanges(
-  connectionId: string,
-  orgId: string,
-  pageToken: string
-): Promise<DriveChangesResponse> {
+export async function fetchChanges(connectionId: string, orgId: string, pageToken: string): Promise<DriveChangesResponse> {
   const params = new URLSearchParams({
     pageToken,
     fields: 'changes(fileId,removed,file(id,name,mimeType,modifiedTime)),newStartPageToken,nextPageToken',
   })
-
   const url = `https://www.googleapis.com/drive/v3/changes?${params.toString()}`
   const res = await googleFetch<{
     changes: DriveChange[]

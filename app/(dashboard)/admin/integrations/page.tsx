@@ -14,16 +14,13 @@ import {
 import Nango from "@nangohq/frontend";
 import { IntegrationCard, type Integration } from "./integration-card";
 import { AddIntegrationDialog } from "./add-integration-dialog";
-import { DrivePickerModal } from "./drive-picker-modal";
-import { SnowflakePickerModal } from "./snowflake-picker-modal";
-import { BigQueryPickerModal } from "./bigquery-picker-modal";
-import { RedshiftPickerModal } from "./redshift-picker-modal";
 import { ProviderConfig, getProvider, PROVIDER_REGISTRY } from "@/lib/integrations/providers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { VERTICAL_MODULES } from "@/lib/knowledge-graph/modules/registry";
+import { ResourceBrowser } from "@/components/integrations/resource-browser";
 
 // Reverse map: Nango integration ID (e.g. "google-drive") → internal key (e.g. "google_drive")
 const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
@@ -98,10 +95,9 @@ export default function IntegrationsPage() {
   const [disconnectLoading, setDisconnectLoading] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [configuring, setConfiguring] = useState<Integration | null>(null);
+  const [configuringSync, setConfiguringSync] = useState<Integration | null>(null);
 
   // Queue of configurable providers connected during a single Nango session.
-  // Processed in a useEffect after integrations refresh so we have the full Integration object.
   const pendingConfigureQueue = useRef<Array<{ internalConnectionId: string; provider: string }>>([]);
 
   useEffect(() => {
@@ -132,8 +128,7 @@ export default function IntegrationsPage() {
     return () => clearInterval(interval);
   }, [fetchIntegrations]);
 
-  // After integrations refresh, open the picker for any configurable provider that was
-  // just connected. Works off a ref-queue so it survives the Nango ConnectUI closure.
+  // After integrations refresh, open the picker for any configurable provider that was just connected.
   useEffect(() => {
     if (pendingConfigureQueue.current.length === 0 || integrations.length === 0) return;
     const next = pendingConfigureQueue.current[0];
@@ -142,7 +137,7 @@ export default function IntegrationsPage() {
     );
     if (found) {
       pendingConfigureQueue.current.shift();
-      setConfiguring(found);
+      setConfiguringSync(found);
     }
   }, [integrations]);
 
@@ -177,15 +172,12 @@ export default function IntegrationsPage() {
       nango.openConnectUI({
         onEvent: async (event) => {
           if (event.type === "close") {
-            // ConnectUI closed — reset connecting state, close dialog, refresh list.
-            // The pendingConfigureQueue useEffect will open pickers once integrations reload.
             setConnecting(null);
             setShowAddDialog(false);
             fetchIntegrations();
           }
 
           if (event.type === "connect") {
-            // Resolve Nango key (e.g. "google-drive") → internal key (e.g. "google_drive")
             const nangoKey = event.payload.providerConfigKey;
             const internalKey = NANGO_KEY_MAP[nangoKey] ?? nangoKey;
             const displayName = PROVIDER_REGISTRY[internalKey as keyof typeof PROVIDER_REGISTRY]?.displayName ?? internalKey;
@@ -206,15 +198,12 @@ export default function IntegrationsPage() {
               const saveData = await saveRes.json().catch(() => ({}));
 
               if (CONFIGURABLE.has(internalKey) && saveData.internalConnectionId) {
-                // Queue picker to open after ConnectUI closes (via the integrations useEffect).
-                // This keeps ConnectUI open so the user can connect more providers first.
                 pendingConfigureQueue.current.push({
                   internalConnectionId: saveData.internalConnectionId,
                   provider: internalKey,
                 });
               }
             }
-            // Reset so the dialog button becomes active again for the next provider
             setConnecting(null);
           }
         },
@@ -241,9 +230,7 @@ export default function IntegrationsPage() {
 
       const meta = getProvider(disconnecting.provider as any);
       setToast({ msg: `${meta?.displayName ?? "Integration"} successfully removed.`, type: "success" });
-      setIntegrations((prev) =>
-        prev.filter((c) => c.connectionId !== disconnecting.connectionId)
-      );
+      setIntegrations((prev) => prev.filter((c) => c.connectionId !== disconnecting.connectionId));
     } catch (e: any) {
       setToast({ msg: `Disconnection failed: ${e.message}`, type: "error" });
     } finally {
@@ -259,13 +246,8 @@ export default function IntegrationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: integration.provider }),
       });
-      
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      
-      setToast({ 
-        msg: `Knowledge indexing started for ${integration.displayName}.`, 
-        type: "success" 
-      });
+      setToast({ msg: `Knowledge indexing started for ${integration.displayName}.`, type: "success" });
     } catch (e: any) {
       setToast({ msg: `Manual sync failed: ${e.message}`, type: "error" });
     }
@@ -283,7 +265,6 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 font-['Space_Grotesk']">
-      {/* Toast Notification */}
       {toast && (
         <div className={cn(
           "fixed bottom-10 right-10 z-[100] flex items-center gap-4 px-6 py-4 rounded-2xl border shadow-2xl animate-in slide-in-from-right-10 duration-500",
@@ -313,7 +294,20 @@ export default function IntegrationsPage() {
         connecting={connecting}
       />
 
-      {/* Header Section */}
+      {configuringSync && (
+        <ResourceBrowser
+          connectionId={configuringSync.connectionId}
+          provider={configuringSync.provider}
+          providerName={getProvider(configuringSync.provider as any)?.displayName ?? configuringSync.displayName}
+          open={!!configuringSync}
+          onClose={() => setConfiguringSync(null)}
+          onSaved={() => {
+            setToast({ msg: "Sync configuration saved. Re-indexing started.", type: "success" });
+            fetchIntegrations();
+          }}
+        />
+      )}
+
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
@@ -348,7 +342,6 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4 items-center p-2 rounded-2xl bg-muted/10 border border-border">
          <div className="relative flex-1 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
@@ -361,7 +354,6 @@ export default function IntegrationsPage() {
          </div>
       </div>
 
-      {/* Grid Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {loading ? (
           [...Array(6)].map((_, i) => (
@@ -405,46 +397,12 @@ export default function IntegrationsPage() {
                 description={meta?.description ?? "Connected enterprise system."}
                 onDisconnect={(i) => setDisconnecting(i)}
                 onIndex={handleIndex}
-                onConfigure={(i) => setConfiguring(i)}
+                onConfigureSync={(i) => setConfiguringSync(i)}
               />
             );
           })
         )}
       </div>
-
-      {/* Data source picker modals */}
-      {configuring?.provider === "google_drive" && (
-        <DrivePickerModal
-          open
-          connectionId={configuring.internalConnectionId}
-          onClose={() => setConfiguring(null)}
-          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
-        />
-      )}
-      {configuring?.provider === "snowflake" && (
-        <SnowflakePickerModal
-          open
-          connectionId={configuring.internalConnectionId}
-          onClose={() => setConfiguring(null)}
-          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
-        />
-      )}
-      {configuring?.provider === "bigquery" && (
-        <BigQueryPickerModal
-          open
-          connectionId={configuring.internalConnectionId}
-          onClose={() => setConfiguring(null)}
-          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
-        />
-      )}
-      {configuring?.provider === "redshift" && (
-        <RedshiftPickerModal
-          open
-          connectionId={configuring.internalConnectionId}
-          onClose={() => setConfiguring(null)}
-          onSuccess={() => { setConfiguring(null); fetchIntegrations(); }}
-        />
-      )}
 
       {/* Available Integrations — all providers not yet connected */}
       {!loading && (() => {
@@ -564,4 +522,3 @@ export default function IntegrationsPage() {
     </div>
   );
 }
-

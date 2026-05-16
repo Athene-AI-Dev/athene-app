@@ -1,13 +1,27 @@
 import { slackFetch } from './client'
 import { fetchThreadReplies } from './threads-fetcher'
 import type { FetchedChunk } from '@/lib/integrations/base'
+import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '@/lib/integrations/sync-config'
 
 export async function fetchSlackMessages(
   connectionId: string,
-  orgId: string
+  orgId: string,
+  syncConfig?: SyncConfig,
 ): Promise<FetchedChunk[]> {
   const workspaceDomain = await getWorkspaceDomain(connectionId, orgId)
-  const channels = await listChannels(connectionId, orgId)
+  let channels = await listChannels(connectionId, orgId)
+
+  // ── Selective sync: filter to user-selected channels ─────────
+  const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
+  const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
+
+  if (selectedIds && selectedIds.size > 0) {
+    channels = channels.filter((ch) => selectedIds.has(ch.id))
+  }
+  if (excludedIds.size > 0) {
+    channels = channels.filter((ch) => !excludedIds.has(ch.id))
+  }
+
   const allChunks: FetchedChunk[] = []
 
   for (let i = 0; i < channels.length; i += 10) {

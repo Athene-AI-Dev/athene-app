@@ -1,7 +1,7 @@
 import { googleFetch, googleFetchRaw } from './api-client'
+import { supabaseAdmin } from '@/lib/supabase/server'
 import type { FetchedChunk } from '@/lib/integrations/base'
 import { assertSafeMetadata } from '@/lib/integrations/base'
-import { supabaseAdmin } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { type SyncConfig, getSelectedResourceIds, getExcludedResourceIds } from '@/lib/integrations/sync-config'
 
@@ -48,7 +48,7 @@ const EXTRACTABLE_BINARY: Record<string, 'pdf' | 'docx'> = {
 // ─── Listing & Searching ─────────────────────────────────────────────────────
 
 /**
- * Lists files in a user's Google Drive.
+ * Lists files in a user's Google Drive, including Shared Drives.
  */
 export async function listDriveFiles(
   connectionId: string,
@@ -65,6 +65,8 @@ export async function listDriveFiles(
     q,
     fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
     pageSize: String(pageSize),
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
   if (pageToken) params.set('pageToken', pageToken)
 
@@ -73,7 +75,18 @@ export async function listDriveFiles(
 }
 
 /**
- * Full-text search across a user's Google Drive.
+ * Lists Shared Drives the user has access to.
+ */
+export async function listSharedDrives(
+  connectionId: string,
+  orgId: string
+): Promise<{ drives: Array<{ id: string; name: string }> }> {
+  const url = 'https://www.googleapis.com/drive/v3/drives'
+  return googleFetch<any>(connectionId, orgId, url)
+}
+
+/**
+ * Full-text search across a user's Google Drive, including Shared Drives.
  */
 export async function searchDrive(
   connectionId: string,
@@ -88,6 +101,8 @@ export async function searchDrive(
     q,
     fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
     pageSize: '20',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
   if (pageToken) params.set('pageToken', pageToken)
 
@@ -128,7 +143,7 @@ export async function fetchDriveFileContent(
     return '[Google Drive Folder — no content to extract]'
   }
 
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`
   const res = await googleFetchRaw(connectionId, orgId, url)
   const buffer = await res.arrayBuffer()
 
@@ -202,6 +217,7 @@ export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk
 
 /**
  * Full indexing pipeline entry point for Drive.
+ * Respects selected folders and Shared Drives from SyncConfig.
  */
 export async function fetchDriveChunks(
   connectionId: string,
@@ -226,31 +242,53 @@ export async function fetchDriveChunks(
 }
 
 /**
- * Fetches all files from a single Drive folder, recursively including sub-folders.
+ * Fetches all files from a single Drive folder (or Shared Drive root), recursively.
  */
 async function fetchDriveFolder(
   connectionId: string,
   orgId: string,
   folderId: string | undefined,
   excludedIds: Set<string>,
+  driveId?: string,
+  departmentId?: string,
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
   let pageToken: string | undefined
 
   do {
-    const listing = await listDriveFiles(connectionId, orgId, folderId, pageToken)
+    const q = folderId
+      ? `'${folderId}' in parents and trashed=false`
+      : 'trashed=false'
+
+    const params = new URLSearchParams({
+      q,
+      fields: 'files(id,name,mimeType,webViewLink,modifiedTime,owners),nextPageToken',
+      pageSize: '100',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    })
+    if (driveId) {
+      params.set('driveId', driveId)
+      params.set('corpora', 'drive')
+    }
+    if (pageToken) params.set('pageToken', pageToken)
+
+    const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
+    const listing = await googleFetch<DriveListResponse>(connectionId, orgId, url)
+
     for (const file of listing.files) {
       if (excludedIds.has(file.id)) continue
       if (file.mimeType === GOOGLE_FOLDER_MIME) {
-        // Recursive fetch for sub-folders
-        const sub = await fetchDriveFolder(connectionId, orgId, file.id, excludedIds)
+        const sub = await fetchDriveFolder(connectionId, orgId, file.id, excludedIds, driveId, departmentId)
         chunks.push(...sub)
         continue
       }
       try {
         const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
         if (content.startsWith('[Unsupported binary format:')) continue
-        chunks.push(driveFileToChunk(file, content))
+        const chunk = driveFileToChunk(file, content)
+        if (departmentId) chunk.metadata.department_id = departmentId
+        chunks.push(chunk)
       } catch (err) {
         logger.warn({ fileId: file.id, fileName: file.name, err: err instanceof Error ? err.message : String(err) }, '[drive-fetcher] Skipping file')
       }

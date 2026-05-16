@@ -32,6 +32,9 @@ export interface Integration {
     allowlist?: string[];
     [key: string]: unknown;
   };
+  sync_config?: {
+    selected_resources?: Array<{ id: string; name: string; type: string; departmentId?: string }>;
+  };
 }
 
 interface IntegrationCardProps {
@@ -43,11 +46,17 @@ interface IntegrationCardProps {
   onConfigureSync: (integration: Integration) => void;
 }
 
-const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
+const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift", "powerbi"]);
 
 function needsConfiguration(integration: Integration): boolean {
-  const { provider, metadata } = integration;
+  const { provider, metadata, sync_config } = integration;
   if (!CONFIGURABLE.has(provider)) return false;
+  
+  // Power BI and Google Drive now use sync_config.selected_resources
+  if (provider === "google_drive" || provider === "powerbi") {
+    return !sync_config?.selected_resources?.length;
+  }
+  
   if (provider === "google_drive") return !metadata?.selected_folder_ids?.length;
   return !metadata?.allowlist?.length;
 }

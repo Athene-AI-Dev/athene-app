@@ -27,7 +27,7 @@ const NANGO_KEY_MAP: Record<string, string> = Object.fromEntries(
   Object.values(PROVIDER_REGISTRY).map((p) => [p.nangoIntegrationId, p.key])
 );
 
-const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift"]);
+const CONFIGURABLE = new Set(["google_drive", "snowflake", "bigquery", "redshift", "powerbi"]);
 
 function ConfirmDialog({
   open,
@@ -96,6 +96,7 @@ export default function IntegrationsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [configuringSync, setConfiguringSync] = useState<Integration | null>(null);
+
 
   // Queue of configurable providers connected during a single Nango session.
   const pendingConfigureQueue = useRef<Array<{ internalConnectionId: string; provider: string }>>([]);

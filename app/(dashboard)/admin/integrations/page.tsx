@@ -446,6 +446,60 @@ export default function IntegrationsPage() {
         />
       )}
 
+      {/* Available Integrations — all providers not yet connected */}
+      {!loading && (() => {
+        const available = Object.values(PROVIDER_REGISTRY).filter(
+          (p) => !connectedKeys.has(p.key) &&
+            // Skip umbrella entries (google, microsoft) that are sub-divided into specific connectors
+            !['google', 'microsoft'].includes(p.key)
+        );
+        if (available.length === 0) return null;
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h2 className="text-[11px] uppercase tracking-[0.3em] font-black text-muted-foreground">
+                  Available Integrations
+                </h2>
+                <p className="text-xs text-muted-foreground/50 font-medium">
+                  {available.length} connectors ready to activate
+                </p>
+              </div>
+              <Badge className="self-start sm:self-auto bg-muted/30 text-muted-foreground/60 border-none text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-xl">
+                {available.length} Available
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {available.map((provider) => (
+                <div
+                  key={provider.key}
+                  className="group flex items-center gap-4 p-4 rounded-[1.5rem] bg-muted/5 border border-border hover:border-primary/20 hover:bg-muted/10 transition-all duration-300 cursor-pointer"
+                  onClick={() => handleConnect(provider)}
+                >
+                  <div className="relative h-10 w-10 flex-shrink-0 rounded-xl bg-white/5 border border-white/10 p-1.5 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={provider.icon}
+                      alt={provider.displayName}
+                      className="w-full h-full object-contain opacity-60 group-hover:opacity-100 transition-opacity"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-black text-foreground tracking-tight truncate group-hover:text-primary transition-colors">
+                      {provider.displayName}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/40 font-bold uppercase tracking-widest truncate">
+                      {provider.category}
+                    </p>
+                  </div>
+                  <Plus className="w-4 h-4 text-muted-foreground/20 group-hover:text-primary group-hover:rotate-90 transition-all flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Knowledge Modules — active based on connected integrations */}
       <div className="space-y-6">
         <div className="flex items-center gap-3">

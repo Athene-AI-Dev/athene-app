@@ -101,7 +101,7 @@ export function IntegrationCard({
 
   return (
     <div className={cn(
-      "group relative rounded-[2.5rem] bg-card border p-8 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl",
+      "group relative rounded-[2rem] sm:rounded-[2.5rem] bg-card border p-4 sm:p-6 md:p-8 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl",
       isError
         ? "border-amber-400/25 hover:border-amber-400/40 hover:shadow-amber-500/5"
         : "border-white/5 hover:border-white/10 hover:shadow-[#D96FAB]/5"
@@ -159,8 +159,8 @@ export function IntegrationCard({
          </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 pt-6 border-t border-white/5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-5 sm:pt-6 border-t border-white/5">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <Button
             onClick={handleIndex}
             disabled={indexing || integration.status === 'syncing'}

@@ -72,7 +72,7 @@ async function setup(config: FullConfig) {
   await pwInput.press("Enter");
 
   // Wait for redirect away from sign-in
-  await page.waitForURL((url) => !url.includes("sign-in"), { timeout: 20_000 });
+  await page.waitForURL((url) => !url.toString().includes("sign-in"), { timeout: 20_000 });
   await page.waitForTimeout(2000);
 
   const storageState = await (await ctx).storageState();

@@ -313,7 +313,7 @@ export default function ChatPage() {
         <div className="flex flex-1 flex-col min-w-0 gap-6">
           
           {/* Header Section */}
-          <div className="flex items-center justify-between bg-card/50 p-6 rounded-[2.5rem] border border-border shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between bg-card/50 p-4 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] border border-border shadow-2xl backdrop-blur-xl">
             <div className="flex items-center gap-5">
               <div className="h-12 w-12 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-border/50 group hover:scale-105 transition-transform">
                 <img src="/logo.png" alt="A" className="h-8 w-8 object-contain" />
@@ -393,7 +393,7 @@ export default function ChatPage() {
                     
                     <div className="space-y-3">
                       <div className={cn(
-                        "p-8 rounded-[2.5rem] text-[15px] leading-relaxed font-bold shadow-2xl transition-all hover:shadow-primary/5",
+                        "p-4 sm:p-6 md:p-8 rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] text-[14px] sm:text-[15px] leading-relaxed font-bold shadow-2xl transition-all hover:shadow-primary/5",
                         msg.role === "assistant" 
                           ? "bg-card/50 border border-border text-foreground backdrop-blur-xl" 
                           : "bg-gradient-to-r from-primary to-secondary text-primary-foreground border-none"
@@ -443,7 +443,7 @@ export default function ChatPage() {
                         )}
                       </div>
                       <div className={cn(
-                        "flex items-center gap-3 px-8 mt-1",
+                        "flex items-center gap-3 px-3 sm:px-6 md:px-8 mt-1",
                         msg.role === "user" && "flex-row-reverse"
                       )}>
                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest opacity-40">{msg.timestamp}</span>
@@ -462,7 +462,7 @@ export default function ChatPage() {
           </ScrollArea>
 
           {/* Input Bar */}
-          <div className="bg-card/50 p-5 rounded-[3.5rem] border border-border flex flex-col gap-3 shadow-2xl shadow-black/40 relative z-10 mx-10 mb-6 group focus-within:border-primary/50 focus-within:shadow-primary/5 transition-all backdrop-blur-2xl">
+          <div className="bg-card/50 p-3 sm:p-4 md:p-5 rounded-[2rem] sm:rounded-[3rem] md:rounded-[3.5rem] border border-border flex flex-col gap-3 shadow-2xl shadow-black/40 relative z-10 mx-2 sm:mx-6 lg:mx-10 mb-4 sm:mb-6 group focus-within:border-primary/50 focus-within:shadow-primary/5 transition-all backdrop-blur-2xl">
             <div className="flex items-center gap-5">
                 <TooltipProvider>
                   <Tooltip>

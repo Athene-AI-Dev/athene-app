@@ -139,7 +139,7 @@ export async function retrievalAgent(
   state: AtheneStateType,
   config: any
 ): Promise<Partial<AtheneStateType>> {
-  const { orgId, userId, role, messages } = state;
+  const { orgId, userId, role, deptId, messages } = state;
   const query = extractQueryText(messages);
 
   if (!query) {
@@ -149,19 +149,23 @@ export async function retrievalAgent(
     };
   }
 
-  // Build the security context for tool calls
+  // Build the security context for tool calls — deptId is required for
+  // RLS department filtering in vector_search(); without it only org_wide
+  // documents are returned and department-scoped content is invisible.
   const toolConfig = {
     configurable: {
       ...(config?.configurable ?? {}),
       orgId,
       userId,
       role,
+      deptId: deptId ?? null,
     },
     metadata: {
       ...(config?.metadata ?? {}),
       orgId,
       userId,
       role,
+      deptId: deptId ?? null,
     },
   };
 

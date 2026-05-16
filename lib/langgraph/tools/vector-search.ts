@@ -22,9 +22,11 @@ export const vectorSearchTool = new DynamicStructuredTool({
       config?.configurable?.userId ?? config?.metadata?.userId ?? "";
     const role =
       config?.configurable?.role ?? config?.metadata?.role ?? "member";
+    const deptId: string | null =
+      config?.configurable?.deptId ?? config?.metadata?.deptId ?? null;
 
     return withToolSpan("vectorSearch", async (span) => {
-      const results = await vectorSearch({ orgId, userId, user_role: role, query, topK });
+      const results = await vectorSearch({ orgId, userId, departmentId: deptId, user_role: role, query, topK });
       span.setAttribute("tool.results_count", results.length);
       return JSON.stringify({ tool: "vectorSearch", query, results });
     });

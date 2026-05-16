@@ -90,7 +90,7 @@ async function handleSyncCompleted(connectionId: string, providerConfigKey: stri
   // Resolve internal org UUID, source_type, provider, and Supabase UUID
   const { data: conn, error } = await supabaseAdmin
     .from("connections")
-    .select("id, org_id, source_type, provider")
+    .select("id, org_id, source_type, provider, department_id")
     .eq("nango_connection_id", connectionId)
     .maybeSingle();
 
@@ -126,6 +126,7 @@ async function handleSyncCompleted(connectionId: string, providerConfigKey: stri
       nangoConnectionId: connectionId,
       provider: conn.provider,
       sourceType: conn.source_type,
+      departmentId: (conn as any).department_id ?? null,
     },
   });
 

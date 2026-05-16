@@ -137,19 +137,34 @@ export async function withRLS<T>(
       }));
     } else {
       // Fallback: fetch from DB via service-role (bypasses RLS intentionally —
-      // we need to read grants BEFORE RLS context exists for this request)
-      const { data, error } = await supabaseAdmin
-        .from("access_grants")
-        .select("scope_type, scope_id")
-        .eq("user_id", context.user_id)
-        .eq("org_id", context.org_id);
+      // we need to read grants BEFORE RLS context exists for this request).
+      // Load BOTH access_grants (department-level) and bi_accessible_grants
+      // (document/folder-level) so has_grant() in RLS policies sees all grants.
+      const [accessRes, biRes] = await Promise.all([
+        supabaseAdmin
+          .from("access_grants")
+          .select("scope_type, scope_id")
+          .eq("user_id", context.user_id)
+          .eq("org_id", context.org_id),
+        supabaseAdmin
+          .from("bi_accessible_grants")
+          .select("resource_type, resource_id")
+          .eq("org_id", context.org_id),
+      ]);
 
-      if (error) {
-        logger.error({ org_id: context.org_id, user_id: context.user_id, err: error.message }, "[rls-client] Failed to fetch super_user grants");
+      if (accessRes.error) {
+        logger.error({ org_id: context.org_id, user_id: context.user_id, err: accessRes.error.message }, "[rls-client] Failed to fetch super_user grants");
       }
-      if (data) {
-        grants = data as Grant[];
+      if (biRes.error) {
+        logger.warn({ org_id: context.org_id, err: biRes.error.message }, "[rls-client] Failed to fetch bi_accessible_grants — BI resource access may be incomplete");
       }
+
+      const accessGrants: Grant[] = (accessRes.data ?? []) as Grant[];
+      const biGrants: Grant[] = (biRes.data ?? []).map((g: any) => ({
+        scope_type: g.resource_type as string,  // 'document' | 'folder' | 'department'
+        scope_id: g.resource_id as string,
+      }));
+      grants = [...accessGrants, ...biGrants];
     }
   }
 

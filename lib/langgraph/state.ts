@@ -9,6 +9,10 @@ export const AtheneState = Annotation.Root({
   orgId: Annotation<string>(),
   userId: Annotation<string>(),
   role: Annotation<string>(),
+  deptId: Annotation<string | null>({
+    reducer: (_x, y) => y,
+    default: () => null,
+  }),
   next_node: Annotation<string>(),
   retrievedDocs: Annotation<any[]>({
     reducer: (x, y) => x.concat(y),

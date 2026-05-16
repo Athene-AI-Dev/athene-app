@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       async () => {
         const { data } = await supabaseAdmin
           .from("org_members")
-          .select("id, timezone")
+          .select("id, timezone, department_id")
           .eq("clerk_user_id", userId)
           .eq("org_id", orgRow!.id)
           .single();
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
         logger.error({ userId, orgId, err: memberCreateError.message }, "[agent] Member sync failed");
         return NextResponse.json({ error: "Failed to sync user membership" }, { status: 500 });
       }
-      memberRow = newMember ? { ...newMember, timezone: null } : null;
+      memberRow = newMember ? { ...newMember, timezone: null, department_id: null } : null;
     }
 
     // 3. Ensure Thread Persistence (Required for HITL foreign keys)
@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
       orgId: orgRow.id,
       userId: memberRow.id,
       role,
+      deptId: (memberRow as any)?.department_id ?? null,
       user: {
         id: userId,
         internalId: memberRow.id,

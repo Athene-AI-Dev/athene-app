@@ -6,7 +6,7 @@
     "predev": "rimraf .next",
     "dev": "next dev --turbopack",
     "prebuild": "rimraf .next",
-    "build": "next build",
+    "build": "next build --webpack",
     "postinstall": "rimraf .next",
     "start": "next start",
     "lint": "eslint"

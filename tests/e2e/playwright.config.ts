@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config } from "dotenv";
+
+// Load .env.local so CLERK_SECRET_KEY, E2E_* creds, etc. are available
+// in the test runner process (Next.js loads this automatically; Playwright doesn't).
+config({ path: "../../.env.local" });
 
 /**
  * E2E Playwright configuration for Athene.
@@ -6,6 +11,7 @@ import { defineConfig, devices } from "@playwright/test";
  * All 5 scenarios must complete in < 5 minutes total.
  */
 export default defineConfig({
+  globalSetup: "./global-setup.ts",
   testDir: "./",
   testMatch: "**/*.spec.ts",
   // FIX: explicitly set outputDir so test-results/ lands at the repo root,
@@ -45,11 +51,13 @@ export default defineConfig({
     },
   ],
 
-  /* Spin up the Next.js dev server before the test run */
+  /* Spin up the Next.js dev server before the test run.
+   * reuseExistingServer:true means a running `pnpm dev` is reused locally
+   * instead of spawning a second instance that lands on a different port. */
   webServer: {
     command: "pnpm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    url: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000",
+    reuseExistingServer: true,
     timeout: 120_000,
     stdout: "pipe",
     stderr: "pipe",

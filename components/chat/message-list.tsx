@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { User, Zap, Loader2, Database, ExternalLink } from "lucide-react";
+import { User, Zap, Loader2, Database, ExternalLink, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -44,7 +44,9 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
     // Local regex instance to avoid concurrent render races
     const CITATION_REGEX = /\[([a-zA-Z0-9_-]+)\]/g;
 
-    if (!citedSources || citedSources.length === 0) {
+    // Check whether there are any [EXTRACTED] tags even when citedSources is empty
+    const hasAnyCitations = (citedSources && citedSources.length > 0) || /\[EXTRACTED\]/.test(content);
+    if (!hasAnyCitations) {
       return <div className="whitespace-pre-wrap">{content}</div>;
     }
 
@@ -63,7 +65,27 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
       }
 
       const docId = match[1];
-      const source = citedSources.find((s) => s.document_id === docId);
+
+      // Knowledge-graph extracted relationship — purple chip, no external link
+      if (docId === "EXTRACTED") {
+        parts.push(
+          <Tooltip key={`kg-${match.index}`}>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 bg-[#F0EEFF]/10 border border-[#C4BCF0]/20 rounded text-[10px] font-bold uppercase tracking-wider text-[#9B8FD4] cursor-default">
+                <GitBranch className="w-2.5 h-2.5" />
+                KG
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="bg-black text-white border-white/10 text-xs max-w-xs">
+              <p>Extracted from knowledge graph — not a stored document</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+        lastIndex = CITATION_REGEX.lastIndex;
+        continue;
+      }
+
+      const source = citedSources?.find((s) => s.document_id === docId);
 
       if (source) {
         parts.push(
@@ -124,6 +146,8 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
         {messages.map((msg) => (
           <div
             key={msg.id}
+            data-testid={msg.role === "assistant" ? "assistant-message" : "user-message"}
+            data-loading={msg.isLoading ? "true" : "false"}
             className={cn(
               "flex w-full animate-in fade-in slide-in-from-bottom-4 duration-500",
               msg.role === "user" ? "justify-end" : "justify-start"
@@ -191,13 +215,17 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
                                 href={source.external_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                data-testid="cited-source"
                                 className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-[#D96FAB] hover:border-[#D96FAB]/30 transition-all duration-200"
                               >
                                 <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
                                 {source.source_type || "Source"}
                               </a>
                             ) : (
-                              <span className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                              <span
+                                data-testid="cited-source"
+                                className="inline-flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[11px] font-bold uppercase tracking-widest text-muted-foreground"
+                              >
                                 <ExternalLink className="w-3.5 h-3.5 text-[#7AADCF]" />
                                 {source.source_type || "Source"}
                               </span>

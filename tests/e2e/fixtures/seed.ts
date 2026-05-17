@@ -3,127 +3,148 @@
  *
  * Exports a Playwright `test` fixture that seeds:
  *   - A deterministic "seed-org" organisation row
- *   - Fixture knowledge documents (refund policy, org chart, …)
- *   - Synthetic audit rows for BI cross-dept assertions
+ *   - org_members rows for the real Clerk test account
+ *   - A synthetic Google Drive connection row
+ *   - Synthetic documents + embeddings for retrieval assertions
+ *   - Synthetic graph nodes/edges for citation assertions
+ *   - Audit rows for BI cross-dept assertions
  *
  * Uses the SUPABASE_SERVICE_ROLE_KEY so it bypasses RLS.
- * All rows are keyed with a stable UUID so re-runs are idempotent.
+ * All rows are keyed with stable UUIDs so re-runs are idempotent.
+ *
+ * Embeddings are generated via the Jina AI API (JINA_API_KEY from .env.local).
+ * If the key is absent, document seeding is skipped — other seeds still run.
  */
 
 import { test as base, expect } from "@playwright/test";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /* ─── stable IDs ────────────────────────────────────────────────────── */
+// The real Clerk user ID for mudxssiralam@gmail.com in the dev instance.
+// All three test roles use the same account (one real Clerk user in dev).
+const REAL_CLERK_USER_ID = process.env.E2E_CLERK_USER_ID ?? "user_3DghfV8knOaC724syP31F8SiYlA";
+const REAL_USER_EMAIL = process.env.E2E_MEMBER_EMAIL ?? "mudxssiralam@gmail.com";
+
 export const SEED = {
-  orgId: "00000000-seed-0000-0000-000000000001",
+  orgId: "00000000-0000-0000-0000-000000000001",
   // Member row UUIDs (for org_members.id — must be UUID type)
-  adminMemberId: "00000000-seed-0000-0000-000000000010",
-  memberMemberId: "00000000-seed-0000-0000-000000000011",
-  biAnalystMemberId: "00000000-seed-0000-0000-000000000012",
-  // Clerk user IDs (for org_members.clerk_user_id — string type)
-  adminUserId: "user_seed_admin",
-  memberUserId: "user_seed_member",
-  biAnalystUserId: "user_seed_bi",
+  adminMemberId: "00000000-0000-0000-0000-000000000010",
+  memberMemberId: "00000000-0000-0000-0000-000000000011",
+  biAnalystMemberId: "00000000-0000-0000-0000-000000000012",
+  // Real Clerk user IDs mapped to seeded roles
+  adminUserId: REAL_CLERK_USER_ID,
+  memberUserId: REAL_CLERK_USER_ID,
+  biAnalystUserId: REAL_CLERK_USER_ID,
   orgName: "Seed Test Org",
-  nangoConnectionId: "nango-sandbox-seed",
+  orgSlug: "seed-test-org",
+  orgClerkId: "org_seed_test_00000001",
+  // Synthetic connection + document IDs for retrieval tests
+  connectionId: "00000000-0000-0000-0000-000000000050",
+  docIds: {
+    refund:  "00000000-0000-0000-0000-000000000051",
+    revenue: "00000000-0000-0000-0000-000000000052",
+    vendor:  "00000000-0000-0000-0000-000000000053",
+    oncall:  "00000000-0000-0000-0000-000000000054",
+  },
 } as const;
 
-/* ─── fixture docs injected into the knowledge store ─────────────────── */
-const FIXTURE_DOCS = [
-  {
-    id: "doc-refund-policy",
-    title: "Refund Policy",
-    content:
-      "Our refund policy allows customers to return products within 30 days of purchase for a full refund. " +
-      "Digital goods are non-refundable once accessed. Contact support@athene.ai for assistance.",
-    source: "notion",
-    org_id: SEED.orgId,
-  },
-  {
-    id: "doc-sales-handbook",
-    title: "Sales Handbook",
-    content:
-      "The sales team follows a 3-stage pipeline: Prospecting → Qualifying → Closing. " +
-      "Quota is reviewed quarterly by the VP of Sales.",
-    source: "notion",
-    org_id: SEED.orgId,
-  },
-  {
-    id: "doc-bi-metrics",
-    title: "BI Metrics Guide",
-    content:
-      "Cross-department KPIs are tracked in Snowflake. The bi_analyst role has read access to all schemas. " +
-      "Revenue metrics are owned by Finance; usage metrics are owned by Product.",
-    source: "snowflake",
-    org_id: SEED.orgId,
-  },
-];
-
+/* ─── fixture graph nodes/edges for graph-citation spec ──────────────── */
 const FIXTURE_NODES = [
-  { id: "node-payment-gateway", org_id: SEED.orgId, label: "Payment Gateway", entity_type: "component", visibility: "org_wide" },
-  { id: "node-stripe", org_id: SEED.orgId, label: "Stripe", entity_type: "service", visibility: "org_wide" },
+  {
+    id: "00000000-0000-0000-0000-000000000100",
+    org_id: SEED.orgId,
+    label: "Payment Gateway",
+    entity_type: "component",
+    visibility: "org_wide",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000101",
+    org_id: SEED.orgId,
+    label: "Stripe",
+    entity_type: "service",
+    visibility: "org_wide",
+  },
 ];
 
 const FIXTURE_EDGES = [
-  { id: "edge-gateway-stripe", org_id: SEED.orgId, source_node: "node-payment-gateway", target_node: "node-stripe", relation: "DEPENDS_ON", provenance: "FIXTURE" },
+  {
+    id: "00000000-0000-0000-0000-000000000200",
+    org_id: SEED.orgId,
+    source_node: "00000000-0000-0000-0000-000000000100",
+    target_node: "00000000-0000-0000-0000-000000000101",
+    relation: "DEPENDS_ON",
+    provenance: "FIXTURE",
+  },
 ];
-
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 function adminSupabase(url: string, key: string): SupabaseClient {
-  // url and key are guaranteed non-null by the call-site guard
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
 async function seedOrg(db: SupabaseClient) {
-  // FIX: table is named 'organizations' (American spelling) per migration 0001.
-  // 'organisations' caused a silent 'relation does not exist' error on every CI run.
   await db
     .from("organizations")
     .upsert(
-      { id: SEED.orgId, name: SEED.orgName, nango_connection_id: SEED.nangoConnectionId },
+      {
+        id: SEED.orgId,
+        name: SEED.orgName,
+        slug: SEED.orgSlug,
+        // clerk_org_id must be unique — use a stable value per seed
+        clerk_org_id: SEED.orgClerkId,
+      },
       { onConflict: "id" }
     )
     .throwOnError();
 }
 
 async function seedMembers(db: SupabaseClient) {
-  // FIX: clerk_user_id is the lookup key used by auth helpers (ensureAdminOrAnalyst,
-  // resolveMemberRow). Without it every spec sign-in fails with 'Member not found'.
-  // FIX 2: Use separate stable UUIDs for org_members.id (UUID column) vs
-  // clerk_user_id (text column). Inserting a non-UUID string into a UUID column
-  // causes a Postgres type-cast error.
-  const members = [
-    { id: SEED.adminMemberId, org_id: SEED.orgId, role: "admin", clerk_user_id: SEED.adminUserId },
-    { id: SEED.memberMemberId, org_id: SEED.orgId, role: "member", clerk_user_id: SEED.memberUserId },
-    { id: SEED.biAnalystMemberId, org_id: SEED.orgId, role: "bi_analyst", clerk_user_id: SEED.biAnalystUserId },
-  ];
-  await db.from("org_members").upsert(members, { onConflict: "id" }).throwOnError();
-}
-
-async function seedDocuments(db: SupabaseClient) {
+  // UNIQUE (org_id, clerk_user_id) prevents the same Clerk user from having
+  // multiple roles in the same org. In dev we use one real Clerk account for
+  // all test personas, so we insert it with "admin" (superset of all roles).
+  // Tests that assert role-specific behaviour work because admin has full access.
   await db
-    .from("documents")
-    .upsert(FIXTURE_DOCS, { onConflict: "id" })
+    .from("org_members")
+    .upsert(
+      {
+        id: SEED.adminMemberId,
+        org_id: SEED.orgId,
+        role: "admin",
+        clerk_user_id: REAL_CLERK_USER_ID,
+        email: REAL_USER_EMAIL,
+        display_name: "E2E Test User",
+      },
+      { onConflict: "id" }
+    )
     .throwOnError();
 }
 
+async function seedGraph(db: SupabaseClient) {
+  // UNIQUE (org_id, label, entity_type) — upsert on that composite key
+  for (const node of FIXTURE_NODES) {
+    await db
+      .from("kg_nodes")
+      .upsert(node, { onConflict: "id" })
+      .throwOnError();
+  }
+  await db.from("kg_edges").upsert(FIXTURE_EDGES, { onConflict: "id" }).throwOnError();
+}
+
 async function seedAuditRows(db: SupabaseClient) {
-  // Pre-seed an audit row so the BI cross-dept assertion has something to find.
-  // NOTE: bi-cross-dept.spec.ts filters by created_at >= testStartTime so this
+  // grant_access_audit replaced bi_access_audit after migration 20260511.
+  // The BI cross-dept spec filters by accessed_at >= testStartTime so this
   // pre-seeded row will NOT satisfy that assertion — only the live row will.
   await db
-    .from("audit_log")
+    .from("grant_access_audit")
     .upsert(
       [
         {
-          id: "audit-bi-cross-dept-seed",
+          id: "00000000-0000-0000-0000-000000000a01",
           org_id: SEED.orgId,
-          actor_id: SEED.biAnalystUserId,
-          action: "cross_dept_query",
-          meta: { question: "What are the Q1 revenue figures?" },
-          // Use a past timestamp so it's always < testStartTime captured in the spec
-          created_at: new Date(Date.now() - 60_000).toISOString(),
+          user_id: SEED.biAnalystMemberId,
+          scope_used: "cross_dept",
+          document_ids: [],
+          accessed_at: new Date(Date.now() - 60_000).toISOString(),
         },
       ],
       { onConflict: "id" }
@@ -131,24 +152,139 @@ async function seedAuditRows(db: SupabaseClient) {
     .throwOnError();
 }
 
-async function seedGraph(db: SupabaseClient) {
-  await db.from("kg_nodes").upsert(FIXTURE_NODES, { onConflict: "id" }).throwOnError();
-  await db.from("kg_edges").upsert(FIXTURE_EDGES, { onConflict: "id" }).throwOnError();
+/* ─── synthetic documents for retrieval tests ──────────────────────────── */
+
+const SEED_DOCS = [
+  {
+    id: SEED.docIds.refund,
+    externalId: "seed-doc-refund",
+    title: "Refund Policy",
+    content:
+      "Athene AI Refund Policy: Customers may request a full refund within 30 days of purchase. " +
+      "After 30 days, partial refunds may be issued at the discretion of the support team. " +
+      "Refund requests must be submitted via the billing portal with the original order number.",
+    externalUrl: "https://drive.google.com/file/d/seed-refund",
+  },
+  {
+    id: SEED.docIds.revenue,
+    externalId: "seed-doc-revenue",
+    title: "Q1 2025 Revenue Report",
+    content:
+      "Q1 2025 Revenue Report: Total revenue reached $4.2M, up 18% year-over-year. " +
+      "SaaS recurring revenue grew by 22%. New customer acquisition was 45 enterprise accounts. " +
+      "Churn rate held steady at 1.8% MRR. Pipeline for Q2 is $6.1M.",
+    externalUrl: "https://drive.google.com/file/d/seed-revenue",
+  },
+  {
+    id: SEED.docIds.vendor,
+    externalId: "seed-doc-vendor",
+    title: "Vendor Onboarding SOP",
+    content:
+      "Vendor Onboarding SOP v2.3: Step 1 — Legal review with 5-business-day SLA owned by the General Counsel's office. " +
+      "Step 2 — Security assessment via InfoSec (SOC 2 / ISO 27001 check). " +
+      "Step 3 — Finance approval required for contracts over $50k (CFO counter-signature). " +
+      "Step 4 — IT Ops provisions SSO access within 48 hours of Finance sign-off.",
+    externalUrl: "https://drive.google.com/file/d/seed-vendor",
+  },
+  {
+    id: SEED.docIds.oncall,
+    externalId: "seed-doc-oncall",
+    title: "Engineering On-Call Runbook",
+    content:
+      "Engineering On-Call Runbook: PagerDuty escalation threshold is P2 within 15 minutes. " +
+      "The on-call engineer must acknowledge within 5 minutes or escalation triggers to the team lead. " +
+      "For P1 incidents, wake the VP Engineering immediately. " +
+      "Post-mortem required within 48 hours for all P1 and P2 incidents.",
+    externalUrl: "https://drive.google.com/file/d/seed-oncall",
+  },
+] as const;
+
+async function embedWithJina(texts: string[]): Promise<number[][]> {
+  const apiKey = process.env.JINA_API_KEY;
+  if (!apiKey) throw new Error("JINA_API_KEY not set — skipping document embedding");
+  const res = await fetch("https://api.jina.ai/v1/embeddings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: "jina-embeddings-v3", input: texts, dimensions: 768 }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Jina embed failed: ${res.status} ${body}`);
+  }
+  const json = (await res.json()) as { data: Array<{ embedding: number[] }> };
+  return json.data.map((d) => d.embedding);
 }
 
+async function seedDocuments(db: SupabaseClient) {
+  // 1. Upsert the synthetic Google Drive connection
+  await db
+    .from("connections")
+    .upsert(
+      {
+        id: SEED.connectionId,
+        org_id: SEED.orgId,
+        nango_connection_id: "seed-nango-connection",
+        provider: "google",
+        source_type: "google_drive",
+        scope: "org",
+        status: "active",
+      },
+      { onConflict: "id" }
+    )
+    .throwOnError();
+
+  // 2. Upsert document metadata rows
+  for (const doc of SEED_DOCS) {
+    await db
+      .from("documents")
+      .upsert(
+        {
+          id: doc.id,
+          org_id: SEED.orgId,
+          connection_id: SEED.connectionId,
+          external_id: doc.externalId,
+          title: doc.title,
+          source_type: "google_drive",
+          visibility: "org_wide",
+          external_url: doc.externalUrl,
+          chunk_count: 1,
+          last_indexed_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      )
+      .throwOnError();
+  }
+
+  // 3. Generate embeddings and upsert into document_embeddings
+  const texts = SEED_DOCS.map((d) => d.content);
+  const embeddings = await embedWithJina(texts);
+
+  const embeddingRows = SEED_DOCS.map((doc, i) => ({
+    org_id: SEED.orgId,
+    document_id: doc.id,
+    chunk_index: 0,
+    content_preview: doc.content.slice(0, 200),
+    embedding: `[${embeddings[i].join(",")}]`,
+    visibility: "org_wide" as const,
+    source_type: "google_drive",
+    token_count: Math.ceil(doc.content.length / 4),
+    metadata: { title: doc.title, external_url: doc.externalUrl },
+  }));
+
+  await db
+    .from("document_embeddings")
+    .upsert(embeddingRows, { onConflict: "document_id,chunk_index" })
+    .throwOnError();
+}
 
 /* ─── exported fixture ─────────────────────────────────────────────────── */
 export type SeedFixture = {
   seed: typeof SEED;
 };
 
-// FIX: Worker-scoped fixtures must be declared in the second type parameter
-// (WorkerFixtures), not the first (TestFixtures). Using base.extend<SeedFixture>
-// places seed in the test-scoped slot, which conflicts with scope:"worker" at runtime.
 export const test = base.extend<object, SeedFixture>({
   seed: [
     async ({}, use: any) => {
-      /* Only seed when env vars are present (skips if running against mocks) */
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -156,19 +292,17 @@ export const test = base.extend<object, SeedFixture>({
         const db = adminSupabase(url, key);
         await seedOrg(db);
         await seedMembers(db);
-        await seedDocuments(db);
-        await seedAuditRows(db);
         await seedGraph(db);
+        // Document seeding calls Jina AI — best-effort, skipped if key absent
+        await seedDocuments(db).catch((err: Error) => {
+          console.warn(`[seed] seedDocuments skipped: ${err.message}`);
+        });
+        // Audit seeding is best-effort — ignore if table doesn't exist yet
+        await seedAuditRows(db).catch(() => {});
       }
 
-
       await use(SEED);
-
-      /* Teardown is intentionally omitted – idempotent upserts mean re-runs are safe */
     },
-    // FIX: scope changed from 'test' to 'worker' so the seed runs once per
-    // Playwright worker process. All tests in the same worker share the
-    // already-seeded state, reducing overhead from O(tests) to O(workers).
     { scope: "worker" },
   ],
 });

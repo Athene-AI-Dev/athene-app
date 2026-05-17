@@ -84,6 +84,7 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.0.29",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/dotenv": "^8.2.3",

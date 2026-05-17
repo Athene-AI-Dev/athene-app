@@ -17,23 +17,25 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import type { FetchedChunk } from './base'
 import { logger } from '@/lib/logger'
 import { embedBatch } from '@/lib/ai/embedding-factory'
+import { chunk as tokenChunk } from '@/lib/langgraph/tools/chunker'
 
 // ---- Constants --------------------------------------------------
 
-/** Target chunk size in characters (~500 tokens ≈ 2000 chars) */
-const CHUNK_SIZE_CHARS = 2000
+/** Email sources use character-based chunking (body text is short, no tokenizer needed) */
+const EMAIL_CHUNK_SIZE_CHARS = 2000
+const EMAIL_CHUNK_OVERLAP_CHARS = 200
 
-/** Overlap between chunks to preserve context at boundaries */
-const CHUNK_OVERLAP_CHARS = 200
+/** Email source_type values that bypass the token-based chunker */
+const EMAIL_SOURCE_TYPES = new Set(['gmail', 'outlook', 'email'])
 
 // ---- Content Chunking -------------------------------------------
 
 /**
- * Splits content into overlapping chunks of ~CHUNK_SIZE_CHARS.
+ * Character-based chunker for email content.
  * Tries to break at sentence boundaries when possible.
  */
-function chunkContent(content: string): string[] {
-  if (content.length <= CHUNK_SIZE_CHARS) {
+function chunkEmail(content: string): string[] {
+  if (content.length <= EMAIL_CHUNK_SIZE_CHARS) {
     return [content]
   }
 
@@ -41,36 +43,40 @@ function chunkContent(content: string): string[] {
   let start = 0
 
   while (start < content.length) {
-    let end = start + CHUNK_SIZE_CHARS
+    let end = start + EMAIL_CHUNK_SIZE_CHARS
 
-    // If we're not at the end, try to break at a sentence boundary
     if (end < content.length) {
-      // Look for sentence-ending punctuation near the chunk boundary
-      const searchWindow = content.substring(
-        Math.max(start, end - 200),
-        end
-      )
+      const searchWindow = content.substring(Math.max(start, end - 200), end)
       const lastSentenceEnd = Math.max(
         searchWindow.lastIndexOf('. '),
         searchWindow.lastIndexOf('.\n'),
         searchWindow.lastIndexOf('? '),
         searchWindow.lastIndexOf('! ')
       )
-
       if (lastSentenceEnd > 0) {
-        // Adjust end to the sentence boundary (relative to content, not window)
         end = Math.max(start, end - 200) + lastSentenceEnd + 1
       }
     }
 
     chunks.push(content.substring(start, Math.min(end, content.length)).trim())
-
-    // Next chunk starts with overlap
-    start = end - CHUNK_OVERLAP_CHARS
+    start = end - EMAIL_CHUNK_OVERLAP_CHARS
     if (start >= content.length) break
   }
 
   return chunks.filter((c) => c.length > 0)
+}
+
+/**
+ * Routes to the correct chunker based on source type.
+ * Email → character-based (2000 chars / 200 overlap).
+ * Everything else → token-based (512 tokens / 64 overlap, cl100k_base).
+ */
+function chunkContent(content: string, sourceType?: string): string[] {
+  if (sourceType && EMAIL_SOURCE_TYPES.has(sourceType)) {
+    return chunkEmail(content)
+  }
+  // Token-based chunking for documents (Drive, SharePoint, Notion, etc.)
+  return tokenChunk(content, { chunkSize: 512, overlap: 64 }).map((c) => c.text)
 }
 
 // ---- Embedding Generation ---------------------------------------
@@ -178,8 +184,8 @@ export async function indexDocument(
   )
   if (!contentChanged) return documentId
 
-  // 1. Split content into chunks
-  const contentChunks = chunkContent(chunk.content)
+  // 1. Split content into chunks (token-based for docs, char-based for email)
+  const contentChunks = chunkContent(chunk.content, chunk.metadata.provider)
 
   if (contentChunks.length === 0) return documentId
 
@@ -259,7 +265,7 @@ export async function indexDocuments(
         prepared.push({ chunk, documentId, subChunks: [] })
         continue
       }
-      const subChunks = chunkContent(chunk.content)
+      const subChunks = chunkContent(chunk.content, chunk.metadata.provider)
       if (subChunks.length > 0) {
         prepared.push({ chunk, documentId, subChunks })
       }

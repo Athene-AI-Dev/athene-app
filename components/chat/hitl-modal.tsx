@@ -64,7 +64,7 @@ export function HitlModal({ isOpen, onClose, threadId, pendingAction, onDecision
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !isSubmitting && !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px] bg-slate-950 border-white/10 text-white font-['Space_Grotesk']">
+      <DialogContent data-testid="approval-card" className="sm:max-w-[600px] bg-slate-950 border-white/10 text-white font-['Space_Grotesk']">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">

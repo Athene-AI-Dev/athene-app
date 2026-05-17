@@ -373,6 +373,7 @@ export default function ChatPage() {
               {messages.map((msg, i) => (
                 <div
                   key={msg.id}
+                  data-testid={msg.role === "user" ? "user-message" : "assistant-message"}
                   className={cn(
                     "flex w-full animate-in fade-in slide-in-from-bottom-4 duration-500",
                     msg.role === "user" ? "justify-end" : "justify-start"

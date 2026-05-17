@@ -13,8 +13,9 @@ const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
-  "/api/worker/(.*)",
-  "/api/nango/(.*)",
+  "/api/health",        // unauthenticated — required for load-balancer / k8s probes
+  "/api/worker/(.*)",  // authenticated via QStash signature, not Clerk session
+  "/api/nango/(.*)",   // authenticated via Nango HMAC-SHA256
 ]);
 
 /**

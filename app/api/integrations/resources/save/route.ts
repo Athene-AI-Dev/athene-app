@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
-    console.error('[resources-save-api] Error:', err)
+    logger.error({ err: err?.message }, '[resources-save-api] Error')
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

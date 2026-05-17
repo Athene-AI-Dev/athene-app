@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { validateSyncConfig, parseSyncConfig } from "@/lib/integrations/sync-config";
+import { logger } from "@/lib/logger";
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -135,7 +136,7 @@ export async function PUT(request: Request, { params }: Params) {
       });
       dispatched = result.dispatched;
     } catch (err: unknown) {
-      console.error("[sync-config] Failed to dispatch re-sync:", err);
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, "[sync-config] Failed to dispatch re-sync");
     }
   }
 

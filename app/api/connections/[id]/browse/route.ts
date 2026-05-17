@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { mapRole } from "@/lib/auth/clerk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getProviderBrowser, isBrowsable } from "@/lib/integrations/browsing";
+import { logger } from "@/lib/logger";
 import type { ProviderKey } from "@/lib/integrations/providers";
 
 interface Params { params: Promise<{ id: string }> }
@@ -86,7 +87,7 @@ export async function GET(request: Request, { params }: Params) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[browse] Error browsing ${provider}:`, message);
+    logger.error({ err: message, provider }, "[browse] Error browsing provider");
     return NextResponse.json(
       { error: `Failed to browse resources: ${message}` },
       { status: 500 }

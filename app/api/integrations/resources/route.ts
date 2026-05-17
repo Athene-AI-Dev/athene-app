@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { mapRole } from '@/lib/auth/clerk'
 import { listDriveFiles, listSharedDrives } from '@/lib/integrations/google/drive-fetcher'
 import { powerbiFetch } from '@/lib/integrations/powerbi/client'
+import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
         }))
         resources = [...driveItems, ...folderItems]
       } catch (err) {
-        console.warn('[resources-api] Failed to fetch shared drives:', err)
+        logger.warn({ err: err instanceof Error ? err.message : String(err) }, '[resources-api] Failed to fetch shared drives')
         resources = folderItems
       }
     } else if (provider === 'powerbi') {
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ resources })
   } catch (err: any) {
-    console.error('[resources-api] Error:', err)
+    logger.error({ err: err?.message }, '[resources-api] Error')
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

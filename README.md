@@ -11,7 +11,7 @@ Bootstrap your environment and prepare for deployment:
 # 1. Clone & Initialize
 git clone https://github.com/Athene-AI-Dev/athene-app.git
 cd athene-app
-npm install
+pnpm install
 cp .env.example .env
 ```
 

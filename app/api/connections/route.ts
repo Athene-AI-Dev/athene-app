@@ -79,8 +79,11 @@ export async function POST(request: Request) {
     logger.warn({ err: mappingErr.message }, '[connections/post] saveConnectionMapping failed (non-fatal)');
   }
 
-  // Invalidate the cached extraction prompt — active modules may have changed
-  void invalidatePromptCache(internalOrgId);
+  // Invalidate the cached extraction prompt — active modules may have changed.
+  // Fire-and-forget but log failures so they appear in telemetry.
+  invalidatePromptCache(internalOrgId).catch((err: unknown) =>
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, '[connections/post] prompt cache invalidation failed (non-fatal)')
+  );
 
   // Providers that require user file/table selection before first sync
   const CONFIGURABLE_PROVIDERS = new Set(['google_drive', 'snowflake', 'bigquery', 'redshift']);

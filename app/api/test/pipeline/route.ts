@@ -6,10 +6,9 @@
 // search to verify retrieval — without needing a real OAuth
 // connection or QStash bypass.
 //
-// ONLY active when NODE_ENV !== 'production'.
-// Requires header: x-test-token matching TEST_PIPELINE_SECRET
-// (or the hardcoded dev value "athene-dev-test" when the env
-// var is absent and we are in dev/test mode).
+// ONLY active when NODE_ENV !== 'production' AND TEST_PIPELINE_SECRET is set.
+// Requires header: x-test-token matching TEST_PIPELINE_SECRET.
+// If TEST_PIPELINE_SECRET is unset the endpoint returns 404 in all environments.
 //
 // Actions (POST body):
 //   seed    → { action: "seed", title, content, tag }
@@ -28,14 +27,15 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { indexDocuments } from "@/lib/integrations/indexing";
 import { embed } from "@/lib/ai/embedder";
 
-const DEV_TOKEN = process.env.TEST_PIPELINE_SECRET ?? "athene-dev-test";
-
 function guard(req: NextRequest): NextResponse | null {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 404 });
+  const secret = process.env.TEST_PIPELINE_SECRET;
+  if (process.env.NODE_ENV === "production" || !secret) {
+    // Unavailable in production or when TEST_PIPELINE_SECRET is not explicitly configured.
+    // This prevents the known-default token "athene-dev-test" from being usable in staging.
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
   }
   const token = req.headers.get("x-test-token");
-  if (token !== DEV_TOKEN) {
+  if (token !== secret) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return null;

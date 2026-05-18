@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, memo } from "react";
-import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher, UserButton, SignOutButton } from "@clerk/nextjs";
 import { ShieldCheck, Radio, Bell, Cpu, Menu, Search, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -95,6 +95,12 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
                 }
               }}
             />
+          </div>
+          {/* Accessible logout button for E2E tests and screen readers */}
+          <div className="sr-only">
+            <SignOutButton>
+              <button data-testid="logout-button" aria-label="Logout">Log out</button>
+            </SignOutButton>
           </div>
         </div>
       </div>

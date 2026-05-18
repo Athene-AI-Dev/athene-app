@@ -5,15 +5,12 @@ import {
   Plus,
   Play,
   Save,
-  Settings2,
   Database,
   Cpu,
   Search,
   GitBranch,
   Terminal,
-  Layers,
   ChevronRight,
-  MousePointer2,
   Trash2,
   Info,
   BrainCircuit,
@@ -210,35 +207,6 @@ export default function BuilderPage() {
              </h2>
              <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em] mt-1 opacity-60">Intelligence Pipeline Editor</p>
           </div>
-          <div className="h-12 w-px bg-border hidden md:block" />
-          <TooltipProvider>
-          <div className="hidden md:flex items-center gap-4">
-             <Tooltip>
-               <TooltipTrigger asChild>
-                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                    <MousePointer2 className="w-6 h-6" />
-                 </Button>
-               </TooltipTrigger>
-               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Select tool — coming soon</TooltipContent>
-             </Tooltip>
-             <Tooltip>
-               <TooltipTrigger asChild>
-                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                    <Layers className="w-6 h-6" />
-                 </Button>
-               </TooltipTrigger>
-               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Layers panel — coming soon</TooltipContent>
-             </Tooltip>
-             <Tooltip>
-               <TooltipTrigger asChild>
-                 <Button variant="ghost" size="icon" className="h-12 w-12 rounded-xl hover:bg-primary/10 hover:text-primary transition-all active:scale-95">
-                    <Settings2 className="w-6 h-6" />
-                 </Button>
-               </TooltipTrigger>
-               <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">Node settings — coming soon</TooltipContent>
-             </Tooltip>
-          </div>
-          </TooltipProvider>
         </div>
 
         <div className="flex items-center gap-5 pr-4">
@@ -360,7 +328,14 @@ export default function BuilderPage() {
                    </div>
                    <Badge variant="ghost" className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/40">{node.type}</Badge>
                 </div>
-                <h4 className="text-xl font-black text-foreground mb-2 uppercase tracking-tighter">{node.label}</h4>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <h4 className="text-xl font-black text-foreground mb-2 uppercase tracking-tighter truncate">{node.label}</h4>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-black text-white border-white/10 text-[10px] font-bold uppercase tracking-widest">
+                    {node.label}
+                  </TooltipContent>
+                </Tooltip>
                 <div className="flex items-center gap-3">
                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                    <span className="text-[11px] font-black text-muted-foreground/50 uppercase tracking-[0.2em]">Neural Active</span>

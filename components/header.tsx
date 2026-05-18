@@ -59,33 +59,37 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
         
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <Link href="/admin/grants" title="Security Hub">
-            <ShieldCheck 
-              size={16} 
-              className="text-muted-foreground hover:text-secondary transition-colors cursor-pointer" 
-            />
-          </Link>
-          <Link href="/admin/integrations" title="Network Cluster">
-            <Radio 
-              size={16} 
-              className="text-muted-foreground hover:text-primary transition-colors cursor-pointer" 
-            />
-          </Link>
+          {role === "admin" && (
+            <>
+              <Link href="/admin/grants" title="Security Hub">
+                <ShieldCheck
+                  size={16}
+                  className="text-muted-foreground hover:text-secondary transition-colors cursor-pointer"
+                />
+              </Link>
+              <Link href="/admin/integrations" title="Network Cluster">
+                <Radio
+                  size={16}
+                  className="text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                />
+              </Link>
+              <div className="relative">
+                <Link href="/admin/audit" title="Audit Log">
+                  <Bell
+                    size={16}
+                    className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  />
+                </Link>
+                <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_rgba(217,122,46,0.45)]" />
+              </div>
+            </>
+          )}
           <Link href="/dashboard" title="Neural Pulse">
-            <Cpu 
-              size={16} 
-              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
+            <Cpu
+              size={16}
+              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             />
           </Link>
-          <div className="relative">
-            <Link href="/admin/audit" title="Audit Log">
-              <Bell 
-                size={16} 
-                className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer" 
-              />
-            </Link>
-            <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-secondary rounded-full shadow-[0_0_8px_rgba(217,122,46,0.45)]" />
-          </div>
           <div className="w-7 h-7 rounded-full border border-border overflow-hidden hover:border-primary/50 transition-colors">
             <UserButton 
               appearance={{

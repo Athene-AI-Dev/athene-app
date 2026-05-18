@@ -55,7 +55,10 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (!targetNode) {
-      return NextResponse.json([]);
+      return NextResponse.json({
+        entity: entityLabel,
+        decisions: [],
+      });
     }
 
     // Find all APPLIED_TO edges where target = this node
@@ -67,7 +70,10 @@ export async function GET(req: NextRequest) {
       .eq("relation", "APPLIED_TO");
 
     if (!edges?.length) {
-      return NextResponse.json([]);
+      return NextResponse.json({
+        entity: targetNode.label,
+        decisions: [],
+      });
     }
 
     const sourceIds = edges.map((e) => e.source_node);

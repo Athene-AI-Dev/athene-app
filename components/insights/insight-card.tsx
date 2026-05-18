@@ -11,7 +11,7 @@ export interface Insight {
   title: string;
   query: string;
   result: { answer: string; citations: { title: string | null; url?: string | null }[] };
-  created_by: string;
+  created_by?: string;
   refreshed_at: string;
   created_at: string;
 }
@@ -43,7 +43,7 @@ export function InsightCard({ insight, currentMemberId, isAdmin, isConfirmingDel
   const [deleting, setDeleting] = useState(false);
   const [showCitations, setShowCitations] = useState(false);
 
-  const canDelete = isAdmin || insight.created_by === currentMemberId;
+  const canDelete = isAdmin || (insight.created_by && insight.created_by === currentMemberId);
 
   const handleRefresh = async () => {
     setRefreshing(true);

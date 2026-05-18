@@ -181,7 +181,6 @@ export async function POST(req: NextRequest) {
       .from("insights")
       .insert({
         org_id: orgId,
-        created_by: memberId,
         title,
         query,
         result,
@@ -230,7 +229,7 @@ export async function PATCH(req: NextRequest) {
     // Verify the insight belongs to this org
     const { data: existing } = await supabaseAdmin
       .from("insights")
-      .select("org_id, created_by, query")
+      .select("org_id, query")
       .eq("id", id)
       .single();
 
@@ -280,17 +279,12 @@ export async function DELETE(req: NextRequest) {
 
     const { data: existing } = await supabaseAdmin
       .from("insights")
-      .select("org_id, created_by")
+      .select("org_id")
       .eq("id", id)
       .single();
 
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (existing.org_id !== orgId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    // Only the creator or an admin can delete
-    if (existing.created_by !== memberId && role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const { error } = await supabaseAdmin
       .from("insights")

@@ -161,6 +161,12 @@ export default function DecisionsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // Defensive selectors for timeline view and entity queries
+  const decisionsList = timeline && !Array.isArray(timeline) && Array.isArray(timeline.decisions)
+    ? timeline.decisions
+    : [];
+  const entityName = timeline && !Array.isArray(timeline) ? timeline.entity : entityFilter || entityQuery;
+
   const fetchTimeline = useCallback(async () => {
     setTimelineLoading(true);
     setTimelineError(null);
@@ -344,16 +350,16 @@ export default function DecisionsPage() {
                   Decisions applied to
                 </h2>
                 <Badge className="bg-[#66ADE4]/10 text-[#66ADE4] border-none text-[12px] font-bold">
-                  {timeline.entity}
+                  {entityName}
                 </Badge>
                 <span className="text-[11px] text-slate-600 font-bold">
-                  {timeline.decisions.length} found
+                  {decisionsList.length} found
                 </span>
               </div>
-              {timeline.decisions.length === 0 ? (
+              {decisionsList.length === 0 ? (
                 <EmptyState message="No decisions found for this entity" />
               ) : (
-                timeline.decisions.map((d) => <DecisionCard key={d.id} decision={d} />)
+                decisionsList.map((d) => <DecisionCard key={d.id} decision={d} />)
               )}
             </div>
           )}

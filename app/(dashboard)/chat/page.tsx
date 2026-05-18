@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -43,6 +44,7 @@ interface Message {
   cited_sources?: any[];
   isAnalytical?: boolean;
   awaiting_approval?: boolean;
+  isQuotaError?: boolean;
 }
 
 interface ThreadSummary {
@@ -193,7 +195,7 @@ export default function ChatPage() {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
-                      ? { ...m, content: `⚠ ${errMsg}` }
+                      ? { ...m, content: `⚠ ${errMsg}`, isQuotaError: payload.isQuota }
                       : m
                   )
                 );
@@ -406,7 +408,19 @@ export default function ChatPage() {
                             </div>
                         )}
                         <div className="whitespace-pre-wrap tracking-tight">
-                            {msg.content || (
+                            {msg.content ? (
+                                msg.isQuotaError ? (
+                                    <>
+                                        ⚠ Synthesis halted: LLM quota exceeded. Check your API key billing or add a BYOK key in{" "}
+                                        <Link href="/admin/keys" className="text-primary hover:underline font-black">
+                                            Admin → Keys
+                                        </Link>
+                                        .
+                                    </>
+                                ) : (
+                                    msg.content
+                                )
+                            ) : (
                             <div className="flex items-center gap-5 py-3">
                                 <div className="flex gap-1">
                                   <div className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />

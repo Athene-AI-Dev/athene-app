@@ -297,6 +297,7 @@ export async function POST(req: NextRequest) {
         const isQuota = err.message.includes("quota") || err.message.includes("rate_limit") || err.message.includes("429");
         const errorData = JSON.stringify({
           error: true,
+          isQuota: isQuota,
           content: isQuota
             ? "Synthesis halted: LLM quota exceeded. Check your API key billing or add a BYOK key in Admin → Keys."
             : `Synthesis error: ${err.message}`,

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 
 interface UsageStats {
   docs: { total: number };
@@ -70,7 +71,7 @@ export default function BriefingPage() {
   // Fetch today's briefing — quiet mode skips the toast (used for polling)
   const fetchTodayBriefing = useCallback(async (quiet = false) => {
     try {
-      const res = await fetch('/api/briefing?type=today');
+      const res = await fetchWithTimeout('/api/briefing?type=today');
       if (!res.ok) {
         if (!quiet) toast.error(`Failed to load briefing (${res.status})`);
         return null;
@@ -89,7 +90,7 @@ export default function BriefingPage() {
   const fetchHistory = useCallback(async () => {
     try {
       setHistoryError(false);
-      const res = await fetch('/api/briefing?type=history');
+      const res = await fetchWithTimeout('/api/briefing?type=history');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       // Guard: data must be an array, not an error object
@@ -103,7 +104,7 @@ export default function BriefingPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/usage');
+      const res = await fetchWithTimeout('/api/admin/usage');
       if (res.ok) setStats(await res.json());
     } catch { /* non-admin users silently skip stats */ }
   }, []);
@@ -130,7 +131,7 @@ export default function BriefingPage() {
     setSheetOpen(false);
     setHistoryItemLoading(true);
     try {
-      const res = await fetch(`/api/briefing?id=${encodeURIComponent(item.id)}`);
+      const res = await fetchWithTimeout(`/api/briefing?id=${encodeURIComponent(item.id)}`);
       if (!res.ok) {
         toast.error(`Failed to load past briefing (${res.status})`);
         return;
@@ -154,7 +155,7 @@ export default function BriefingPage() {
     setEnqueuing(true);
     setPollingTimedOut(false);
     try {
-      const res = await fetch('/api/briefing', { method: 'POST' });
+      const res = await fetchWithTimeout('/api/briefing', { method: 'POST', timeout: 30000 });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         toast.error((data as any).error || `Failed to trigger synthesis (${res.status})`);
@@ -372,7 +373,7 @@ export default function BriefingPage() {
               icon: <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-accent" />,
               label: 'Briefings This Month',
               value: stats.briefings.this_month.toLocaleString(),
-              sub: 'Synthesized reports',
+              sub: stats.briefings.this_month === 0 ? 'Generate your first briefing below' : 'Synthesized reports',
             },
           ].map(({ icon, label, value, sub }) => (
             <div key={label} className="flex flex-col gap-2 p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] bg-card/50 border border-border hover:border-primary/20 transition-all group backdrop-blur-xl">

@@ -10,6 +10,7 @@ import { MessageList, Message } from "@/components/chat/message-list";
 import { Composer } from "@/components/chat/composer";
 import { ApprovalCard } from "@/components/chat/approval-card";
 import { PendingWriteAction } from "@/lib/langgraph/state";
+import { toast } from "sonner";
 
 export default function ThreadChatPage() {
   const params = useParams<{ threadId: string }>();
@@ -82,6 +83,36 @@ export default function ThreadChatPage() {
   }, [threadId]);
 
   const handleStreamMessage = useCallback((data: any) => {
+    if (data.error) {
+      const errMsg = data.content || "An error occurred.";
+      const isQuota = /quota exceeded|quota|rate_limit|billing|BYOK/i.test(errMsg);
+
+      if (isQuota) {
+        toast.error("LLM Quota Exceeded. Please configure a BYOK key in Admin -> Keys.", {
+          action: {
+            label: "Admin Keys",
+            onClick: () => window.location.href = "/admin/keys"
+          },
+          duration: 10000
+        });
+      }
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.isLoading
+            ? {
+                ...m,
+                content: errMsg,
+                isLoading: false,
+                isQuotaError: isQuota,
+              }
+            : m
+        )
+      );
+      setIsLoading(false);
+      return;
+    }
+
     setMessages((prev) => {
       const lastAssistant = [...prev]
         .reverse()

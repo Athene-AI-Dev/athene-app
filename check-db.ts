@@ -1,14 +1,16 @@
+import * as dotenv from "dotenv";
+dotenv.config();
+
 import { supabaseAdmin } from "./lib/supabase/server";
 
 async function check() {
-  const userId = "user_3DL4opxiE8U9UFVRJFdm2Y9FImI";
-  const { data, error } = await supabaseAdmin
-    .from("org_members")
-    .select("*")
-    .eq("clerk_user_id", userId);
+  const { data: cols, error: colsErr } = await supabaseAdmin
+    .from("documents")
+    .select("id, title, visibility")
+    .limit(10);
 
-  console.log("Member data:", data);
-  console.log("Error:", error);
+  console.log("Documents query result:", cols);
+  console.log("Error:", colsErr);
 }
 
 check();

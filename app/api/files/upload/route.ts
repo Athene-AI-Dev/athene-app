@@ -99,6 +99,16 @@ export async function POST(req: NextRequest) {
         ? `${sizeMB.toFixed(1)} MB`
         : `${(file.size / 1024).toFixed(0)} KB`;
 
+    const nameLower = file.name.toLowerCase();
+    let layer = 'Internal Wiki';
+    if (nameLower.includes('invoice') || nameLower.includes('financial') || nameLower.includes('tax') || ext === 'XLSX' || ext === 'CSV') {
+      layer = 'Financial Records';
+    } else if (nameLower.includes('contract') || nameLower.includes('legal') || nameLower.includes('nda') || nameLower.includes('agreement')) {
+      layer = 'Legal Discovery';
+    } else if (nameLower.includes('audit') || nameLower.includes('log')) {
+      layer = 'Audit Logs';
+    }
+
     const { data: doc, error: docErr } = await supabaseAdmin
      .from("documents")
      .insert({
@@ -110,7 +120,7 @@ export async function POST(req: NextRequest) {
         owner_user_id: null,
         visibility: "restricted",
         mime_type: file.type || "application/octet-stream",
-        metadata: { size: sizeStr, type: ext, uploaded_by: ownerId },
+        metadata: { size: sizeStr, type: ext, uploaded_by: ownerId, layer },
       })
       .select("id, title, mime_type, metadata, created_at")
       .single();
@@ -170,6 +180,7 @@ export async function POST(req: NextRequest) {
       size: sizeStr,
       status: "Indexing",
       risk: "Low",
+      layer,
       date: "Just now",
       storagePath,
     });

@@ -14,7 +14,7 @@ const mockPlannerInvoke = vi.fn();
 const mockSynthesisInvoke = vi.fn();
 let resolveCallCount = 0;
 
-vi.mock("../llm-factory", () => ({
+vi.mock("../../llm-factory", () => ({
   resolveModelClient: vi.fn().mockImplementation(() => {
     resolveCallCount++;
     const invoke = resolveCallCount === 1 ? mockPlannerInvoke : mockSynthesisInvoke;

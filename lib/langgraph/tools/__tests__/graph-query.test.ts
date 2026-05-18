@@ -161,14 +161,14 @@ describe('graphQueryTool — visibility gating', () => {
     mockSingle.mockResolvedValue({ data: seedNode, error: null })
   })
 
-  it('non-BI role queries with visibility=public filter', async () => {
+  it('non-BI role queries with visibility=org_wide filter', async () => {
     await graphQueryTool.invoke(
       { question: 'what is BillingService?', maxHops: 1 },
       makeConfig('org-1', 'member'),
     )
 
-    // Should have applied .eq('visibility', 'public')
-    expect(mockEq).toHaveBeenCalledWith('visibility', 'public')
+    // Should have applied .eq('visibility', 'org_wide')
+    expect(mockEq).toHaveBeenCalledWith('visibility', 'org_wide')
   })
 
   it('bi_analyst role does NOT filter by visibility', async () => {

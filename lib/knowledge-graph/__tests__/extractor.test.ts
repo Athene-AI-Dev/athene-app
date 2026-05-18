@@ -25,6 +25,27 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
+vi.mock("@/lib/langgraph/llm-factory", () => ({
+  resolveModelClient: vi.fn().mockImplementation(async () => ({
+    invoke: async () => ({
+      content: [{ type: "text", text: mockResponses[mockCallCount++] ?? "{}" }],
+    }),
+  })),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  supabaseAdmin: {
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }),
+    rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }),
+  },
+}));
+
+vi.mock("@/lib/knowledge-graph/modules/resolver", () => ({
+  resolveExtractionPrompt: vi.fn().mockResolvedValue("Extract entities from the text."),
+}));
 
 import { extractEntitiesAndRelations } from "@/lib/knowledge-graph/extractor";
 import {
@@ -83,7 +104,7 @@ describe("extractEntitiesAndRelations", () => {
     const { nodes, edges } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
 
     expect(nodes).toHaveLength(2);
-    const helios = nodes.find((n) => n.label === "Project Helios");
+    const helios = nodes.find((n) => n.label === "project helios");
     expect(helios).toBeDefined();
     expect(helios!.entity_type).toBe("project");
     expect(helios!.department_ids).toEqual(["dept-1"]);
@@ -211,7 +232,7 @@ describe("extractEntitiesAndRelations", () => {
     const mockSupabase = { rpc: vi.fn().mockResolvedValue({ data: "test-key", error: null }) } as any;
     const { nodes } = await extractEntitiesAndRelations([baseChunk()], mockSupabase);
     expect(nodes).toHaveLength(1);
-    expect(nodes[0].label).toBe("X");
+    expect(nodes[0].label).toBe("x");
   });
 
   it("returns empty result for empty input", async () => {

@@ -15,7 +15,7 @@ const { mockInvoke } = vi.hoisted(() => ({
 
 vi.mock("../../langgraph/llm-factory", () => {
   return {
-    getModel: vi.fn().mockImplementation(() => {
+    resolveModelClient: vi.fn().mockImplementation(async () => {
       return {
         invoke: mockInvoke,
       };

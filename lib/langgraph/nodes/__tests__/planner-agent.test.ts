@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockInvoke = vi.fn();
 
-vi.mock("../llm-factory", () => ({
+vi.mock("../../llm-factory", () => ({
   resolveModelClient: vi.fn().mockResolvedValue({
     invoke: (...args: unknown[]) => mockInvoke(...args),
   }),

@@ -53,16 +53,22 @@ vi.mock('@/lib/knowledge-graph/extractor', () => ({
 
 // ---- Mock storage -------------------------------------------
 
-const { mockDeleteByDocument, mockUpsertNodes, mockUpsertEdges } = vi.hoisted(() => ({
+const { mockDeleteByDocument, mockUpsertNodes, mockUpsertEdges, mockUpsertGraph } = vi.hoisted(() => ({
   mockDeleteByDocument: vi.fn(),
   mockUpsertNodes: vi.fn(),
   mockUpsertEdges: vi.fn(),
+  mockUpsertGraph: vi.fn(),
 }))
 
 vi.mock('@/lib/knowledge-graph/storage', () => ({
   deleteByDocument: mockDeleteByDocument,
   upsertNodes: mockUpsertNodes,
   upsertEdges: mockUpsertEdges,
+  upsertGraph: mockUpsertGraph,
+}))
+
+vi.mock('@/lib/knowledge-graph/event-extractor', () => ({
+  extractAndUpsertEvents: vi.fn().mockResolvedValue(undefined),
 }))
 
 // ---- Mock community -----------------------------------------
@@ -125,6 +131,7 @@ beforeEach(() => {
   mockDeleteByDocument.mockResolvedValue(undefined)
   mockUpsertNodes.mockResolvedValue(new Map())
   mockUpsertEdges.mockResolvedValue(undefined)
+  mockUpsertGraph.mockResolvedValue(new Map())
   mockDetectCommunities.mockResolvedValue(undefined)
   mockSupabase.rpc.mockResolvedValue({ data: 'fake-key', error: null })
 })
@@ -152,6 +159,12 @@ describe('buildGraphForDocuments — SHA-256 skip logic', () => {
     // Return different data for different .from() calls
     mockSupabase.from
       .mockReturnValueOnce(mockChain({ single: vi.fn().mockResolvedValue({ data: doc, error: null }) }))
+      .mockReturnValueOnce(mockChain({
+        order: vi.fn().mockResolvedValue({
+          data: [{ chunk_index: 0, content_preview: 'ServiceA handles payments', metadata: {} }],
+          error: null
+        })
+      }))
       .mockReturnValue(mockChain())
 
     await buildGraphForDocuments(ORG, [DOC_1], 'incremental')
@@ -198,21 +211,15 @@ describe('buildGraphForDocuments — full mode', () => {
 describe('buildGraphForDocuments — community detection', () => {
   it('calls detectCommunities after at least one processed doc', async () => {
     const doc = makeDocRow()
-    const chunks = makeChunks()
-
-    const chunkChain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      order: vi.fn().mockResolvedValue({ data: chunks, error: null }),
-    }
-
-    const updateChain = {
-      update: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnValue({ error: null }),
-    }
 
     mockSupabase.from
       .mockReturnValueOnce(mockChain({ single: vi.fn().mockResolvedValue({ data: doc, error: null }) }))
+      .mockReturnValueOnce(mockChain({
+        order: vi.fn().mockResolvedValue({
+          data: [{ chunk_index: 0, content_preview: 'ServiceA handles payments', metadata: {} }],
+          error: null
+        })
+      }))
       .mockReturnValue(mockChain())
 
     mockExtract.mockResolvedValue({ nodes: [], edges: [] })
@@ -250,15 +257,15 @@ describe('buildGraphForDocuments — error handling', () => {
 
   it('records community detection errors without throwing', async () => {
     const doc = makeDocRow()
-    const chunks = makeChunks()
 
-    const chunkChain = {
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      order: vi.fn().mockResolvedValue({ data: chunks, error: null }),
-    }
     mockSupabase.from
       .mockReturnValueOnce(mockChain({ single: vi.fn().mockResolvedValue({ data: doc, error: null }) }))
+      .mockReturnValueOnce(mockChain({
+        order: vi.fn().mockResolvedValue({
+          data: [{ chunk_index: 0, content_preview: 'ServiceA handles payments', metadata: {} }],
+          error: null
+        })
+      }))
       .mockReturnValue(mockChain())
 
     mockDetectCommunities.mockRejectedValue(new Error('community failed'))

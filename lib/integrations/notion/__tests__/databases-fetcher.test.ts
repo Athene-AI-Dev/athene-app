@@ -41,9 +41,13 @@ describe('notion databases-fetcher', () => {
 
     const chunks = await fetchAllDatabases('conn-123', 'org-123')
     
-    expect(chunks).toHaveLength(1)
-    expect(chunks[0].title).toBe('Database: Test DB')
-    expect(chunks[0].content).toContain('Name: Item 1')
-    expect(chunks[0].content).toContain('Status: Done')
+    expect(chunks).toHaveLength(2)
+    const schemaChunk = chunks.find((c: any) => c.chunk_id === 'notion_db_schema_db1')
+    const dataChunk = chunks.find((c: any) => c.chunk_id === 'notion_db_db1')
+    expect(schemaChunk).toBeDefined()
+    expect(dataChunk).toBeDefined()
+    expect(dataChunk!.title).toBe('Database: Test DB')
+    expect(dataChunk!.content).toContain('Name: Item 1')
+    expect(dataChunk!.content).toContain('Status: Done')
   })
 })

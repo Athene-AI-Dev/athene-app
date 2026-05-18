@@ -8,14 +8,14 @@ vi.mock('../client', () => ({
 }))
 
 vi.mock('@/lib/nango/client', () => ({
-  getConnection: vi.fn(),
+  getConnectionMetadata: vi.fn(),
 }))
 
 describe('snowflake searcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(nango.getConnection).mockResolvedValue({
-      metadata: { allowlist: ['DB.SCH.TABLE1'] }
+    vi.mocked(nango.getConnectionMetadata).mockResolvedValue({
+      allowlist: ['DB.SCH.TABLE1']
     } as any)
   })
 
@@ -35,7 +35,7 @@ describe('snowflake searcher', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0].content).toContain('Match 1')
-    // Verify escaping (O'Reilly -> O''Reilly)
-    expect(client.snowflakeFetch).toHaveBeenCalledWith('conn-1', 'org-1', expect.stringContaining("LIKE '%O''Reilly%'"))
+    // Verify parameterized query with LIKE ? placeholder
+    expect(client.snowflakeFetch).toHaveBeenCalledWith('conn-1', 'org-1', expect.stringContaining("LIKE ?"), expect.arrayContaining(["%O'Reilly%"]))
   })
 })

@@ -12,6 +12,38 @@ vi.mock('@/lib/nango/client', () => ({
   getToken: vi.fn(),
 }))
 
+vi.mock('@/lib/supabase/server', () => ({
+  supabaseAdmin: {
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+      then: (resolve: any) => resolve({ data: null, error: null }),
+    }),
+  },
+}))
+
+vi.mock('@/lib/integrations/bi-chunking', () => ({
+  resolveSyncConfig: vi.fn().mockReturnValue({
+    sample_rows: 50,
+    enable_stats: false,
+    enable_aggregations: false,
+    incremental: false,
+    max_rows_per_table: 10000,
+  }),
+  buildSampleChunk: vi.fn().mockImplementation((tableFullName: string, schema: any, rows: any[]) => ({
+    chunk_id: `snowflake_sample_${tableFullName.replace(/[^A-Za-z0-9_]/g, '_')}`,
+    title: `table: ${tableFullName.split('.').pop()}`,
+    content: rows.map((r: any) => Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(', ')).join('\n'),
+    source_url: `snowflake://${tableFullName}`,
+    metadata: { provider: 'snowflake', resource_type: 'table_sample', table: tableFullName },
+  })),
+  buildStatsChunk: vi.fn(),
+  buildAggregationChunk: vi.fn(),
+  classifyColumn: vi.fn(),
+}))
+
 describe('snowflake sample-fetcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -26,19 +58,33 @@ describe('snowflake sample-fetcher', () => {
       }
     } as any)
 
-    // Mock snowflake fetch
-    vi.mocked(client.snowflakeFetch).mockImplementation(async (connectionId, orgId, sql) => ({
-      resultSetMetaData: {
-        rowType: [
-          { name: 'ID' },
-          { name: 'NAME' }
+    // Mock snowflake fetch: DESCRIBE returns schema, SELECT returns rows
+    let callCount = 0
+    vi.mocked(client.snowflakeFetch).mockImplementation(async (connectionId, orgId, sql) => {
+      callCount++
+      if (callCount === 1) {
+        // DESCRIBE TABLE
+        return {
+          resultSetMetaData: {
+            rowType: [{ name: 'NAME' }, { name: 'TYPE' }]
+          },
+          data: [
+            ['ID', 'NUMBER'],
+            ['NAME', 'VARCHAR']
+          ]
+        }
+      }
+      // SELECT (sample rows)
+      return {
+        resultSetMetaData: {
+          rowType: [{ name: 'ID' }, { name: 'NAME' }]
+        },
+        data: [
+          ['1', 'Alice'],
+          ['2', 'Bob']
         ]
-      },
-      data: [
-        ['1', 'Alice'],
-        ['2', 'Bob']
-      ]
-    }))
+      }
+    })
 
     const chunks = await fetchSnowflakeSamples('conn-123', 'org-123')
 

@@ -176,10 +176,13 @@ describe("indexDocument", () => {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
           // dedup query
-          return {
+          const chain: any = {
             select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            eq: vi.fn().mockReturnThis(),
           };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return mockEmbeddingsTable;
       }
@@ -226,13 +229,13 @@ describe("indexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return {
+          const chain: any = {
             select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockResolvedValue({
-              data: [{ content_hash: existingHash }],
-              error: null,
-            }),
+            eq: vi.fn().mockReturnThis(),
           };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [{ content_hash: existingHash }], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [{ content_hash: existingHash }], error: null }).catch(rej);
+          return chain;
         }
         return {
           select: vi.fn().mockReturnThis(),
@@ -289,10 +292,13 @@ describe("indexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return {
+          const chain: any = {
             select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            eq: vi.fn().mockReturnThis(),
           };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return {
           upsert: vi.fn().mockResolvedValue({ error: null }),
@@ -323,7 +329,13 @@ describe("indexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: [], error: null }) };
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+          };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return { upsert: vi.fn().mockResolvedValue({ error: null }) };
       }
@@ -346,10 +358,13 @@ describe("indexDocument", () => {
     mockChunk.mockReturnValue(makeChunks(["chunk A"]));
     mockFrom.mockImplementation((table: string) => {
       if (table === "document_embeddings") {
-        return {
+        const chain: any = {
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({ data: null, error: { message: "timeout" } }),
+          eq: vi.fn().mockReturnThis(),
         };
+        chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: null, error: { message: "timeout" } }).then(resolve, reject);
+        chain.catch = (rej: any) => Promise.resolve({ data: null, error: { message: "timeout" } }).catch(rej);
+        return chain;
       }
       return {};
     });
@@ -366,7 +381,13 @@ describe("indexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: [], error: null }) };
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+          };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return { upsert: vi.fn().mockResolvedValue({ error: { message: "constraint violation" } }) };
       }
@@ -388,7 +409,13 @@ describe("indexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: [], error: null }) };
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+          };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return { upsert: vi.fn().mockResolvedValue({ error: null }) };
       }
@@ -409,10 +436,13 @@ describe("indexDocument", () => {
     mockChunk.mockReturnValue(makeChunks(["chunk A"]));
     mockFrom.mockImplementation((table: string) => {
       if (table === "document_embeddings") {
-        return {
+        const chain: any = {
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({ data: null, error: { message: "timeout" } }),
+          eq: vi.fn().mockReturnThis(),
         };
+        chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: null, error: { message: "timeout" } }).then(resolve, reject);
+        chain.catch = (rej: any) => Promise.resolve({ data: null, error: { message: "timeout" } }).catch(rej);
+        return chain;
       }
       return {};
     });
@@ -468,7 +498,13 @@ describe("reindexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: [], error: null }) };
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+          };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return { upsert: vi.fn().mockResolvedValue({ error: null }) };
       }
@@ -492,7 +528,13 @@ describe("reindexDocument", () => {
       if (table === "document_embeddings") {
         embeddingsCallCount++;
         if (embeddingsCallCount === 1) {
-          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockResolvedValue({ data: [], error: null }) };
+          const chain: any = {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+          };
+          chain.then = (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject);
+          chain.catch = (rej: any) => Promise.resolve({ data: [], error: null }).catch(rej);
+          return chain;
         }
         return { upsert: vi.fn().mockResolvedValue({ error: null }) };
       }

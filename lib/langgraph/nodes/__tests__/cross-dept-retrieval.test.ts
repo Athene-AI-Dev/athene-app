@@ -9,14 +9,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ─────────────────────────────────────────────────
 
-const mockToolNodeInvoke = vi.fn();
-const mockSupabaseInsert = vi.fn();
-const mockSupabaseFrom = vi.fn();
+// vi.hoisted ensures these are available inside vi.mock factories (which are hoisted
+// before const/let declarations in the module body)
+const { mockToolNodeInvoke, mockSupabaseInsert, mockSupabaseFrom } = vi.hoisted(() => ({
+  mockToolNodeInvoke: vi.fn(),
+  mockSupabaseInsert: vi.fn(),
+  mockSupabaseFrom: vi.fn(),
+}));
 
 vi.mock("@langchain/langgraph/prebuilt", () => ({
-  ToolNode: vi.fn().mockImplementation(() => ({
-    invoke: (...args: unknown[]) => mockToolNodeInvoke(...args),
-  })),
+  // Must use a regular function (not arrow) so `new ToolNode()` works correctly —
+  // arrow functions cannot be used as constructors.
+  ToolNode: vi.fn().mockImplementation(function(this: any) {
+    this.invoke = (...args: unknown[]) => mockToolNodeInvoke(...args);
+  }),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({

@@ -138,7 +138,7 @@ describe("fetchPowerBIContent", () => {
       .mockResolvedValueOnce({ value: [] })        // datasets
       .mockResolvedValueOnce({ value: [] });        // dashboards
 
-    const result = await fetchPowerBIContent("conn-1", "org-1");
+    const result = await fetchPowerBIContent("conn-1", "org-1", { excludedResources: ["r-1"] } as any);
 
     expect(result.find((c) => c.chunk_id === "powerbi_report_r-1")).toBeUndefined();
   });

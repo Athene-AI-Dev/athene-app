@@ -8,9 +8,9 @@ import {
 import type { ProviderKey } from '@/lib/integrations/providers'
 
 describe('Provider Registry', () => {
-  it('contains all 19 providers', () => {
+  it('contains all 26 providers', () => {
     const keys = Object.keys(PROVIDER_REGISTRY)
-    expect(keys).toHaveLength(19)
+    expect(keys).toHaveLength(26)
   })
 
   it('every provider has required fields', () => {
@@ -54,7 +54,7 @@ describe('Provider Registry', () => {
 
   it('getAllProviders returns array of all providers', () => {
     const all = getAllProviders()
-    expect(all.length).toBe(17) // Umbrella ones are hidden, so 19 - 2 = 17
+    expect(all.length).toBe(24) // Umbrella ones are hidden, so 26 - 2 = 24
     const github = all.find(p => p.key === 'github')
     expect(github).toBeDefined()
   })
@@ -62,6 +62,6 @@ describe('Provider Registry', () => {
   it('ProviderKey type covers all registry keys', () => {
     // Compile-time check: these should all be valid ProviderKey values
     const keys: ProviderKey[] = Object.keys(PROVIDER_REGISTRY) as ProviderKey[]
-    expect(keys).toHaveLength(19)
+    expect(keys).toHaveLength(26)
   })
 })

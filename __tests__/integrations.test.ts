@@ -146,11 +146,11 @@ describe('Integrations Fetchers', () => {
 
       expect(chunks).toHaveLength(1);
       expect(chunks[0]).toMatchObject({
-        chunk_id: 'sha-blob-1',
-        title: 'Home.md',
+        chunk_id: 'gh_wiki_sha-blob-1_0_0',
+        title: 'Home',
         source_url: 'https://github.com/test_owner/test_repo/blob/main/Home.md',
-        metadata: { 
-          provider: 'github', 
+        metadata: {
+          provider: 'github',
           resource_type: 'markdown_file',
           path: 'Home.md'
         },
@@ -228,7 +228,7 @@ describe('Integrations Fetchers', () => {
       expect(chunks[0]).toMatchObject({
         chunk_id: 'cycle-1',
         title: 'Sprint 5',
-        source_url: '',
+        source_url: 'https://linear.app/cycle/cycle-1',
         metadata: {
           provider: 'linear',
           resource_type: 'cycle',

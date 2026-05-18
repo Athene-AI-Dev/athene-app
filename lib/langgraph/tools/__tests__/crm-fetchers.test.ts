@@ -136,13 +136,13 @@ beforeEach(() => {
     fetchCalls.push({ url, headers })
 
     // Salesforce routing
-    if (url.includes('/services/data/v59.0/query?q=') && url.includes('Account')) {
+    if (url.includes('/services/data/v59.0/query?q=') && url.includes('FROM%20Account')) {
       return new Response(JSON.stringify(SF_ACCOUNTS_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
-    if (url.includes('/services/data/v59.0/query?q=') && url.includes('Opportunity')) {
+    if (url.includes('/services/data/v59.0/query?q=') && url.includes('FROM%20Opportunity')) {
       return new Response(JSON.stringify(SF_OPPORTUNITIES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
-    if (url.includes('/services/data/v59.0/query?q=') && url.includes('Case')) {
+    if (url.includes('/services/data/v59.0/query?q=') && url.includes('FROM%20Case')) {
       return new Response(JSON.stringify(SF_CASES_RESPONSE), { status: 200, headers: { 'content-type': 'application/json' } })
     }
 
@@ -303,7 +303,7 @@ describe('HubSpot fetchers (mocked)', () => {
     assertChunkShape(chunks[0])
     expect(chunks[0].chunk_id).toBe('hs-deal-301')
     expect(chunks[0].title).toBe('Enterprise License')
-    expect(chunks[0].content).toContain('Amount: $50000')
+    expect(chunks[0].content).toContain('Amount: $50,000')
   })
 
   it('fetches Notes with correct FetchedChunk shape', async () => {

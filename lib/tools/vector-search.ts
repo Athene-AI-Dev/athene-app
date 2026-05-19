@@ -1,6 +1,7 @@
 import { withRLS, type RLSContext } from "../supabase/rls-client";
 import { embed } from "../ai/embedder";
 import { withVectorSearchSpan } from "../telemetry/spans";
+import { logger } from "@/lib/logger";
 
 type UserRoleValue = "member" | "super_user" | "admin";
 
@@ -41,7 +42,17 @@ export async function vectorSearch({
         p_limit: topK,
       });
 
-      if (error) throw new Error(`[vector-search] ${error.message}`);
+      if (error) {
+        logger.error({ error: error.message, orgId, userId, departmentId }, "[vector-search] RPC error");
+        throw new Error(`[vector-search] ${error.message}`);
+      }
+      
+      if (!data || data.length === 0) {
+        logger.warn({ orgId, userId, departmentId, user_role, topK }, "[vector-search] Returned 0 results for query");
+      } else {
+        logger.info({ orgId, resultsCount: data.length }, "[vector-search] Retrieved chunks successfully");
+      }
+      
       return data ?? [];
     });
     span.setAttribute("vector.results_count", result.length);

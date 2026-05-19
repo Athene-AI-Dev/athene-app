@@ -304,9 +304,16 @@ export async function POST(request: Request): Promise<Response> {
 
     // Reset connection status so the admin UI reflects final state
     try {
+      const updateFields: Record<string, unknown> = {
+        status: workerErr ? 'error' : 'active',
+      };
+      if (!workerErr) {
+        // Stamp last_synced_at so the UI and usage stats can show when data was last pulled
+        updateFields.last_synced_at = new Date().toISOString();
+      }
       await supabaseAdmin
         .from('connections')
-        .update({ status: workerErr ? 'error' : 'active' })
+        .update(updateFields)
         .eq('id', connectionId)
     } catch { /* best-effort */ }
   }

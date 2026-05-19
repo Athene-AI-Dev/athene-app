@@ -189,7 +189,7 @@ async function processDocument(
         document_id: docId,
         department_id: doc.department_id ?? undefined,
         visibility: (doc.visibility ?? 'department') as any,
-        metadata: row.metadata ?? {},
+        metadata: { ...(row.metadata ?? {}), source_type: doc.source_type },
       }
     })
     .filter((c): c is NonNullable<typeof c> => c !== null)

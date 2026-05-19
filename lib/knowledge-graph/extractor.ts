@@ -236,7 +236,10 @@ function normalizeExtraction(
       if (typeof tm.outcome === "string") temporal.outcome = tm.outcome;
       if (typeof tm.confidence_of_date === "number")
         temporal.confidence_of_date = tm.confidence_of_date;
-      if (Object.keys(temporal).length > 0) node.temporal_metadata = temporal;
+      if (Object.keys(temporal).length > 0) {
+        node.metadata = node.metadata || {};
+        node.metadata.temporal_metadata = temporal;
+      }
     }
 
     nodes.push(node);

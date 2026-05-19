@@ -31,7 +31,7 @@ import Link from 'next/link';
 interface UsageStats {
   docs: { total: number };
   connections: { total: number; by_status: { active: number; syncing: number; error: number } };
-  queries: { total_messages: number; active_threads_7d: number };
+  queries: { total_messages: number; messages_7d: number; active_threads_7d: number };
   briefings: { this_month: number };
 }
 
@@ -378,7 +378,7 @@ export default function BriefingPage() {
             {
               icon: <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />,
               label: 'Messages This Week',
-              value: stats.queries.total_messages.toLocaleString(),
+              value: (stats.queries.messages_7d ?? 0).toLocaleString(),
               sub: `${stats.queries.active_threads_7d} active threads`,
             },
             {

@@ -121,12 +121,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to resolve organization or user." }, { status: 500 });
     }
 
+    const { data: existingThread } = await supabaseAdmin
+      .from("threads")
+      .select("message_count")
+      .eq("id", effectiveThreadId)
+      .maybeSingle();
+
+    const newMessageCount = (existingThread?.message_count || 0) + 1;
+
     const { error: threadError } = await supabaseAdmin
       .from("threads")
       .upsert({
         id: effectiveThreadId,
         org_id: orgRow.id,
         user_id: memberRow.id,
+        message_count: newMessageCount,
+        last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 

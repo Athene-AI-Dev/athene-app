@@ -33,11 +33,12 @@ export async function GET() {
       .eq('org_id', internalOrgId)
       .order('created_at', { ascending: false }),
 
-    // Thread + message stats
+    // Thread + message stats (all threads — we filter by date in JS)
     supabaseAdmin
       .from('threads')
       .select('id, message_count, created_at, last_message_at')
-      .eq('org_id', internalOrgId),
+      .eq('org_id', internalOrgId)
+      .order('last_message_at', { ascending: false }),
 
     // Briefings count this month
     supabaseAdmin
@@ -85,10 +86,13 @@ export async function GET() {
   const threads = threadsRes.data ?? [];
   const totalThreads = threads.length;
   const totalMessages = threads.reduce((sum, t) => sum + (t.message_count ?? 0), 0);
+  const sevenDaysAgo = Date.now() - 7 * 86400_000;
   const activeThreads = threads.filter((t) => {
     if (!t.last_message_at) return false;
-    return Date.now() - new Date(t.last_message_at).getTime() < 7 * 86400_000;
-  }).length;
+    return new Date(t.last_message_at).getTime() > sevenDaysAgo;
+  });
+  const messagesThisWeek = activeThreads.reduce((sum, t) => sum + (t.message_count ?? 0), 0);
+  const activeThreadsCount = activeThreads.length;
 
   // HITL breakdown
   const hitlDecisions = hitlRes.data ?? [];
@@ -112,7 +116,8 @@ export async function GET() {
     queries: {
       total_threads: totalThreads,
       total_messages: totalMessages,
-      active_threads_7d: activeThreads,
+      messages_7d: messagesThisWeek,
+      active_threads_7d: activeThreadsCount,
     },
     briefings: {
       this_month: briefingsRes.data?.length ?? 0,

@@ -53,6 +53,20 @@ export async function GET() {
     const docAny = doc as any
     const status = docAny.last_indexed_at ? 'Indexed' : 'Indexing'
 
+    const nameLower = (doc.title ?? '').toLowerCase()
+    let layer = meta.layer
+    if (!layer) {
+      if (nameLower.includes('invoice') || nameLower.includes('financial') || nameLower.includes('tax') || ext === 'XLSX' || ext === 'CSV') {
+        layer = 'Financial Records'
+      } else if (nameLower.includes('contract') || nameLower.includes('legal') || nameLower.includes('nda') || nameLower.includes('agreement')) {
+        layer = 'Legal Discovery'
+      } else if (nameLower.includes('audit') || nameLower.includes('log')) {
+        layer = 'Audit Logs'
+      } else {
+        layer = 'Internal Wiki'
+      }
+    }
+
     return {
       id: doc.id,
       name: doc.title ?? 'Untitled',
@@ -61,7 +75,7 @@ export async function GET() {
       date,
       status,
       risk: 'Low',
-      layer: 'Internal Wiki',
+      layer,
       storagePath: doc.external_id ?? undefined,
     }
   })

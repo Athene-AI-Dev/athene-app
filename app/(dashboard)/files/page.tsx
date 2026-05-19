@@ -91,6 +91,16 @@ export default function FilesPage() {
       const sizeMB = file.size / (1024 * 1024);
       const sizeStr = sizeMB >= 1 ? `${sizeMB.toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
 
+      const nameLower = file.name.toLowerCase();
+      let layer = 'Internal Wiki' as IntelligenceLayer;
+      if (nameLower.includes('invoice') || nameLower.includes('financial') || nameLower.includes('tax') || ext === 'XLSX' || ext === 'CSV') {
+        layer = 'Financial Records';
+      } else if (nameLower.includes('contract') || nameLower.includes('legal') || nameLower.includes('nda') || nameLower.includes('agreement')) {
+        layer = 'Legal Discovery';
+      } else if (nameLower.includes('audit') || nameLower.includes('log')) {
+        layer = 'Audit Logs';
+      }
+
       const placeholder = {
         name: file.name,
         type: ext,
@@ -98,7 +108,7 @@ export default function FilesPage() {
         date: "Just now",
         status: "Uploading" as string,
         risk: "Low" as string,
-        layer: "Internal Wiki" as IntelligenceLayer,
+        layer,
       };
       setFiles((prev) => [placeholder, ...prev]);
 
@@ -114,7 +124,7 @@ export default function FilesPage() {
         setFiles((prev) =>
           prev.map((f) =>
             f.name === file.name && f.status === "Uploading"
-              ? { ...f, ...data, status: "Indexing", layer: "Internal Wiki" as const }
+              ? { ...f, ...data, status: "Indexing" }
               : f
           )
         );
@@ -400,6 +410,16 @@ export default function FilesPage() {
                           <TableCell />
                         </TableRow>
                       ))
+                    ) : filteredFiles.length === 0 ? (
+                      <TableRow className="border-white/5">
+                        <TableCell colSpan={5} className="py-24 text-center">
+                          <div className="flex flex-col items-center justify-center space-y-3">
+                            <Search className="w-10 h-10 text-slate-600" />
+                            <p className="text-[14px] font-bold text-white">No results found</p>
+                            <p className="text-[12px] font-medium text-slate-500">We couldn't find any files matching your search.</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       // Fix #8: use file.id ?? file.name as key (not array index)
                       filteredFiles.map((file) => (

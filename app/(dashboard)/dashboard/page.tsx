@@ -220,9 +220,18 @@ export default function DashboardPage() {
                   <div key={i} className="h-20 rounded-[2rem] bg-muted/20 animate-pulse border border-border" />
                 ))
               ) : orchestrations.length === 0 ? (
-                <div className="py-12 text-center bg-muted/5 rounded-[2rem] border border-dashed border-border">
-                  <p className="text-sm text-muted-foreground font-bold">No agent decisions yet.</p>
-                  <p className="text-xs text-muted-foreground/60 mt-2">HITL approvals and rejections will appear here.</p>
+                <div className="py-8 text-center bg-muted/5 rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 mb-3 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <Activity className="w-6 h-6 text-primary" />
+                  </div>
+                  <p className="text-sm text-foreground font-bold">No agent decisions yet.</p>
+                  <p className="text-xs text-muted-foreground mt-1 mb-4">HITL approvals and rejections will appear here once an agent runs.</p>
+                  <Button 
+                    onClick={() => router.push('/chat')} 
+                    className="h-9 px-5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all shadow-sm"
+                  >
+                    Deploy Your First Agent
+                  </Button>
                 </div>
               ) : (
                 orchestrations.map((item, i) => (

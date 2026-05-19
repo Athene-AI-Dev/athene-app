@@ -21,7 +21,6 @@ export default async function AdminLayout({
   // Step 4: Role-guard admin pages
   // Check resolveUserAccess().role === 'admin'
   if (userAccess.role !== "admin") {
-    // Show "Access Denied" if user tries to load a server component directly
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in zoom-in duration-500">
         <div className="relative">
@@ -29,17 +28,23 @@ export default async function AdminLayout({
           <ShieldAlert className="h-16 w-16 text-red-500 relative" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-            Access Denied
+          <h1 className="text-3xl font-bold tracking-tight">
+            Admin Access Required
           </h1>
-          <p className="text-slate-500 max-w-md mx-auto">
-            You do not have the necessary permissions to access the administration area. Please contact your organization administrator if you believe this is an error.
+          <p className="text-muted-foreground max-w-md mx-auto">
+            This area is restricted to organization administrators. Contact your admin to request elevated access.
           </p>
         </div>
-        {/* Redirect to /chat if not admin (via button click) */}
-        <Button asChild variant="outline" className="mt-4 border-purple-500/20 hover:bg-purple-500/5">
-          <Link href="/briefing">Return to Dashboard</Link>
-        </Button>
+        <div className="flex items-center gap-3 flex-wrap justify-center">
+          <Button asChild variant="outline" className="border-border hover:bg-muted/50">
+            <Link href="/briefing">Return to Dashboard</Link>
+          </Button>
+          <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
+            <a href="mailto:?subject=Admin%20Access%20Request&body=Hi%2C%20I%20would%20like%20to%20request%20admin%20access%20to%20the%20Athene%20AI%20administration%20area.">
+              Request Admin Access
+            </a>
+          </Button>
+        </div>
       </div>
     );
   }

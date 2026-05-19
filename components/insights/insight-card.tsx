@@ -107,17 +107,17 @@ export function InsightCard({ insight, currentMemberId, isAdmin, isConfirmingDel
       <div className="flex-1 space-y-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">Answer</span>
         <p className="text-sm font-medium text-foreground/80 leading-relaxed">
-          {insight.result.answer}
+          {insight.result?.answer ?? "No answer generated yet."}
         </p>
 
         {/* ATH-53: Clickable citations list */}
-        {showCitations && insight.result.citations.length > 0 && (
+        {showCitations && (insight.result?.citations ?? []).length > 0 && (
           <div className="mt-4 p-4 rounded-2xl bg-accent/5 border border-white/5 space-y-3 animate-in slide-in-from-top-2 duration-300">
             <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/40 flex items-center gap-2">
               <Quote className="w-3 h-3" /> Sources
             </span>
             <ul className="space-y-2">
-              {insight.result.citations.map((c, i) => (
+              {(insight.result?.citations ?? []).map((c, i) => (
                 <li key={i} className="text-xs font-medium">
                   {c.url ? (
                     <a 
@@ -150,12 +150,12 @@ export function InsightCard({ insight, currentMemberId, isAdmin, isConfirmingDel
           <Clock className="w-3 h-3" />
           <span>{timeAgo(insight.refreshed_at)}</span>
         </div>
-        {insight.result.citations.length > 0 && (
+        {(insight.result?.citations ?? []).length > 0 && (
           <button 
             onClick={() => setShowCitations(!showCitations)}
             className="rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-[#7AADCF]/10 text-[#7AADCF] border border-[#7AADCF]/20 hover:bg-[#7AADCF]/20 transition-colors"
           >
-            {insight.result.citations.length} sources
+            {(insight.result?.citations ?? []).length} sources
           </button>
         )}
       </div>

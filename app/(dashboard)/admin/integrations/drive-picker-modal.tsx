@@ -15,6 +15,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 interface DriveFile {
   id: string;
@@ -50,6 +58,33 @@ export function DrivePickerModal({ open, connectionId, onClose, onSuccess }: Dri
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const [excludedMimeTypes, setExcludedMimeTypes] = useState<string[]>([]);
+
+  // Fetch departments on open
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/admin/departments").then(res => res.json()).then(data => {
+      setDepartments(data.departments ?? []);
+    }).catch(console.error);
+  }, [open]);
+
+  const MIME_OPTIONS = [
+    { label: "PDF Documents", value: "application/pdf" },
+    { label: "Word (DOCX)", value: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    { label: "Google Docs", value: "application/vnd.google-apps.document" },
+    { label: "Google Sheets", value: "application/vnd.google-apps.spreadsheet" },
+    { label: "Google Slides", value: "application/vnd.google-apps.presentation" },
+    { label: "Images & Video", value: "application/vnd.google-apps.photo" },
+  ];
+
+  const toggleMimeType = (mimeType: string) => {
+    setExcludedMimeTypes((prev) => 
+      prev.includes(mimeType) ? prev.filter(m => m !== mimeType) : [...prev, mimeType]
+    );
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -99,6 +134,8 @@ export function DrivePickerModal({ open, connectionId, onClose, onSuccess }: Dri
       setSearch("");
       setDebouncedSearch("");
       setError(null);
+      setDepartmentId(null);
+      setExcludedMimeTypes([]);
     }
   }, [open]);
 
@@ -136,6 +173,8 @@ export function DrivePickerModal({ open, connectionId, onClose, onSuccess }: Dri
         body: JSON.stringify({
           provider: "google_drive",
           selectedFolderIds: Array.from(selectedFolderIds),
+          departmentId,
+          excludedMimeTypes,
         }),
       });
       if (!res.ok) {
@@ -223,6 +262,44 @@ export function DrivePickerModal({ open, connectionId, onClose, onSuccess }: Dri
             )}
           </div>
         </div>
+
+        {/* Configuration Section (Department & MIME Exclusions) */}
+        {!isSearching && (
+          <div className="px-8 py-4 border-b border-white/5 flex flex-col sm:flex-row gap-6 bg-muted/5">
+             <div className="flex-1 space-y-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Department Access</label>
+                <Select value={departmentId || "none"} onValueChange={(val) => setDepartmentId(val === "none" ? null : val)}>
+                  <SelectTrigger className="w-full bg-white/5 border-white/10 rounded-xl">
+                    <SelectValue placeholder="Map to department..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No specific department (Org-wide)</SelectItem>
+                    {departments.map(dept => (
+                      <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+             </div>
+             <div className="flex-[2] space-y-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Exclude File Types</label>
+                <div className="flex flex-wrap gap-2">
+                   {MIME_OPTIONS.map(opt => {
+                     const isExcluded = excludedMimeTypes.includes(opt.value);
+                     return (
+                       <Badge 
+                         key={opt.value}
+                         variant="outline"
+                         className={`cursor-pointer transition-colors ${isExcluded ? 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20' : 'bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10'}`}
+                         onClick={() => toggleMimeType(opt.value)}
+                       >
+                         {opt.label}
+                       </Badge>
+                     );
+                   })}
+                </div>
+             </div>
+          </div>
+        )}
 
         {/* File List */}
         <ScrollArea className="flex-1 min-h-0">

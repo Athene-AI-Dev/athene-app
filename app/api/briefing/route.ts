@@ -3,6 +3,8 @@ import { getContextFromHeaders, withRLS } from '@/lib/supabase/rls-client';
 import { qstash } from '@/lib/qstash/client';
 import { getServerBaseUrl } from '@/lib/url/server-base-url';
 import { logger } from '@/lib/logger';
+import { resolveModelClient } from '@/lib/langgraph/llm-factory';
+import { supabaseAdmin } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +74,63 @@ export async function POST(request: Request) {
 
   if (!context) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // ── Pre-check sufficient data (BUG-17) ──────────────────────
+  try {
+    const { data: threadsData } = await supabaseAdmin
+      .from('threads')
+      .select('message_count')
+      .eq('org_id', context.org_id);
+    
+    const totalMessages = threadsData?.reduce((sum, t) => sum + (t.message_count || 0), 0) ?? 0;
+
+    const { count: docCount } = await supabaseAdmin
+      .from('documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', context.org_id);
+
+    const { count: activeConnCount } = await supabaseAdmin
+      .from('connections')
+      .select('*', { count: 'exact', head: true })
+      .eq('org_id', context.org_id)
+      .eq('status', 'active');
+
+    const MESSAGE_THRESHOLD = 5;
+    const DOC_THRESHOLD = 3;
+    const docCountNum = docCount ?? 0;
+    const connCountNum = activeConnCount ?? 0;
+
+    // Briefing data is empty/insufficient if there are no active connections and documents are minimal
+    const briefingDataIsEmpty = connCountNum === 0 && docCountNum < DOC_THRESHOLD;
+
+    if (totalMessages < MESSAGE_THRESHOLD || briefingDataIsEmpty) {
+      return NextResponse.json({
+        error: 'Not enough data to generate a briefing — connect more sources first.'
+      }, { status: 400 });
+    }
+  } catch (err: any) {
+    logger.error({ err: err?.message, org_id: context.org_id }, '[briefing] Pre-synthesis data check failed');
+  }
+
+  // ── Pre-check LLM Key & API availability ────────────────────
+  try {
+    const llm = await resolveModelClient('simple', context.org_id);
+    const testCall = async () => {
+      await llm.invoke('test connection');
+    };
+
+    // 6-second timeout safeguard to fail fast
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('LLM connection timed out')), 6000)
+    );
+
+    await Promise.race([testCall(), timeoutPromise]);
+  } catch (err: any) {
+    logger.error({ err: err?.message, org_id: context.org_id }, '[briefing] LLM pre-check validation failed');
+    return NextResponse.json({
+      error: 'Synthesis halted: LLM API key is invalid or unreachable. Please check your billing or add a BYOK key in Admin → Keys.'
+    }, { status: 400 });
   }
 
   const workerUrl = `${getServerBaseUrl()}/api/worker/morning-briefing`;

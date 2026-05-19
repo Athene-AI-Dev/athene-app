@@ -29,6 +29,7 @@ import {
   Send,
   ShieldCheck,
   User,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HitlModal } from "@/components/chat/hitl-modal";
@@ -43,6 +44,7 @@ interface Message {
   cited_sources?: any[];
   isAnalytical?: boolean;
   awaiting_approval?: boolean;
+  isQuotaError?: boolean;
 }
 
 interface ThreadSummary {
@@ -188,12 +190,23 @@ export default function ChatPage() {
               const payload = JSON.parse(line.slice(6));
 
               if (payload.error) {
-                // Server-side error frame — show in bubble with distinct styling
                 const errMsg = payload.content || "An error occurred. Please try again.";
+                const isQuota = /quota exceeded|quota|rate_limit|billing|BYOK/i.test(errMsg);
+
+                if (isQuota) {
+                  toast.error("LLM Quota Exceeded. Please configure a BYOK key in Admin -> Keys.", {
+                    action: {
+                      label: "Admin Keys",
+                      onClick: () => window.location.href = "/admin/keys"
+                    },
+                    duration: 10000
+                  });
+                }
+
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
-                      ? { ...m, content: `⚠ ${errMsg}` }
+                      ? { ...m, content: errMsg, isQuotaError: isQuota }
                       : m
                   )
                 );
@@ -399,24 +412,53 @@ export default function ChatPage() {
                           ? "bg-card/50 border border-border text-foreground backdrop-blur-xl" 
                           : "bg-gradient-to-r from-primary to-secondary text-primary-foreground border-none"
                       )}>
-                        {msg.isAnalytical && msg.role === "assistant" && (
-                            <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.3em] font-black text-primary mb-6 border-b border-border/50 pb-4 w-fit">
-                                <Database className="w-4 h-4" />
-                                Business Intelligence Synthesis
+                        {msg.isQuotaError ? (
+                          <div className="space-y-6">
+                            <div className="flex items-start gap-4">
+                              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl shrink-0">
+                                <AlertCircle className="w-6 h-6 animate-pulse" />
+                              </div>
+                              <div className="space-y-1">
+                                <h4 className="text-sm font-black uppercase tracking-widest text-amber-500">
+                                  LLM Quota Exceeded
+                                </h4>
+                                <p className="text-xs text-muted-foreground/80 font-bold leading-relaxed">
+                                  {msg.content}
+                                </p>
+                              </div>
                             </div>
-                        )}
-                        <div className="whitespace-pre-wrap tracking-tight">
-                            {msg.content || (
-                            <div className="flex items-center gap-5 py-3">
-                                <div className="flex gap-1">
-                                  <div className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
-                                  <div className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
-                                  <div className="w-2 h-2 rounded-full bg-primary animate-bounce" />
+                            <div className="flex flex-wrap gap-3 pt-4 border-t border-border/50">
+                              <Button
+                                onClick={() => window.location.href = "/admin/keys"}
+                                className="h-10 px-5 bg-amber-500 text-black hover:bg-amber-400 font-black uppercase tracking-widest text-[10px] rounded-xl flex items-center gap-2 shadow-lg shadow-amber-500/10 border-none"
+                              >
+                                Configure BYOK Keys
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {msg.isAnalytical && msg.role === "assistant" && (
+                                <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.3em] font-black text-primary mb-6 border-b border-border/50 pb-4 w-fit">
+                                    <Database className="w-4 h-4" />
+                                    Business Intelligence Synthesis
                                 </div>
-                                <span className="text-muted-foreground/40 text-[11px] font-black uppercase tracking-[0.3em]">Synthesizing Reality...</span>
-                            </div>
                             )}
-                        </div>
+                            <div className="whitespace-pre-wrap tracking-tight">
+                                {msg.content || (
+                                <div className="flex items-center gap-5 py-3">
+                                    <div className="flex gap-1">
+                                      <div className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
+                                      <div className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
+                                      <div className="w-2 h-2 rounded-full bg-primary animate-bounce" />
+                                    </div>
+                                    <span className="text-muted-foreground/40 text-[11px] font-black uppercase tracking-[0.3em]">Synthesizing Reality...</span>
+                                </div>
+                                )}
+                            </div>
+                          </>
+                        )}
                         
                         {msg.cited_sources && msg.cited_sources.length > 0 && (
                           <div className="mt-10 flex flex-wrap gap-3 pt-8 border-t border-border/50">

@@ -25,6 +25,18 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock("@/lib/supabase/server", () => ({
+  supabaseAdmin: {
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({ data: { department_id: "dept-1" } }),
+        }),
+      }),
+    }),
+  },
+}));
+
 import { fetchPowerBIContent } from "../reports-fetcher";
 
 const workspace = { id: "ws-1", name: "Sales Workspace" };
@@ -57,7 +69,7 @@ describe("fetchPowerBIContent", () => {
 
     const result = await fetchPowerBIContent("conn-1", "org-1");
 
-    const reportChunk = result.find((c) => c.chunk_id === "powerbi_report_r-1");
+    const reportChunk = result.find((c) => c.chunk_id === "powerbi_report_r-1_ws_ws-1");
     expect(reportChunk).toBeDefined();
     expect(reportChunk?.title).toBe("Power BI Report: Q1 Report");
     expect(reportChunk?.content).toContain("Pages: Page One");
@@ -80,7 +92,7 @@ describe("fetchPowerBIContent", () => {
 
     const result = await fetchPowerBIContent("conn-1", "org-1");
 
-    const dsChunk = result.find((c) => c.chunk_id === "powerbi_dataset_ds-1");
+    const dsChunk = result.find((c) => c.chunk_id === "powerbi_dataset_ds-1_ws_ws-1");
     expect(dsChunk?.content).toContain("Table orders: id (Int64), amount (Decimal)");
     expect(dsChunk?.metadata?.resource_type).toBe("dataset");
   });
@@ -113,7 +125,7 @@ describe("fetchPowerBIContent", () => {
 
     const result = await fetchPowerBIContent("conn-1", "org-1");
 
-    const dashChunk = result.find((c) => c.chunk_id === "powerbi_dashboard_d-1");
+    const dashChunk = result.find((c) => c.chunk_id === "powerbi_dashboard_d-1_ws_ws-1");
     expect(dashChunk?.title).toBe("Power BI Dashboard: Sales Dashboard");
     expect(dashChunk?.metadata?.resource_type).toBe("dashboard");
   });

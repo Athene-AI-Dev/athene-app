@@ -20,10 +20,13 @@ import {
   Zap,
   MessageSquare,
   FileText,
+  AlertCircle,
+  Plug,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
+import Link from 'next/link';
 
 interface UsageStats {
   docs: { total: number };
@@ -63,6 +66,7 @@ export default function BriefingPage() {
   const [pollingTimedOut, setPollingTimedOut] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [insufficientData, setInsufficientData] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Clean up polling on unmount
@@ -79,6 +83,9 @@ export default function BriefingPage() {
       const data = await res.json();
       const result = data && !data.error ? (data as Briefing) : null;
       setBriefing(result);
+      if (result) {
+        setInsufficientData(false);
+      }
       return result;
     } catch (err) {
       console.error('[briefing] fetch today failed:', err);
@@ -158,7 +165,12 @@ export default function BriefingPage() {
       const res = await fetchWithTimeout('/api/briefing', { method: 'POST', timeout: 30000 });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        toast.error((data as any).error || `Failed to trigger synthesis (${res.status})`);
+        const errMsg = (data as any).error || `Failed to trigger synthesis (${res.status})`;
+        toast.error(errMsg);
+        if (res.status === 400 && errMsg.includes('Not enough data')) {
+          setInsufficientData(true);
+        }
+        setEnqueuing(false);
         return;
       }
 
@@ -397,36 +409,59 @@ export default function BriefingPage() {
       )}
 
       {!briefing ? (
-        <Card className="p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-12 border-dashed border-border bg-card/30 rounded-[3.5rem] group overflow-hidden relative backdrop-blur-xl shadow-2xl transition-all hover:border-primary/20">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-          <div className="h-40 w-40 bg-muted/50 rounded-[3rem] flex items-center justify-center mb-4 transition-all duration-700 group-hover:scale-110 group-hover:rotate-6 border border-border shadow-2xl relative z-10 group-hover:bg-primary/5 group-hover:border-primary/20">
-            <Sparkles className="h-20 w-20 text-primary animate-pulse" />
-          </div>
-          <div className="space-y-5 relative z-10">
-            <h3 className="text-4xl lg:text-6xl font-black tracking-tighter text-foreground leading-none uppercase">Synthesis Required</h3>
-            <p className="text-muted-foreground text-xl max-w-lg mx-auto leading-relaxed font-bold tracking-tight">
+        insufficientData ? (
+          <Card className="p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-12 border border-dashed border-amber-500/30 bg-amber-500/5 rounded-[3.5rem] group overflow-hidden relative backdrop-blur-xl shadow-2xl transition-all hover:border-amber-500/50">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5 opacity-100 transition-opacity duration-1000" />
+            <div className="h-40 w-40 bg-amber-500/10 rounded-[3rem] flex items-center justify-center mb-4 transition-all duration-700 group-hover:scale-110 group-hover:rotate-6 border border-amber-500/20 shadow-2xl relative z-10">
+              <AlertCircle className="h-20 w-20 text-amber-500 animate-pulse" />
+            </div>
+            <div className="space-y-5 relative z-10">
+              <h3 className="text-4xl lg:text-5xl font-black tracking-tighter text-amber-500 leading-none uppercase">Insufficient Data</h3>
+              <p className="text-muted-foreground text-xl max-w-lg mx-auto leading-relaxed font-bold tracking-tight">
+                Not enough data to generate a briefing — connect more sources first.
+              </p>
+            </div>
+            <Link href="/admin/integrations" passHref>
+              <Button
+                size="lg"
+                className="h-20 px-16 rounded-[2.5rem] bg-amber-600 hover:bg-amber-500 text-white font-black uppercase tracking-[0.3em] text-[11px] gap-5 group relative z-10 shadow-2xl shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plug className="w-6 h-6 group-hover:animate-bounce" /> Connect Sources
+              </Button>
+            </Link>
+          </Card>
+        ) : (
+          <Card className="p-24 flex flex-col items-center justify-center min-h-[500px] text-center space-y-12 border-dashed border-border bg-card/30 rounded-[3.5rem] group overflow-hidden relative backdrop-blur-xl shadow-2xl transition-all hover:border-primary/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+            <div className="h-40 w-40 bg-muted/50 rounded-[3rem] flex items-center justify-center mb-4 transition-all duration-700 group-hover:scale-110 group-hover:rotate-6 border border-border shadow-2xl relative z-10 group-hover:bg-primary/5 group-hover:border-primary/20">
+              <Sparkles className="h-20 w-20 text-primary animate-pulse" />
+            </div>
+            <div className="space-y-5 relative z-10">
+              <h3 className="text-4xl lg:text-6xl font-black tracking-tighter text-foreground leading-none uppercase">Synthesis Required</h3>
+              <p className="text-muted-foreground text-xl max-w-lg mx-auto leading-relaxed font-bold tracking-tight">
+                {enqueuing
+                  ? "Agents are processing your data — this page will update automatically when ready."
+                  : "No briefing for today yet. Trigger synthesis to process your connected sources."}
+              </p>
+            </div>
+            <Button
+              size="lg"
+              className="h-20 px-16 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-[0.3em] text-[11px] gap-5 group relative z-10 shadow-2xl shadow-primary/20 transition-all active:scale-95"
+              onClick={handleGenerateNow}
+              disabled={enqueuing}
+            >
               {enqueuing
-                ? "Agents are processing your data — this page will update automatically when ready."
-                : "No briefing for today yet. Trigger synthesis to process your connected sources."}
-            </p>
-          </div>
-          <Button
-            size="lg"
-            className="h-20 px-16 rounded-[2.5rem] bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-[0.3em] text-[11px] gap-5 group relative z-10 shadow-2xl shadow-primary/20 transition-all active:scale-95"
-            onClick={handleGenerateNow}
-            disabled={enqueuing}
-          >
-            {enqueuing
-              ? <><Loader2 className="w-5 h-5 animate-spin" /> Synthesizing…</>
-              : <><Sparkles className="w-6 h-6 group-hover:animate-pulse" /> Trigger Neural Synthesis</>
-            }
-          </Button>
-          {pollingTimedOut && !enqueuing && (
-            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest relative z-10 opacity-70">
-              Synthesis timed out after 90s — click above to try again
-            </p>
-          )}
-        </Card>
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Synthesizing…</>
+                : <><Sparkles className="w-6 h-6 group-hover:animate-pulse" /> Trigger Neural Synthesis</>
+              }
+            </Button>
+            {pollingTimedOut && !enqueuing && (
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest relative z-10 opacity-70">
+                Synthesis timed out after 90s — click above to try again
+              </p>
+            )}
+          </Card>
+        )
       ) : (
         <div className="grid gap-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
           <BriefingSection

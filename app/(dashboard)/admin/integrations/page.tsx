@@ -14,6 +14,8 @@ import {
 import Nango from "@nangohq/frontend";
 import { IntegrationCard, type Integration } from "./integration-card";
 import { AddIntegrationDialog } from "./add-integration-dialog";
+import { DrivePickerModal } from "./drive-picker-modal";
+import { PowerBIPickerModal } from "./powerbi-picker-modal";
 import { ProviderConfig, getProvider, PROVIDER_REGISTRY } from "@/lib/integrations/providers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -295,7 +297,25 @@ export default function IntegrationsPage() {
         connecting={connecting}
       />
 
-      {configuringSync && (
+      {configuringSync?.provider === "google_drive" && (
+        <DrivePickerModal
+          open
+          connectionId={configuringSync.connectionId}
+          onClose={() => setConfiguringSync(null)}
+          onSuccess={() => { setConfiguringSync(null); fetchIntegrations(); }}
+        />
+      )}
+
+      {configuringSync?.provider === "powerbi" && (
+        <PowerBIPickerModal
+          open
+          connectionId={configuringSync.connectionId}
+          onClose={() => setConfiguringSync(null)}
+          onSuccess={() => { setConfiguringSync(null); fetchIntegrations(); }}
+        />
+      )}
+
+      {configuringSync && configuringSync.provider !== "google_drive" && configuringSync.provider !== "powerbi" && (
         <ResourceBrowser
           connectionId={configuringSync.connectionId}
           provider={configuringSync.provider}
@@ -458,6 +478,8 @@ export default function IntegrationsPage() {
           </div>
         );
       })()}
+
+
 
       {/* Knowledge Modules — active based on connected integrations */}
       <div className="space-y-6">

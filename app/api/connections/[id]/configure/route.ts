@@ -28,14 +28,14 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const { id: connectionId } = await params;
 
-  let body: { provider?: string; selectedFolderIds?: string[]; allowlist?: string[] };
+  let body: { provider?: string; selectedFolderIds?: string[]; allowlist?: string[]; excludedMimeTypes?: string[]; departmentId?: string | null; selectedWorkspaceIds?: string[] };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { provider, selectedFolderIds, allowlist } = body;
+  const { provider, selectedFolderIds, allowlist, excludedMimeTypes, departmentId, selectedWorkspaceIds } = body;
   if (!provider) return NextResponse.json({ error: "provider is required" }, { status: 400 });
 
   // Resolve Clerk orgId → internal UUID
@@ -95,7 +95,10 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const { error: updateErr } = await supabaseAdmin
       .from("connections")
-      .update({ metadata: { ...existingMeta, selected_folder_ids: selectedFolderIds } })
+      .update({ 
+        metadata: { ...existingMeta, selected_folder_ids: selectedFolderIds, excluded_mime_types: excludedMimeTypes ?? [] },
+        department_id: departmentId ?? null
+      })
       .eq("id", connectionId);
 
     if (updateErr) {
@@ -105,6 +108,30 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const { dispatched } = await dispatchSync();
     logger.info({ connectionId, folderCount: selectedFolderIds.length, dispatched }, "[configure] Drive configured");
+    return NextResponse.json({ success: true, dispatched });
+  }
+
+  // ── Power BI ──────────────────────────────────────────────
+  if (provider === "powerbi") {
+    if (!Array.isArray(selectedWorkspaceIds) || selectedWorkspaceIds.length === 0) {
+      return NextResponse.json({ error: "selectedWorkspaceIds must be a non-empty array" }, { status: 400 });
+    }
+
+    const { error: updateErr } = await supabaseAdmin
+      .from("connections")
+      .update({ 
+        metadata: { ...existingMeta, selected_workspace_ids: selectedWorkspaceIds },
+        department_id: departmentId ?? null
+      })
+      .eq("id", connectionId);
+
+    if (updateErr) {
+      logger.error({ connectionId, err: updateErr.message }, "[configure] Failed to save Power BI selection");
+      return NextResponse.json({ error: "Failed to save selection" }, { status: 500 });
+    }
+
+    const { dispatched } = await dispatchSync();
+    logger.info({ connectionId, workspaceCount: selectedWorkspaceIds.length, dispatched }, "[configure] Power BI configured");
     return NextResponse.json({ success: true, dispatched });
   }
 

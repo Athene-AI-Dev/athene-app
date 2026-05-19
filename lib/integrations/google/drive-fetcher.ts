@@ -194,13 +194,23 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
 
 // ─── FetchedChunk Builders ──────────────────────────────────────────────────
 
-export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk {
+/**
+ * Converts a DriveFile + its extracted content into a FetchedChunk
+ * ready for the indexing pipeline (indexDocument).
+ *
+ * @param file - The DriveFile metadata from the listing.
+ * @param content - The extracted text content from fetchDriveFileContent.
+ * @param folderPath - The recursive path to show in file metadata.
+ * @returns A FetchedChunk that can be passed to indexDocument.
+ */
+export function driveFileToChunk(file: DriveFile, content: string, folderPath: string = '/'): FetchedChunk {
   const metadata: FetchedChunk['metadata'] = {
     provider: 'google',
     resource_type: 'drive_file',
     last_modified: file.modifiedTime,
     author: file.owners?.[0]?.displayName,
     mime_type: file.mimeType,
+    folder_path: folderPath,
   }
   assertSafeMetadata(metadata)
 
@@ -217,7 +227,8 @@ export function driveFileToChunk(file: DriveFile, content: string): FetchedChunk
 
 /**
  * Full indexing pipeline entry point for Drive.
- * Respects selected folders and Shared Drives from SyncConfig.
+ * Respects selected folders and Shared Drives from SyncConfig,
+ * and loads department mapping and excluded MIME types from Supabase.
  */
 export async function fetchDriveChunks(
   connectionId: string,
@@ -225,6 +236,17 @@ export async function fetchDriveChunks(
   _folderId?: string,
   syncConfig?: SyncConfig,
 ): Promise<FetchedChunk[]> {
+  // Load connection metadata from Supabase
+  const { data: conn } = await supabaseAdmin
+    .from('connections')
+    .select('metadata, department_id')
+    .eq('nango_connection_id', connectionId)
+    .maybeSingle()
+  
+  const storedMeta = (conn?.metadata as any) ?? {}
+  const departmentId = conn?.department_id as string | undefined
+  const excludedMimeTypes = storedMeta.excluded_mime_types as string[] | undefined ?? []
+
   const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
   const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
 
@@ -232,13 +254,31 @@ export async function fetchDriveChunks(
     const chunks: FetchedChunk[] = []
     for (const resourceId of selectedIds) {
       if (excludedIds.has(resourceId)) continue
-      const folderChunks = await fetchDriveFolder(connectionId, orgId, resourceId, excludedIds)
+      const folderChunks = await fetchDriveFolder(
+        connectionId,
+        orgId,
+        resourceId,
+        excludedIds,
+        excludedMimeTypes,
+        '/',
+        undefined,
+        departmentId
+      )
       chunks.push(...folderChunks)
     }
     return chunks
   }
 
-  return fetchDriveFolder(connectionId, orgId, undefined, excludedIds)
+  return fetchDriveFolder(
+    connectionId,
+    orgId,
+    undefined,
+    excludedIds,
+    excludedMimeTypes,
+    '/',
+    undefined,
+    departmentId
+  )
 }
 
 /**
@@ -249,6 +289,8 @@ async function fetchDriveFolder(
   orgId: string,
   folderId: string | undefined,
   excludedIds: Set<string>,
+  excludedMimeTypes: string[] = [],
+  folderPath: string = '/',
   driveId?: string,
   departmentId?: string,
 ): Promise<FetchedChunk[]> {
@@ -278,15 +320,27 @@ async function fetchDriveFolder(
 
     for (const file of listing.files) {
       if (excludedIds.has(file.id)) continue
+      if (excludedMimeTypes.includes(file.mimeType)) continue
+
       if (file.mimeType === GOOGLE_FOLDER_MIME) {
-        const sub = await fetchDriveFolder(connectionId, orgId, file.id, excludedIds, driveId, departmentId)
+        const nextPath = folderPath === '/' ? `/${file.name}` : `${folderPath}/${file.name}`
+        const sub = await fetchDriveFolder(
+          connectionId,
+          orgId,
+          file.id,
+          excludedIds,
+          excludedMimeTypes,
+          nextPath,
+          driveId,
+          departmentId
+        )
         chunks.push(...sub)
         continue
       }
       try {
         const content = await fetchDriveFileContent(connectionId, orgId, file.id, file.mimeType)
         if (content.startsWith('[Unsupported binary format:')) continue
-        const chunk = driveFileToChunk(file, content)
+        const chunk = driveFileToChunk(file, content, folderPath)
         if (departmentId) chunk.metadata.department_id = departmentId
         chunks.push(chunk)
       } catch (err) {
@@ -311,6 +365,8 @@ export async function fetchChanges(connectionId: string, orgId: string, pageToke
   const params = new URLSearchParams({
     pageToken,
     fields: 'changes(fileId,removed,file(id,name,mimeType,modifiedTime)),newStartPageToken,nextPageToken',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
   const url = `https://www.googleapis.com/drive/v3/changes?${params.toString()}`
   const res = await googleFetch<{

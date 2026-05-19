@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { User, Zap, Loader2, Database, ExternalLink, GitBranch } from "lucide-react";
+import { User, Zap, Loader2, Database, ExternalLink, GitBranch, AlertCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -13,6 +13,7 @@ export interface Message {
   cited_sources?: CitedSource[];
   isAnalytical?: boolean;
   isLoading?: boolean;
+  isQuotaError?: boolean;
 }
 
 export interface CitedSource {
@@ -187,22 +188,51 @@ export function MessageList({ messages, awaitingApproval }: MessageListProps) {
                       : "bg-[#D96FAB] text-white border-none shadow-pink-900/20"
                   )}
                 >
-                  {msg.isAnalytical && msg.role === "assistant" && (
-                    <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] font-bold text-[#D96FAB] mb-4 border-b border-white/5 pb-3 w-fit">
-                      <Database className="w-4 h-4" />
-                      Business Intelligence Synthesis
-                    </div>
-                  )}
-
-                  {msg.isLoading && !msg.content ? (
-                    <div className="flex items-center gap-4 py-2">
-                      <Loader2 className="w-5 h-5 animate-spin text-[#D96FAB]" />
-                      <span className="text-muted-foreground animate-pulse text-[12px] font-bold uppercase tracking-widest">
-                        Athene is Synthesizing...
-                      </span>
+                  {msg.isQuotaError ? (
+                    <div className="space-y-6 p-2">
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl shrink-0">
+                          <AlertCircle className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-black uppercase tracking-widest text-amber-500">
+                            LLM Quota Exceeded
+                          </h4>
+                          <p className="text-xs text-muted-foreground/85 font-medium leading-relaxed">
+                            {msg.content}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3 pt-4 border-t border-white/5">
+                        <button
+                          onClick={() => window.location.href = "/admin/keys"}
+                          className="h-10 px-5 bg-amber-500 text-black hover:bg-amber-400 font-black uppercase tracking-widest text-[10px] rounded-xl flex items-center gap-2 shadow-lg shadow-amber-500/10 transition-colors border-none"
+                        >
+                          Configure BYOK Keys
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    renderContent(msg.content, msg.cited_sources)
+                    <>
+                      {msg.isAnalytical && msg.role === "assistant" && (
+                        <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] font-bold text-[#D96FAB] mb-4 border-b border-white/5 pb-3 w-fit">
+                          <Database className="w-4 h-4" />
+                          Business Intelligence Synthesis
+                        </div>
+                      )}
+
+                      {msg.isLoading && !msg.content ? (
+                        <div className="flex items-center gap-4 py-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#D96FAB]" />
+                          <span className="text-muted-foreground animate-pulse text-[12px] font-bold uppercase tracking-widest">
+                            Athene is Synthesizing...
+                          </span>
+                        </div>
+                      ) : (
+                        renderContent(msg.content, msg.cited_sources)
+                      )}
+                    </>
                   )}
 
                   {msg.cited_sources && msg.cited_sources.length > 0 && (

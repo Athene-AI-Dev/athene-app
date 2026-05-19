@@ -47,14 +47,14 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from("kg_nodes")
-      .select("id, label, description, metadata, department_ids, created_at, updated_at")
+      .select("id, label, description, temporal_metadata, department_ids, created_at, updated_at")
       .eq("org_id", orgData.id)
       .eq("entity_type", "decision")
       .order("created_at", { ascending: false })
       .limit(limit);
 
     if (since) {
-      query = query.gte("metadata->>occurred_at", since);
+      query = query.gte("temporal_metadata->>occurred_at", since);
     }
     if (dept) {
       query = query.contains("department_ids", [dept]);

@@ -96,6 +96,7 @@ export async function POST(req: Request) {
         .from('automations')
         .insert({
           ...safeBody,
+          type: safeBody.type || 'workflow',
           org_id: context.org_id,
           user_id: context.user_id,
         })

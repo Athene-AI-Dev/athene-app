@@ -15,6 +15,7 @@ import { mapRole } from "@/lib/auth/clerk";
 import { Button } from "@/components/ui/button";
 import { InsightCard, type Insight } from "@/components/insights/insight-card";
 import { cn } from "@/lib/utils";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 // ---------------------------------------------------------------------------
 // Inline "Add Insight" dialog — same pattern as ConfirmDialog in integrations
@@ -164,7 +165,7 @@ export default function InsightsPage() {
 
   const fetchInsights = useCallback(async () => {
     try {
-      const res = await fetch("/api/insights");
+      const res = await fetchWithTimeout("/api/insights");
       if (res.status === 401 || res.status === 403) {
         setError("You don't have permission to view BI Insights.");
         return;
@@ -187,7 +188,7 @@ export default function InsightsPage() {
   const handleAdd = async (title: string, query: string) => {
     setSubmitting(true);
     try {
-      const res = await fetch("/api/insights", {
+      const res = await fetchWithTimeout("/api/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, query }),
@@ -209,7 +210,7 @@ export default function InsightsPage() {
 
   const handleRefresh = async (id: string) => {
     try {
-      const res = await fetch("/api/insights", {
+      const res = await fetchWithTimeout("/api/insights", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, refresh: true }),
@@ -232,7 +233,7 @@ export default function InsightsPage() {
     }
 
     try {
-      const res = await fetch(`/api/insights?id=${id}`, { method: "DELETE" });
+      const res = await fetchWithTimeout(`/api/insights?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setInsights((prev) => prev.filter((c) => c.id !== id));
       showToast("Card removed.", "success");

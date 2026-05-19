@@ -12,10 +12,14 @@ import {
   MessageSquare,
   Upload,
   AlertCircle,
+  FileText,
+  Info,
 } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 // --- Shared UI Components ---
 
@@ -35,22 +39,59 @@ interface MetricCardProps {
   label: string;
   value: string;
   status?: string;
+  subtext?: string;
+  tooltip?: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-const MetricCard = ({ icon: Icon, label, value, status }: MetricCardProps) => (
-  <GlassCard className="p-6 hover:border-primary/20 transition-all cursor-default group">
+const MetricCard = ({ icon: Icon, label, value, status, subtext, tooltip, actionLabel, onAction }: MetricCardProps) => (
+  <GlassCard className="p-6 hover:border-primary/20 transition-all cursor-default group flex flex-col h-full">
     <div className="flex justify-between items-start mb-4">
       <div className="p-3 rounded-xl bg-primary/10 border border-primary/10 group-hover:bg-primary/20 transition-colors">
         <Icon size={22} className="text-primary" />
       </div>
       {status && (
-        <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/5 px-2 py-1 rounded-lg border border-primary/10">
+        <span className={cn("text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border shadow-sm",
+          status === 'Autonomous' 
+            ? "text-secondary bg-secondary/5 border-secondary/10" 
+            : "text-primary bg-primary/5 border-primary/10"
+        )}>
           {status}
         </span>
       )}
     </div>
-    <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-black mb-1 opacity-60">{label}</div>
-    <div className="text-3xl font-black text-foreground tracking-tighter">{value}</div>
+    <div className="flex items-center gap-2 mb-1">
+      <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-black opacity-60">{label}</div>
+      {tooltip && (
+        <Tooltip>
+          <TooltipTrigger className="cursor-help" onClick={(e) => e.preventDefault()}>
+            <Info size={12} className="text-muted-foreground/40 hover:text-primary transition-colors" />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="max-w-[200px] text-xs font-medium leading-relaxed">{tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+    <div className="text-3xl font-black text-foreground tracking-tighter mb-2">{value}</div>
+    <div className="mt-auto pt-2">
+      {subtext && (
+        <p className="text-[11px] font-bold text-muted-foreground/60 leading-snug mb-3">
+          {subtext}
+        </p>
+      )}
+      {actionLabel && onAction && (
+        <Button 
+          variant="secondary" 
+          size="sm" 
+          onClick={onAction}
+          className="w-full h-8 text-[10px] uppercase font-black tracking-widest bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all shadow-sm"
+        >
+          {actionLabel}
+        </Button>
+      )}
+    </div>
   </GlassCard>
 );
 
@@ -58,14 +99,14 @@ const MetricCard = ({ icon: Icon, label, value, status }: MetricCardProps) => (
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [stats, setStats] = useState({ documents: 0, knowledge_nodes: 0, actions: 0, integrations: 0 });
+  const [stats, setStats] = useState({ documents: 0, knowledge_nodes: 0, actions: 0, integrations: 0, briefings_this_month: 0 });
   const [orchestrations, setOrchestrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/dashboard_stats");
+      const res = await fetchWithTimeout("/api/dashboard_stats", { timeout: 15000 });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setStats(data.stats);
@@ -124,12 +165,38 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 4 metric cards — all from real API */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-        <MetricCard icon={Database}  label="Indexed Documents"   value={`${stats.documents}`}       status="Indexed"    />
-        <MetricCard icon={Cpu}       label="Knowledge Entities"  value={`${stats.knowledge_nodes}`} status="Networked"  />
-        <MetricCard icon={Activity}  label="HITL Decisions"      value={`${stats.actions}`}         status="Audited"    />
-        <MetricCard icon={Link2}     label="Active Connectors"   value={`${stats.integrations}`}    status="Live"       />
+      {/* 5 metric cards — all from real API */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 xl:gap-6">
+        <MetricCard icon={Database}  label="Indexed Documents"   value={loading ? "—" : `${stats.documents}`}       status="Indexed"    />
+        <MetricCard 
+          icon={Cpu}       
+          label="Knowledge Entities"  
+          value={loading ? "—" : `${stats.knowledge_nodes}`} 
+          status="Networked"
+          tooltip="People, organisations, concepts, and relationships extracted from your documents."
+          subtext={!loading && stats.knowledge_nodes === 0 ? (stats.documents > 0 ? "Entities not yet extracted from your indexed documents." : "Index documents first to build the knowledge graph.") : undefined}
+          actionLabel={!loading && stats.knowledge_nodes === 0 && stats.documents > 0 ? "Start Extraction" : undefined}
+          onAction={!loading && stats.knowledge_nodes === 0 && stats.documents > 0 ? () => router.push('/graph') : undefined}
+        />
+        <MetricCard 
+          icon={Activity}  
+          label="HITL Decisions"      
+          value={loading ? "—" : `${stats.actions}`}         
+          status={!loading && stats.actions === 0 ? "Autonomous" : "Audited"}
+          tooltip="Human-in-the-loop approvals, rejections, and edits for agent-drafted actions."
+          subtext={!loading && stats.actions === 0 ? "No decisions pending — agents are running autonomously." : undefined}
+        />
+        <MetricCard icon={Link2}     label="Active Connectors"   value={loading ? "—" : `${stats.integrations}`}    status="Live"       />
+        <MetricCard 
+          icon={FileText}     
+          label="Briefings This Month"   
+          value={loading ? "—" : `${stats.briefings_this_month}`}    
+          status="Synthesized"
+          tooltip="AI-synthesized morning briefings combining calendar, email, and document updates."
+          subtext={!loading && stats.briefings_this_month === 0 ? "No briefings generated yet this month." : undefined}
+          actionLabel={!loading && stats.briefings_this_month === 0 ? "Generate Now" : undefined}
+          onAction={!loading && stats.briefings_this_month === 0 ? () => router.push('/briefing') : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

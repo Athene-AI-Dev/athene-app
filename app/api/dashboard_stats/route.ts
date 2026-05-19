@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
       { count: nodesCount, error: nodesErr },
       { count: actionsCount, error: actionsErr },
       { count: connectionsCount, error: connErr },
-      { data: recentDecisions, error: decisionsErr }
+      { data: recentDecisions, error: decisionsErr },
+      { count: briefingsCount, error: briefingsErr }
     ] = await Promise.all([
       supabaseAdmin.from("documents").select("*", { count: "exact", head: true }).eq("org_id", internalOrgId),
       supabaseAdmin.from("kg_nodes").select("*", { count: "exact", head: true }).eq("org_id", internalOrgId),
@@ -41,7 +42,12 @@ export async function GET(req: NextRequest) {
         .select("id, action_type, decided_at, decision")
         .eq("org_id", internalOrgId)
         .order("decided_at", { ascending: false })
-        .limit(5)
+        .limit(5),
+      supabaseAdmin
+        .from("briefings")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", internalOrgId)
+        .gte("generated_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
     ]);
 
     // Log individual query errors without crashing the whole response
@@ -50,6 +56,7 @@ export async function GET(req: NextRequest) {
     if (actionsErr) logger.error({ err: actionsErr.message }, "[dashboard/stats] hitl_decisions count");
     if (connErr) logger.error({ err: connErr.message }, "[dashboard/stats] connections query");
     if (decisionsErr) logger.error({ err: decisionsErr.message }, "[dashboard/stats] recent decisions");
+    if (briefingsErr) logger.error({ err: briefingsErr.message }, "[dashboard/stats] briefings count");
 
     const decisionStatusMap: Record<string, string> = {
       approved: 'Success',
@@ -63,6 +70,7 @@ export async function GET(req: NextRequest) {
         knowledge_nodes: nodesCount ?? 0,
         actions: actionsCount ?? 0,
         integrations: connectionsCount ?? 0,
+        briefings_this_month: briefingsCount ?? 0,
       },
       recent_orchestrations: (recentDecisions ?? []).map(d => ({
         id: (d.id ?? '').slice(0, 8).toUpperCase(),

@@ -14,7 +14,8 @@ BEGIN
   -- 1. Resolve org
   SELECT id INTO v_org_id
   FROM public.organizations
-  WHERE clerk_org_id = p_clerk_org_id;
+  WHERE clerk_org_id = p_clerk_org_id
+     OR id::text = p_clerk_org_id;
 
   IF v_org_id IS NULL THEN
     RAISE EXCEPTION 'Organization not found for clerk_org_id: %', p_clerk_org_id;

@@ -24,20 +24,39 @@ const Header = memo(function HeaderContent({ role }: HeaderProps) {
 
   if (!mounted) return null;
 
-  const isAgentLab = pathname.includes("agent-lab");
-
   return (
     <header className="h-14 border-b border-border flex items-center justify-between px-8 bg-background/60 shrink-0 z-40 sticky top-0 backdrop-blur-xl transition-colors duration-300">
       <div className="flex items-center gap-6">
         <SidebarTrigger className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all rounded-xl border border-transparent hover:border-border" />
         <h2 className="text-sm font-black text-foreground tracking-tighter uppercase font-['Space_Grotesk'] hidden sm:block">AtheneAI</h2>
         <nav className="hidden md:flex items-center gap-8">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary transition-colors">Network</span>
-          <span className={cn(
-            "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
-            isAgentLab ? "text-primary" : "text-muted-foreground hover:text-primary"
-          )}>Agent Lab</span>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest cursor-pointer hover:text-primary transition-colors">Assets</span>
+          <Link 
+            href="/graph" 
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
+              pathname.includes("graph") ? "text-primary" : "text-muted-foreground hover:text-primary"
+            )}
+          >
+            Network
+          </Link>
+          <Link 
+            href="/builder" 
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
+              pathname.includes("builder") ? "text-primary" : "text-muted-foreground hover:text-primary"
+            )}
+          >
+            Agent Lab
+          </Link>
+          <Link 
+            href="/files" 
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
+              pathname.includes("files") ? "text-primary" : "text-muted-foreground hover:text-primary"
+            )}
+          >
+            Assets
+          </Link>
         </nav>
       </div>
 

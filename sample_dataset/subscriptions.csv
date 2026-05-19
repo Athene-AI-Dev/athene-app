@@ -1,0 +1,6 @@
+customer_id,company_name,industry,subscription_tier,mrr,renewal_date,account_manager
+CUST-001,Acme Corp,Manufacturing,Enterprise,5000,2026-10-15,Sarah Jenkins
+CUST-002,TechFlow,Software,Pro,1500,2026-06-01,David Chen
+CUST-003,GreenEnergy LLC,Energy,Enterprise,6500,2026-08-20,Sarah Jenkins
+CUST-004,CloudNova,Software,Starter,500,2026-11-05,Michael Ross
+CUST-005,Global Logistics,Logistics,Pro,2000,2026-07-12,David Chen

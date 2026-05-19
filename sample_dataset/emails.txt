@@ -1,0 +1,28 @@
+From: sarah.jenkins@solaris.tech
+To: david.chen@solaris.tech
+Date: May 12, 2026
+Subject: URGENT: Acme Corp situation + TechFlow Upsell
+
+Hey David,
+
+Just a heads up, I'm dealing with a massive fire regarding Acme Corp right now. They are threatening to churn before their October renewal date because of the recent outages. 
+
+Since you manage TechFlow, did you see the support notes? They are hitting their API limits on the Pro plan. I see they are currently paying $1,500 MRR. If we bump them to Enterprise, we could probably secure an extra $2,000 MRR from them. Let's sync on this on Friday.
+
+Best,
+Sarah
+
+---
+
+From: david.chen@solaris.tech
+To: sarah.jenkins@solaris.tech
+Date: May 12, 2026
+Subject: Re: URGENT: Acme Corp situation + TechFlow Upsell
+
+Hi Sarah,
+
+Ouch, sorry to hear about Acme Corp. Let me know if you need any help pulling the technical reports for them. 
+
+And yes! I saw the TechFlow ticket. I've already scheduled a call with their VP of Engineering for tomorrow morning to discuss the Enterprise package. 
+
+David

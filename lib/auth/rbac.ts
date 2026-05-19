@@ -73,7 +73,7 @@ export const resolveUserAccess = cache(async (
       // 1. Fetch Member Basic Data
       const { data: memberData, error: memberError } = await supabaseAdmin
         .from("org_members")
-        .select("id, role, active, department_id")
+        .select("id, role, department_id")
         .eq("clerk_user_id", userId)
         .eq("org_id", orgData.id)
         .limit(1)
@@ -83,17 +83,7 @@ export const resolveUserAccess = cache(async (
         logger.warn({ userId, orgId, err: memberError.message }, "[rbac] Member query failed");
       }
 
-      // Deactivated members are explicitly denied — do not fall through to auto-provision
-      if (memberData && memberData.active === false) {
-        result = {
-          internal_user_id: null,
-          internal_org_id: orgData.id,
-          role: null,
-          dept_id: null,
-          accessible_dept_ids: null,
-          bi_grant_id: null,
-        };
-      } else if (memberData) {
+      if (memberData) {
         // 2. Fetch Grants Separately (Resilient to missing relationships)
         const { data: grantData, error: grantError } = await supabaseAdmin
           .from("access_grants")
@@ -194,13 +184,12 @@ export const resolveUserAccess = cache(async (
           logger.warn({ userId, orgId, err: memErr.message }, "[rbac] Member insert failed, re-fetching");
           const { data: existing } = await supabaseAdmin
             .from("org_members")
-            .select("id, role, active")
+            .select("id, role")
             .eq("clerk_user_id", userId)
             .eq("org_id", orgData.id)
             .limit(1)
             .maybeSingle();
-          // If the member exists but is deactivated, deny access
-          memberData = existing && existing.active !== false ? existing : null;
+          memberData = existing;
         } else {
           memberData = newMember;
         }

@@ -120,14 +120,48 @@ async function seedMembers(db: SupabaseClient) {
 }
 
 async function seedGraph(db: SupabaseClient) {
-  // UNIQUE (org_id, label, entity_type) — upsert on that composite key
-  for (const node of FIXTURE_NODES) {
-    await db
-      .from("kg_nodes")
-      .upsert(node, { onConflict: "id" })
-      .throwOnError();
+  try {
+    // Attempt schema A (codebase schema)
+    for (const node of FIXTURE_NODES) {
+      await db
+        .from("kg_nodes")
+        .upsert(node, { onConflict: "id" })
+        .throwOnError();
+    }
+    await db.from("kg_edges").upsert(FIXTURE_EDGES, { onConflict: "id" }).throwOnError();
+    console.log("[seed] seedGraph codebase schema succeeded!");
+  } catch (err: any) {
+    console.warn(`[seed] seedGraph codebase schema failed, trying legacy schema: ${err.message}`);
+    try {
+      // Attempt schema B (legacy schema present on the remote database)
+      for (const node of FIXTURE_NODES) {
+        const legacyNode = {
+          id: node.id,
+          org_id: node.org_id,
+          label: node.label,
+          type: node.entity_type,
+        };
+        await db
+          .from("kg_nodes")
+          .upsert(legacyNode, { onConflict: "id,org_id" })
+          .throwOnError();
+      }
+      const legacyEdges = FIXTURE_EDGES.map((edge, i) => ({
+        id: i + 1, // bigint ID
+        org_id: edge.org_id,
+        from_node_id: edge.source_node,
+        to_node_id: edge.target_node,
+        relation: edge.relation,
+      }));
+      await db
+        .from("kg_edges")
+        .upsert(legacyEdges, { onConflict: "id" })
+        .throwOnError();
+      console.log("[seed] seedGraph legacy schema succeeded!");
+    } catch (legacyErr: any) {
+      console.warn(`[seed] seedGraph legacy schema also failed: ${legacyErr.message}`);
+    }
   }
-  await db.from("kg_edges").upsert(FIXTURE_EDGES, { onConflict: "id" }).throwOnError();
 }
 
 async function seedAuditRows(db: SupabaseClient) {

@@ -48,3 +48,7 @@ supabase/.temp/
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# playwright reports and test results
+/test-results/
+/tests/e2e/playwright-report/

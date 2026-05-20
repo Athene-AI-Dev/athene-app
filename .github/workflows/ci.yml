@@ -62,7 +62,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run ESLint
-        run: pnpm exec next lint
+        run: pnpm run lint
 
   unit-tests:
     name: Vitest Unit Tests

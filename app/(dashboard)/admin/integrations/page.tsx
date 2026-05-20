@@ -300,7 +300,7 @@ export default function IntegrationsPage() {
       {configuringSync?.provider === "google_drive" && (
         <DrivePickerModal
           open
-          connectionId={configuringSync.connectionId}
+          connectionId={configuringSync.internalConnectionId}
           onClose={() => setConfiguringSync(null)}
           onSuccess={() => { setConfiguringSync(null); fetchIntegrations(); }}
         />
@@ -309,7 +309,7 @@ export default function IntegrationsPage() {
       {configuringSync?.provider === "powerbi" && (
         <PowerBIPickerModal
           open
-          connectionId={configuringSync.connectionId}
+          connectionId={configuringSync.internalConnectionId}
           onClose={() => setConfiguringSync(null)}
           onSuccess={() => { setConfiguringSync(null); fetchIntegrations(); }}
         />
@@ -317,7 +317,7 @@ export default function IntegrationsPage() {
 
       {configuringSync && configuringSync.provider !== "google_drive" && configuringSync.provider !== "powerbi" && (
         <ResourceBrowser
-          connectionId={configuringSync.connectionId}
+          connectionId={configuringSync.internalConnectionId}
           provider={configuringSync.provider}
           providerName={getProvider(configuringSync.provider as any)?.displayName ?? configuringSync.displayName}
           open={!!configuringSync}

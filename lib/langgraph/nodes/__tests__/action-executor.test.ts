@@ -349,4 +349,44 @@ describe("actionExecutorNode", () => {
     const decoded = Buffer.from(rawB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
     expect(decoded).toContain("Cc: charlie@example.com");
   });
+
+  // ── Specific Provider Keys ────────────────────────────────
+
+  it("resolves and dispatches email-send via individual gmail connection", async () => {
+    mockSupabaseFrom.mockReturnValue(makeConnectionQuery("gmail"));
+    mockSendGoogleEmail.mockResolvedValue({ id: "gmail-msg-01" });
+
+    const result = await actionExecutorNode(
+      makeState({
+        pending_write_action: { tool: "email-send", payload: validEmailPayload },
+      })
+    );
+
+    expect(mockSendGoogleEmail).toHaveBeenCalledWith(
+      "conn-1",
+      "org-test",
+      expect.any(String)
+    );
+    expect(result.action_result).toEqual({ id: "gmail-msg-01" });
+    expect(result.action_error).toBeNull();
+  });
+
+  it("resolves and dispatches calendar-create via individual google_calendar connection", async () => {
+    mockSupabaseFrom.mockReturnValue(makeConnectionQuery("google_calendar"));
+    mockCreateGoogleEvent.mockResolvedValue({ id: "gcal-evt-01" });
+
+    const result = await actionExecutorNode(
+      makeState({
+        pending_write_action: { tool: "calendar-create", payload: validCalendarPayload },
+      })
+    );
+
+    expect(mockCreateGoogleEvent).toHaveBeenCalledWith(
+      "conn-1",
+      "org-test",
+      expect.objectContaining({ summary: "Team Sync" })
+    );
+    expect(result.action_result).toEqual({ id: "gcal-evt-01" });
+    expect(result.action_error).toBeNull();
+  });
 });

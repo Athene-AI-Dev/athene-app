@@ -66,8 +66,8 @@ async function resolveConnection(
 ): Promise<{ connectionId: string; provider: string }> {
   // Map tools to candidate providers
   const candidates = tool.startsWith("email")
-    ? [GOOGLE_PROVIDER_KEY, MS_PROVIDER_KEY]
-    : [GOOGLE_PROVIDER_KEY, MS_PROVIDER_KEY];
+    ? [GOOGLE_PROVIDER_KEY, "gmail", MS_PROVIDER_KEY, "outlook"]
+    : [GOOGLE_PROVIDER_KEY, "google_calendar", MS_PROVIDER_KEY, "ms_calendar"];
 
   const { data: connections, error } = await supabaseAdmin
     .from("nango_connections")
@@ -255,7 +255,7 @@ export async function actionExecutorNode(
 
     switch (action.tool) {
       case "email-send": {
-        if (provider === MS_PROVIDER_KEY) {
+        if (provider === MS_PROVIDER_KEY || provider === "outlook") {
           result = await withTimeout(
             sendMicrosoftEmail(
               connectionId,
@@ -277,7 +277,7 @@ export async function actionExecutorNode(
         break;
       }
       case "calendar-create": {
-        if (provider === MS_PROVIDER_KEY) {
+        if (provider === MS_PROVIDER_KEY || provider === "ms_calendar") {
           result = await withTimeout(
             createMicrosoftEvent(
               connectionId,

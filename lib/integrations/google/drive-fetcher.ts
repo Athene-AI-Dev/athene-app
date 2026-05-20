@@ -236,11 +236,12 @@ export async function fetchDriveChunks(
   _folderId?: string,
   syncConfig?: SyncConfig,
 ): Promise<FetchedChunk[]> {
-  // Load connection metadata from Supabase
+  // Load connection metadata from Supabase with cross-tenant check
   const { data: conn } = await supabaseAdmin
     .from('connections')
     .select('metadata, department_id')
     .eq('nango_connection_id', connectionId)
+    .eq('org_id', orgId)
     .maybeSingle()
   
   const storedMeta = (conn?.metadata as any) ?? {}
@@ -249,6 +250,8 @@ export async function fetchDriveChunks(
 
   const selectedIds = syncConfig ? getSelectedResourceIds(syncConfig) : null
   const excludedIds = syncConfig ? getExcludedResourceIds(syncConfig) : new Set<string>()
+
+  const visited = new Set<string>()
 
   if (selectedIds && selectedIds.size > 0) {
     const chunks: FetchedChunk[] = []
@@ -262,7 +265,8 @@ export async function fetchDriveChunks(
         excludedMimeTypes,
         '/',
         undefined,
-        departmentId
+        departmentId,
+        visited
       )
       chunks.push(...folderChunks)
     }
@@ -277,7 +281,8 @@ export async function fetchDriveChunks(
     excludedMimeTypes,
     '/',
     undefined,
-    departmentId
+    departmentId,
+    visited
   )
 }
 
@@ -293,6 +298,7 @@ async function fetchDriveFolder(
   folderPath: string = '/',
   driveId?: string,
   departmentId?: string,
+  visited: Set<string> = new Set<string>(),
 ): Promise<FetchedChunk[]> {
   const chunks: FetchedChunk[] = []
   let pageToken: string | undefined
@@ -321,6 +327,8 @@ async function fetchDriveFolder(
     for (const file of listing.files) {
       if (excludedIds.has(file.id)) continue
       if (excludedMimeTypes.includes(file.mimeType)) continue
+      if (visited.has(file.id)) continue
+      visited.add(file.id)
 
       if (file.mimeType === GOOGLE_FOLDER_MIME) {
         const nextPath = folderPath === '/' ? `/${file.name}` : `${folderPath}/${file.name}`
@@ -332,7 +340,8 @@ async function fetchDriveFolder(
           excludedMimeTypes,
           nextPath,
           driveId,
-          departmentId
+          departmentId,
+          visited
         )
         chunks.push(...sub)
         continue

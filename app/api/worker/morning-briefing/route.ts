@@ -209,22 +209,31 @@ export async function POST(request: Request): Promise<Response> {
     findConnection(internalOrgId, 'google_drive'),
   ])
 
+  // Fallback: If individual integrations are missing, check if umbrella 'google' connection is active
+  const googleUmbrellaConnId = (!gmailConnId || !calendarConnId || !driveConnId)
+    ? await findConnection(internalOrgId, 'google')
+    : null
+
+  const resolvedGmailConnId = gmailConnId ?? googleUmbrellaConnId
+  const resolvedCalendarConnId = calendarConnId ?? googleUmbrellaConnId
+  const resolvedDriveConnId = driveConnId ?? googleUmbrellaConnId
+
   // ── 2. Fetch chunks in parallel ───────────────────────────
   const now = new Date()
   const future = new Date()
   future.setDate(future.getDate() + 7) // next 7 days
 
   const [emailChunks, calendarChunks, driveChunks] = await Promise.all([
-    gmailConnId
-      ? safeFetch('gmail', () => indexEmailChunks(gmailConnId, internalOrgId, { limit: 50 }))
+    resolvedGmailConnId
+      ? safeFetch('gmail', () => indexEmailChunks(resolvedGmailConnId, internalOrgId, { limit: 50 }))
       : Promise.resolve([] as FetchedChunk[]),
 
-    calendarConnId
-      ? safeFetch('calendar', () => fetchCalendarChunks(calendarConnId, internalOrgId, now, future))
+    resolvedCalendarConnId
+      ? safeFetch('calendar', () => fetchCalendarChunks(resolvedCalendarConnId, internalOrgId, now, future))
       : Promise.resolve([] as FetchedChunk[]),
 
-    driveConnId
-      ? safeFetch('drive', () => fetchDriveChunks(driveConnId, internalOrgId))
+    resolvedDriveConnId
+      ? safeFetch('drive', () => fetchDriveChunks(resolvedDriveConnId, internalOrgId))
       : Promise.resolve([] as FetchedChunk[]),
   ])
 

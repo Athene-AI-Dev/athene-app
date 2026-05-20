@@ -292,18 +292,21 @@ export async function indexEmailChunks(
           let idx = 0
           while (offset < fullText.length) {
             const slice = fullText.slice(offset, offset + CHUNK_SIZE)
+            const metadata = {
+              provider: 'google',
+              resource_type: 'email',
+              last_modified: new Date(Number(full.internalDate ?? 0)).toISOString(),
+              author: headers.from,
+              thread_id: full.threadId,
+            }
+            assertSafeMetadata(metadata)
+
             msgChunks.push({
               chunk_id: `gmail:${msg.id}:${idx}`,
               title: headers.subject || '(no subject)',
               content: slice,
               source_url: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
-              metadata: {
-                provider: 'google',
-                resource_type: 'email',
-                last_modified: new Date(Number(full.internalDate ?? 0)).toISOString(),
-                author: headers.from,
-                thread_id: full.threadId,
-              },
+              metadata,
             })
             offset += CHUNK_SIZE - CHUNK_OVERLAP
             idx++
